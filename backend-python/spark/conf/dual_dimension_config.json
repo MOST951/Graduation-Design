@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "description": "双维度排序模型配置文件",
+  "sentiment_weight": 0.4,
+  "heat_weight": 0.4,
+  "timeliness_weight": 0.2,
+  "repost_factor": 1.0,
+  "comment_factor": 2.0,
+  "like_factor": 1.0,
+  "decay_half_life_hours": 24.0,
+  "sentiment_amplify": 1.5,
+  "negative_boost": true,
+  "negative_boost_factor": 1.2,
+  "updated_at": "2026-04-04T11:00:00"
+}

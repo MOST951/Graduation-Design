@@ -1,0 +1,17 @@
+{
+  "description": "微博爬虫配置文件",
+  "version": "1.0.0",
+  
+  "max_retry_times": 3,
+  "retry_delay_min": 2.0,
+  "retry_delay_max": 5.0,
+  
+  "cookie_fail_threshold": 3,
+  "cookie_cooldown_seconds": 300,
+  
+  "request_timeout": 15,
+  "request_delay_min": 1.0,
+  "request_delay_max": 3.0,
+  
+  "updated_at": "2026-04-04T11:00:00"
+}

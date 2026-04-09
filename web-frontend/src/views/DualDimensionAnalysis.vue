@@ -1,0 +1,1188 @@
+<template>
+  <div class="dual-dimension-module">
+    <!-- 顶部操作栏 -->
+    <div class="action-bar">
+      <el-button-group>
+        <el-button type="primary" :icon="DataAnalysis" @click="runAnalysis" :loading="analyzing">
+          开始分析
+        </el-button>
+        <el-button :icon="Setting" @click="showConfigPanel = true">
+          参数配置
+        </el-button>
+        <el-button :icon="Download" @click="exportData">
+          导出数据
+        </el-button>
+      </el-button-group>
+      
+      <div class="config-quick">
+        <span>预设配置：</span>
+        <el-select v-model="selectedConfig" @change="loadPresetConfig" style="width: 150px">
+          <el-option label="默认配置" value="default" />
+          <el-option label="情感优先" value="sentiment_first" />
+          <el-option label="热度优先" value="heat_first" />
+        </el-select>
+      </div>
+    </div>
+    
+    <el-row :gutter="20">
+      <!-- 左侧：三维权重配置面板 -->
+      <el-col :span="6">
+        <!-- 论文公式卡片 -->
+        <el-card shadow="hover" class="formula-card">
+          <template #header>
+            <div class="card-hdr"><span>双维度排序公式</span><el-tag size="small" type="warning">公式4-7</el-tag></div>
+          </template>
+          <div class="formula-display">
+            <div class="formula-tex">Score = ω₁·N(S) + ω₂·H<sub>norm</sub> + ω₃·γ(t)</div>
+            <div class="formula-sub">γ(t) = 2<sup>-Δt/H</sup> , H = {{ config.decay_half_life_hours }}h</div>
+          </div>
+        </el-card>
+
+        <el-card shadow="hover" class="config-card" style="margin-top: 12px">
+          <template #header>
+            <div class="card-hdr"><span>三维权重 (ω₁+ω₂+ω₃=1)</span>
+              <el-tag :type="weightSum === 1 ? 'success' : 'danger'" size="small">∑={{ weightSum }}</el-tag>
+            </div>
+          </template>
+          <div class="weight-config">
+            <div class="weight-item">
+              <div class="weight-header">
+                <span>ω₁ 情感强度 N(S)</span>
+                <el-tag type="primary">{{ (config.sentiment_weight * 100).toFixed(0) }}%</el-tag>
+              </div>
+              <el-slider v-model="config.sentiment_weight" :min="0" :max="1" :step="0.05" @change="onTriWeightChange('sentiment')" />
+            </div>
+            <div class="weight-item">
+              <div class="weight-header">
+                <span>ω₂ 热度 H<sub>norm</sub></span>
+                <el-tag type="success">{{ (config.heat_weight * 100).toFixed(0) }}%</el-tag>
+              </div>
+              <el-slider v-model="config.heat_weight" :min="0" :max="1" :step="0.05" @change="onTriWeightChange('heat')" />
+            </div>
+            <div class="weight-item">
+              <div class="weight-header">
+                <span>ω₃ 时效性 γ(t)</span>
+                <el-tag type="warning">{{ (config.timeliness_weight * 100).toFixed(0) }}%</el-tag>
+              </div>
+              <el-slider v-model="config.timeliness_weight" :min="0" :max="1" :step="0.05" @change="onTriWeightChange('timeliness')" />
+            </div>
+            <!-- 权重可视化条 -->
+            <div class="weight-bar">
+              <div class="bar-seg sentiment" :style="{width: config.sentiment_weight * 100 + '%'}">ω₁</div>
+              <div class="bar-seg heat" :style="{width: config.heat_weight * 100 + '%'}">ω₂</div>
+              <div class="bar-seg timeliness" :style="{width: config.timeliness_weight * 100 + '%'}">ω₃</div>
+            </div>
+          </div>
+
+          <el-divider>互动权重 (λ)</el-divider>
+          <el-form label-position="left" label-width="80px" size="small">
+            <el-form-item label="λ_r 转发">
+              <el-input-number v-model="config.repost_weight" :min="0" :max="10" :step="0.5" />
+            </el-form-item>
+            <el-form-item label="λ_c 评论">
+              <el-input-number v-model="config.comment_weight" :min="0" :max="10" :step="0.5" />
+            </el-form-item>
+            <el-form-item label="λ_l 点赞">
+              <el-input-number v-model="config.like_weight" :min="0" :max="10" :step="0.5" />
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <el-card shadow="hover" class="config-card" style="margin-top: 12px">
+          <template #header>
+            <div class="card-hdr"><span>时间衰减 γ(t)</span><el-tag size="small" type="info">公式4-6</el-tag></div>
+          </template>
+          <el-form label-position="left" label-width="100px" size="small">
+            <el-form-item label="启用衰减">
+              <el-switch v-model="config.time_decay_enabled" />
+            </el-form-item>
+            <el-form-item label="半衰期 H" v-if="config.time_decay_enabled">
+              <el-input-number v-model="config.decay_half_life_hours" :min="1" :max="168" />
+              <span style="margin-left:6px;color:#86909C;font-size:12px">小时</span>
+            </el-form-item>
+            <div v-if="config.time_decay_enabled" class="decay-preview">
+              <div class="decay-label">衰减预览 (γ值)</div>
+              <div class="decay-ticks">
+                <span v-for="h in [0,6,12,24,48]" :key="h" class="tick">
+                  {{ h }}h → {{ Math.pow(2, -h / config.decay_half_life_hours).toFixed(2) }}
+                </span>
+              </div>
+            </div>
+            <el-divider>四象限阈值</el-divider>
+            <el-form-item label="情感阈值">
+              <el-slider v-model="config.sentiment_threshold" :min="0" :max="1" :step="0.05" show-input />
+            </el-form-item>
+            <el-form-item label="热度阈值">
+              <el-slider v-model="config.heat_threshold" :min="0" :max="1" :step="0.05" show-input />
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </el-col>
+      
+      <!-- 中间：散点图可视化 -->
+      <el-col :span="12">
+        <el-card shadow="hover">
+          <template #header>
+            <div class="chart-header">
+              <span>情感-热度双维度散点图</span>
+              <el-radio-group v-model="chartMode" size="small">
+                <el-radio-button label="scatter">散点图</el-radio-button>
+                <el-radio-button label="heatmap">热力图</el-radio-button>
+              </el-radio-group>
+            </div>
+          </template>
+          <div ref="scatterChartRef" style="height: 500px"></div>
+        </el-card>
+        
+        <!-- 四象限统计 -->
+        <el-row :gutter="12" style="margin-top: 16px">
+          <el-col :span="6" v-for="(quad, key) in quadrantInfo" :key="key">
+            <el-card 
+              shadow="hover" 
+              class="quadrant-card"
+              :style="{ borderTop: `3px solid ${quad.color}` }"
+              @click="filterByQuadrant(key)"
+            >
+              <div class="quadrant-stat">
+                <div class="stat-value" :style="{ color: quad.color }">
+                  {{ quadrantStats[key]?.count || 0 }}
+                </div>
+                <div class="stat-label">{{ quad.label }}</div>
+                <div class="stat-ratio">
+                  {{ ((quadrantStats[key]?.ratio || 0) * 100).toFixed(1) }}%
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+      </el-col>
+      
+      <!-- 右侧：排名列表 -->
+      <el-col :span="6">
+        <el-card shadow="hover">
+          <template #header>
+            <div class="rank-header">
+              <span>双维度排名 Top {{ rankList.length }}</span>
+              <el-select v-model="rankFilter" size="small" style="width: 100px">
+                <el-option label="全部" value="all" />
+                <el-option label="高情感高热" value="high_sentiment_high_heat" />
+                <el-option label="高情感低热" value="high_sentiment_low_heat" />
+                <el-option label="低情感高热" value="low_sentiment_high_heat" />
+                <el-option label="低情感低热" value="low_sentiment_low_heat" />
+              </el-select>
+            </div>
+          </template>
+          
+          <div class="rank-list">
+            <div 
+              v-for="item in filteredRankList" 
+              :key="item.id" 
+              class="rank-item"
+              :class="{ active: selectedItem?.id === item.id }"
+              @click="selectItem(item)"
+            >
+              <div class="rank-badge" :class="getRankClass(item.rank)">
+                {{ item.rank }}
+              </div>
+              <div class="rank-content">
+                <div class="rank-text">{{ item.text }}</div>
+                <div class="rank-meta">
+                  <el-tag :type="getSentimentType(item.sentiment?.polarity)" size="small">
+                    {{ getSentimentLabel(item.sentiment?.polarity) }}
+                  </el-tag>
+                  <span class="score">得分: {{ item.dual_score }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+    
+    <!-- 详情对话框 -->
+    <el-dialog v-model="showDetailDialog" title="微博详情分析" width="700px">
+      <div v-if="selectedItem" class="detail-content">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="排名">
+            <el-tag type="primary">第 {{ selectedItem.rank }} 名</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="双维度得分">
+            <span class="highlight">{{ selectedItem.dual_score }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="情感极性">
+            <el-tag :type="getSentimentType(selectedItem.sentiment?.polarity)">
+              {{ getSentimentLabel(selectedItem.sentiment?.polarity) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="情感得分">
+            {{ selectedItem.sentiment?.score }}
+          </el-descriptions-item>
+          <el-descriptions-item label="情感强度">
+            <el-progress :percentage="selectedItem.sentiment?.intensity || 0" />
+          </el-descriptions-item>
+          <el-descriptions-item label="四象限">
+            <el-tag :color="quadrantInfo[selectedItem.quadrant]?.color" effect="dark">
+              {{ quadrantInfo[selectedItem.quadrant]?.label }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="热度得分">
+            {{ selectedItem.heat?.score }}
+          </el-descriptions-item>
+          <el-descriptions-item label="时间衰减">
+            {{ selectedItem.heat?.time_decay }}
+          </el-descriptions-item>
+          <el-descriptions-item label="影响力因子">
+            {{ selectedItem.heat?.influence }}
+          </el-descriptions-item>
+          <el-descriptions-item label="互动数据" :span="2">
+            转发: {{ selectedItem.interactions?.reposts }} | 
+            评论: {{ selectedItem.interactions?.comments }} | 
+            点赞: {{ selectedItem.interactions?.likes }}
+          </el-descriptions-item>
+        </el-descriptions>
+        
+        <el-divider>微博内容</el-divider>
+        <div class="weibo-text">{{ selectedItem.text }}</div>
+      </div>
+    </el-dialog>
+    
+    <!-- 配置面板抽屉 -->
+    <el-drawer v-model="showConfigPanel" title="详细配置" size="400px">
+      <el-form label-position="top">
+        <el-form-item label="配置名称">
+          <el-input v-model="configName" placeholder="输入配置名称" />
+        </el-form-item>
+        
+        <el-divider>情感维度</el-divider>
+        <el-form-item label="情感权重">
+          <el-slider v-model="config.sentiment_weight" :min="0" :max="1" :step="0.05" show-input />
+        </el-form-item>
+        <el-form-item label="使用深度学习">
+          <el-switch v-model="config.use_deep_learning" />
+        </el-form-item>
+        
+        <el-divider>热度维度</el-divider>
+        <el-form-item label="热度权重">
+          <el-slider v-model="config.heat_weight" :min="0" :max="1" :step="0.05" show-input />
+        </el-form-item>
+        
+        <el-divider>论文公式 (4-3 ~ 4-7)</el-divider>
+        <div class="formula-box">
+          <p><strong>公式4-3 情感归一化：</strong></p>
+          <code>N(S) = (|S| + 1) / 2</code>
+          <p style="margin-top: 8px"><strong>公式4-4 热度得分：</strong></p>
+          <code>H_raw = log₁₀(1 + λ_r·R + λ_c·C + λ_l·L)</code>
+          <p style="margin-top: 8px"><strong>公式4-6 时间衰减：</strong></p>
+          <code>γ(t) = 2^(-Δt / H),  H = 12h</code>
+          <p style="margin-top: 8px"><strong>公式4-7 综合得分：</strong></p>
+          <code>Score = ω₁·N(S) + ω₂·H_norm + ω₃·γ(t)</code>
+        </div>
+      </el-form>
+      
+      <template #footer>
+        <el-button @click="showConfigPanel = false">取消</el-button>
+        <el-button type="primary" @click="saveConfig">保存配置</el-button>
+      </template>
+    </el-drawer>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ElMessage } from 'element-plus';
+import * as echarts from 'echarts';
+import { DataAnalysis, Setting, Download } from '@element-plus/icons-vue';
+import { SUCCESS, PRIMARY, DANGER, INFO, WARNING } from '@/styles/colors';
+
+import { 
+  getHotSearch, 
+  apiClient, 
+  type HotSearchItem 
+} from '@/api/weibo';
+
+// 状态
+const analyzing = ref(false);
+const showConfigPanel = ref(false);
+const showDetailDialog = ref(false);
+const selectedConfig = ref('default');
+const chartMode = ref('scatter');
+const rankFilter = ref('all');
+const configName = ref('');
+const selectedItem = ref<any>(null);
+
+// 图表引用
+const scatterChartRef = ref<HTMLElement>();
+let scatterChart: echarts.ECharts | null = null;
+
+// 配置 (论文 ω₁=0.4, ω₂=0.4, ω₃=0.2)
+const config = reactive({
+  sentiment_weight: 0.4,
+  heat_weight: 0.4,
+  timeliness_weight: 0.2,
+  repost_weight: 1.0,
+  comment_weight: 2.0,
+  like_weight: 1.0,
+  time_decay_enabled: true,
+  decay_half_life_hours: 12,
+  influence_enabled: true,
+  verified_bonus: 1.5,
+  sentiment_threshold: 0.5,
+  heat_threshold: 0.5,
+  use_deep_learning: true,
+});
+
+// 四象限信息
+const quadrantInfo: Record<string, any> = {
+  high_sentiment_high_heat: {
+    name: '高情感-高热度',
+    label: '重点关注',
+    color: DANGER,
+  },
+  high_sentiment_low_heat: {
+    name: '高情感-低热度',
+    label: '潜在风险',
+    color: WARNING,
+  },
+  low_sentiment_high_heat: {
+    name: '低情感-高热度',
+    label: '热门中性',
+    color: PRIMARY,
+  },
+  low_sentiment_low_heat: {
+    name: '低情感-低热度',
+    label: '一般内容',
+    color: INFO,
+  },
+};
+
+// 数据
+const rankList = ref<any[]>([]);
+const scatterData = ref<any[]>([]);
+const quadrantStats = ref<Record<string, any>>({});
+
+// 计算属性
+const filteredRankList = computed(() => {
+  if (rankFilter.value === 'all') {
+    return rankList.value.slice(0, 20);
+  }
+  return rankList.value.filter(item => item.quadrant === rankFilter.value).slice(0, 20);
+});
+
+// 三维权重联动 (ω₁+ω₂+ω₃=1)
+const weightSum = computed(() => {
+  return Number((config.sentiment_weight + config.heat_weight + config.timeliness_weight).toFixed(2));
+});
+
+const onTriWeightChange = (changed: string) => {
+  const total = 1;
+  if (changed === 'sentiment') {
+    const remaining = Math.max(0, total - config.sentiment_weight);
+    const ratio = config.heat_weight + config.timeliness_weight;
+    if (ratio > 0) {
+      config.heat_weight = Number((remaining * (config.heat_weight / ratio)).toFixed(2));
+      config.timeliness_weight = Number((remaining - config.heat_weight).toFixed(2));
+    } else {
+      config.heat_weight = Number((remaining / 2).toFixed(2));
+      config.timeliness_weight = Number((remaining / 2).toFixed(2));
+    }
+  } else if (changed === 'heat') {
+    const remaining = Math.max(0, total - config.heat_weight);
+    const ratio = config.sentiment_weight + config.timeliness_weight;
+    if (ratio > 0) {
+      config.sentiment_weight = Number((remaining * (config.sentiment_weight / ratio)).toFixed(2));
+      config.timeliness_weight = Number((remaining - config.sentiment_weight).toFixed(2));
+    } else {
+      config.sentiment_weight = Number((remaining / 2).toFixed(2));
+      config.timeliness_weight = Number((remaining / 2).toFixed(2));
+    }
+  } else {
+    const remaining = Math.max(0, total - config.timeliness_weight);
+    const ratio = config.sentiment_weight + config.heat_weight;
+    if (ratio > 0) {
+      config.sentiment_weight = Number((remaining * (config.sentiment_weight / ratio)).toFixed(2));
+      config.heat_weight = Number((remaining - config.sentiment_weight).toFixed(2));
+    } else {
+      config.sentiment_weight = Number((remaining / 2).toFixed(2));
+      config.heat_weight = Number((remaining / 2).toFixed(2));
+    }
+  }
+};
+
+// 加载预设配置 (论文 ω₁=0.4, ω₂=0.4, ω₃=0.2)
+const loadPresetConfig = () => {
+  const presets: Record<string, any> = {
+    default: { sentiment_weight: 0.4, heat_weight: 0.4, timeliness_weight: 0.2, repost_weight: 1.0, decay_half_life_hours: 12 },
+    sentiment_first: { sentiment_weight: 0.6, heat_weight: 0.25, timeliness_weight: 0.15, decay_half_life_hours: 12 },
+    heat_first: { sentiment_weight: 0.25, heat_weight: 0.55, timeliness_weight: 0.2, decay_half_life_hours: 12 },
+  };
+  
+  const preset = presets[selectedConfig.value];
+  if (preset) {
+    Object.assign(config, preset);
+    ElMessage.success(`已加载 ${selectedConfig.value} 配置`);
+  }
+};
+
+// 运行分析
+const runAnalysis = async () => {
+  analyzing.value = true;
+  
+  try {
+    ElMessage.info('正在获取实时热搜数据...');
+    // 1. 获取真实热搜数据
+    const hotList = await getHotSearch();
+    
+    if (!hotList || hotList.length === 0) {
+      throw new Error('未获取到热搜数据');
+    }
+    
+    // 2. 转换为分析格式
+    // 热搜数据只有标题和热度值，我们需要基于此构建符合双维度模型的数据结构
+    const analysisData = hotList.map((item: HotSearchItem) => {
+      // 基于热度值估算互动数据 (仅作演示转换)
+      const baseCount = Math.floor(item.hot_value / 100); 
+      return {
+        id: `hot_${item.rank}`,
+        text: item.title, // 热搜词作为文本
+        source: '微博热搜',
+        created_at: item.crawl_time || new Date().toISOString(),
+        // 模拟用户影响力 (排名越靠前，通常影响力越大)
+        user: {
+          id: 'official',
+          screen_name: '微博热搜',
+          followers_count: 1000000 + (50 - item.rank) * 10000, 
+          verified: true
+        },
+        // 模拟互动数据
+        interactions: {
+          reposts: Math.floor(baseCount * 0.2),
+          comments: Math.floor(baseCount * 0.3),
+          likes: Math.floor(baseCount * 0.5)
+        }
+      };
+    });
+
+    ElMessage.info(`获取到 ${analysisData.length} 条热搜，开始双维度分析...`);
+
+    // 3. 调用后端双维度分析接口
+    const response = await apiClient.post('/weibo/rank/dual', {
+      data: analysisData,
+      sentiment_weight: config.sentiment_weight,
+      heat_weight: config.heat_weight,
+      timeliness_weight: config.decay_half_life_hours ? 0.2 : 0, // 简化参数映射
+      top_k: 50
+    });
+    
+    const result = response.data;
+    
+    if (result.code === 200) {
+      rankList.value = result.data.ranked_items;
+      
+      // 生成散点图数据
+      scatterData.value = result.data.ranked_items.map((item: any) => ({
+        id: item.id,
+        // 映射得分到 0-100 区间用于展示
+        x: Math.min(100, Math.max(0, item.heat.score * 100)), 
+        y: Math.min(100, Math.max(0, (parseFloat(item.sentiment.score) + 1) * 50)),
+        value: parseFloat(item.dual_score) * 100,
+        quadrant: item.quadrant,
+        text: item.text
+      }));
+      
+      // 重新计算统计信息
+      calculateQuadrantStats();
+      
+      updateScatterChart();
+      ElMessage.success('分析完成，结果已保存');
+    } else {
+      throw new Error(result.message || '后端分析返回错误');
+    }
+  } catch (error: any) {
+    console.error('分析失败详细信息:', {
+      message: error.message,
+      response: error.response,
+      stack: error.stack
+    });
+    
+    let errorMsg = '分析过程出现异常';
+    if (error.response) {
+      // 请求已发出，但服务器响应状态码不在 2xx 范围内
+      errorMsg += `: 服务器错误 ${error.response.status}`;
+    } else if (error.request) {
+      // 请求已发出，但没有收到响应
+      errorMsg += ': 无法连接到服务器，请检查后端是否已启动';
+    } else {
+      // 在设置请求时发生了一些事情，触发了错误
+      errorMsg += `: ${error.message}`;
+    }
+    
+    ElMessage.warning(errorMsg + '，正在加载模拟数据用于展示');
+    // 降级：使用模拟数据
+    loadMockResults();
+  } finally {
+    analyzing.value = false;
+  }
+};
+
+// 计算象限统计
+const calculateQuadrantStats = () => {
+  const stats: Record<string, any> = {};
+  for (const q of Object.keys(quadrantInfo)) {
+    const items = rankList.value.filter(r => r.quadrant === q);
+    stats[q] = {
+      count: items.length,
+      ratio: rankList.value.length > 0 ? items.length / rankList.value.length : 0,
+    };
+  }
+  quadrantStats.value = stats;
+};
+
+// 生成模拟数据 (已废弃，保留作为参考)
+const generateMockData = () => {
+  const data = [];
+  for (let i = 0; i < 100; i++) {
+    data.push({
+      id: `${i + 1}`,
+      text: `这是第${i + 1}条测试微博内容，用于展示双维度分析效果...`,
+      reposts_count: Math.floor(Math.random() * 10000),
+      comments_count: Math.floor(Math.random() * 5000),
+      attitudes_count: Math.floor(Math.random() * 20000),
+      followers_count: Math.floor(Math.random() * 1000000),
+      verified: Math.random() > 0.7,
+      verified_type: Math.floor(Math.random() * 4) - 1,
+      created_at: new Date(Date.now() - Math.random() * 86400000 * 7).toISOString(),
+    });
+  }
+  return data;
+};
+
+// 加载模拟结果
+const loadMockResults = () => {
+  const mockResults = [];
+  for (let i = 0; i < 50; i++) {
+    const sentimentScore = Math.random() * 2 - 1;
+    const heatScore = Math.random();
+    const quadrant = getQuadrant(sentimentScore, heatScore);
+    
+    mockResults.push({
+      id: `${i + 1}`,
+      text: `这是第${i + 1}条微博，情感${sentimentScore > 0 ? '正面' : '负面'}，热度${heatScore > 0.5 ? '高' : '低'}`,
+      rank: i + 1,
+      dual_score: (0.5 * Math.abs(sentimentScore) + 0.5 * heatScore).toFixed(4),
+      sentiment: {
+        polarity: sentimentScore > 0.2 ? 'positive' : sentimentScore < -0.2 ? 'negative' : 'neutral',
+        score: sentimentScore.toFixed(4),
+        intensity: (Math.abs(sentimentScore) * 100).toFixed(2),
+      },
+      heat: {
+        score: (heatScore * 10).toFixed(4),
+        time_decay: (0.5 + Math.random() * 0.5).toFixed(4),
+        influence: (0.5 + Math.random() * 2).toFixed(4),
+      },
+      quadrant,
+      interactions: {
+        reposts: Math.floor(Math.random() * 10000),
+        comments: Math.floor(Math.random() * 5000),
+        likes: Math.floor(Math.random() * 20000),
+      },
+    });
+  }
+  
+  rankList.value = mockResults;
+  
+  // 生成散点图数据
+  scatterData.value = mockResults.map(item => ({
+    id: item.id,
+    x: parseFloat(item.heat.score) * 10,
+    y: (parseFloat(item.sentiment.score) + 1) * 50,
+    value: parseFloat(item.dual_score) * 100,
+    quadrant: item.quadrant,
+    text: item.text.slice(0, 30),
+  }));
+  
+  // 统计四象限
+  const stats: Record<string, any> = {};
+  for (const q of Object.keys(quadrantInfo)) {
+    const items = mockResults.filter(r => r.quadrant === q);
+    stats[q] = {
+      count: items.length,
+      ratio: items.length / mockResults.length,
+    };
+  }
+  quadrantStats.value = stats;
+  
+  updateScatterChart();
+};
+
+// 获取象限
+const getQuadrant = (sentiment: number, heat: number) => {
+  const highSentiment = Math.abs(sentiment) >= 0.5;
+  const highHeat = heat >= 0.5;
+  
+  if (highSentiment && highHeat) return 'high_sentiment_high_heat';
+  if (highSentiment && !highHeat) return 'high_sentiment_low_heat';
+  if (!highSentiment && highHeat) return 'low_sentiment_high_heat';
+  return 'low_sentiment_low_heat';
+};
+
+// 更新散点图
+const updateScatterChart = () => {
+  if (!scatterChart) return;
+  
+  // 清除旧配置
+  scatterChart.clear();
+  
+  if (chartMode.value === 'heatmap') {
+    // 热力图模式
+    updateHeatmapChart();
+  } else {
+    // 散点图模式
+    updateScatterMode();
+  }
+};
+
+// 散点图模式
+const updateScatterMode = () => {
+  if (!scatterChart) return;
+  
+  // 按象限分组数据
+  const seriesData: Record<string, any[]> = {};
+  for (const q of Object.keys(quadrantInfo)) {
+    seriesData[q] = [];
+  }
+  
+  for (const item of scatterData.value) {
+    if (seriesData[item.quadrant]) {
+      seriesData[item.quadrant].push([item.x, item.y, item.value, item.text, item.id]);
+    }
+  }
+  
+  const series = Object.entries(quadrantInfo).map(([key, info]) => ({
+    name: info.label,
+    type: 'scatter',
+    symbolSize: (data: any) => Math.max(10, Math.min(30, data[2] / 3)),
+    data: seriesData[key],
+    itemStyle: { color: info.color },
+    emphasis: {
+      focus: 'series',
+      itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' },
+    },
+  }));
+  
+  scatterChart.setOption({
+    tooltip: {
+      trigger: 'item',
+      formatter: (params: any) => {
+        const data = params.data;
+        return `
+          <div style="padding: 8px">
+            <div style="font-weight: bold; margin-bottom: 4px">${data[3]}</div>
+            <div>热度: ${data[0].toFixed(2)}</div>
+            <div>情感: ${data[1].toFixed(2)}</div>
+            <div>综合得分: ${data[2].toFixed(2)}</div>
+          </div>
+        `;
+      },
+    },
+    legend: {
+      data: Object.values(quadrantInfo).map(q => q.label),
+      bottom: 0,
+    },
+    grid: { left: '10%', right: '10%', top: '10%', bottom: '15%' },
+    xAxis: {
+      name: '热度',
+      nameLocation: 'middle',
+      nameGap: 30,
+      min: 0,
+      max: 100,
+      splitLine: { show: true, lineStyle: { type: 'dashed' } },
+    },
+    yAxis: {
+      name: '情感强度',
+      nameLocation: 'middle',
+      nameGap: 40,
+      min: 0,
+      max: 100,
+      splitLine: { show: true, lineStyle: { type: 'dashed' } },
+    },
+    series,
+    // 添加四象限分界线
+    graphic: [
+      {
+        type: 'line',
+        shape: { x1: '50%', y1: '10%', x2: '50%', y2: '85%' },
+        style: { stroke: '#999', lineDash: [5, 5] },
+      },
+      {
+        type: 'line',
+        shape: { x1: '10%', y1: '50%', x2: '90%', y2: '50%' },
+        style: { stroke: '#999', lineDash: [5, 5] },
+      },
+    ],
+  });
+};
+
+// 热力图模式
+const updateHeatmapChart = () => {
+  if (!scatterChart) return;
+  
+  // 将散点数据转换为热力图数据（10x10网格）
+  const gridSize = 10;
+  const heatmapData: number[][] = [];
+  
+  // 初始化网格
+  for (let i = 0; i < gridSize; i++) {
+    for (let j = 0; j < gridSize; j++) {
+      heatmapData.push([i, j, 0]);
+    }
+  }
+  
+  // 统计每个网格中的数据点数量和平均得分
+  const gridCounts: Record<string, { count: number; totalScore: number }> = {};
+  
+  for (const item of scatterData.value) {
+    const gridX = Math.min(Math.floor(item.x / 10), gridSize - 1);
+    const gridY = Math.min(Math.floor(item.y / 10), gridSize - 1);
+    const key = `${gridX}-${gridY}`;
+    
+    if (!gridCounts[key]) {
+      gridCounts[key] = { count: 0, totalScore: 0 };
+    }
+    gridCounts[key].count++;
+    gridCounts[key].totalScore += item.value;
+  }
+  
+  // 更新热力图数据
+  for (let i = 0; i < gridSize; i++) {
+    for (let j = 0; j < gridSize; j++) {
+      const key = `${i}-${j}`;
+      const idx = i * gridSize + j;
+      if (gridCounts[key]) {
+        // 使用数量和平均得分的组合作为热力值
+        heatmapData[idx][2] = gridCounts[key].count * (gridCounts[key].totalScore / gridCounts[key].count);
+      }
+    }
+  }
+  
+  // 找出最大值用于归一化
+  const maxValue = Math.max(...heatmapData.map(d => d[2]), 1);
+  
+  scatterChart.setOption({
+    tooltip: {
+      position: 'top',
+      formatter: (params: any) => {
+        const data = params.data;
+        const xRange = `${data[0] * 10}-${(data[0] + 1) * 10}`;
+        const yRange = `${data[1] * 10}-${(data[1] + 1) * 10}`;
+        return `
+          <div style="padding: 8px">
+            <div>热度范围: ${xRange}</div>
+            <div>情感范围: ${yRange}</div>
+            <div>热力值: ${data[2].toFixed(2)}</div>
+          </div>
+        `;
+      },
+    },
+    grid: { left: '10%', right: '15%', top: '10%', bottom: '15%' },
+    xAxis: {
+      type: 'category',
+      name: '热度',
+      nameLocation: 'middle',
+      nameGap: 30,
+      data: ['0-10', '10-20', '20-30', '30-40', '40-50', '50-60', '60-70', '70-80', '80-90', '90-100'],
+      splitArea: { show: true },
+    },
+    yAxis: {
+      type: 'category',
+      name: '情感强度',
+      nameLocation: 'middle',
+      nameGap: 50,
+      data: ['0-10', '10-20', '20-30', '30-40', '40-50', '50-60', '60-70', '70-80', '80-90', '90-100'],
+      splitArea: { show: true },
+    },
+    visualMap: {
+      min: 0,
+      max: maxValue,
+      calculable: true,
+      orient: 'vertical',
+      right: '2%',
+      top: 'center',
+      inRange: {
+        color: ['#f0f9ff', '#bae6fd', '#7dd3fc', '#38bdf8', '#0ea5e9', '#0284c7', '#0369a1', '#075985', '#0c4a6e'],
+      },
+    },
+    series: [{
+      name: '热力分布',
+      type: 'heatmap',
+      data: heatmapData,
+      label: {
+        show: true,
+        formatter: (params: any) => {
+          return params.data[2] > 0 ? Math.round(params.data[2]).toString() : '';
+        },
+      },
+      emphasis: {
+        itemStyle: {
+          shadowBlur: 10,
+          shadowColor: 'rgba(0, 0, 0, 0.5)',
+        },
+      },
+    }],
+  });
+};
+
+// 初始化图表
+const initChart = () => {
+  if (scatterChartRef.value) {
+    scatterChart = echarts.init(scatterChartRef.value);
+    
+    scatterChart.on('click', (params: any) => {
+      if (params.data) {
+        const id = params.data[4];
+        const item = rankList.value.find(r => r.id === id);
+        if (item) {
+          selectItem(item);
+        }
+      }
+    });
+  }
+};
+
+// 选择项目
+const selectItem = (item: any) => {
+  selectedItem.value = item;
+  showDetailDialog.value = true;
+};
+
+// 按象限筛选
+const filterByQuadrant = (quadrant: string) => {
+  rankFilter.value = quadrant;
+};
+
+// 保存配置
+const saveConfig = () => {
+  showConfigPanel.value = false;
+  ElMessage.success('配置已保存');
+};
+
+// 导出数据
+const exportData = () => {
+  const dataStr = JSON.stringify(rankList.value, null, 2);
+  const blob = new Blob([dataStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `dual_dimension_analysis_${Date.now()}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success('数据已导出');
+};
+
+// 工具函数
+const getSentimentType = (polarity: string) => {
+  const map: Record<string, string> = {
+    positive: 'success',
+    neutral: 'info',
+    negative: 'danger',
+  };
+  return map[polarity] || 'info';
+};
+
+const getSentimentLabel = (polarity: string) => {
+  const map: Record<string, string> = {
+    positive: '正面',
+    neutral: '中性',
+    negative: '负面',
+  };
+  return map[polarity] || '未知';
+};
+
+const getRankClass = (rank: number) => {
+  if (rank <= 3) return 'top';
+  if (rank <= 10) return 'high';
+  return 'normal';
+};
+
+// 监听图表模式变化
+watch(chartMode, () => {
+  updateScatterChart();
+});
+
+// 生命周期
+onMounted(() => {
+  initChart();
+  loadMockResults();
+  
+  window.addEventListener('resize', () => {
+    scatterChart?.resize();
+  });
+});
+</script>
+
+<style scoped lang="scss">
+@use '@/styles/variables.scss' as *;
+
+.dual-dimension-module {
+  padding: $spacing-md;
+}
+
+.action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-md;
+  padding: $spacing-base;
+  background: $bg-white;
+  border-radius: $border-radius-base;
+  border: 1px solid $border-base;
+  box-shadow: $shadow-sm;
+}
+
+.config-quick {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  color: $text-regular;
+}
+
+.config-card {
+  :deep(.el-card__body) {
+    padding: 16px;
+  }
+}
+
+.weight-config {
+  .weight-item {
+    margin-bottom: 20px;
+    
+    .weight-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+  }
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.quadrant-card {
+  cursor: pointer;
+  transition: transform 0.2s;
+  
+  &:hover {
+    transform: translateY(-2px);
+  }
+  
+  .quadrant-stat {
+    text-align: center;
+    
+    .stat-value {
+      font-size: $font-size-hero;
+      font-weight: $font-weight-bold;
+    }
+    
+    .stat-label {
+      font-size: $font-size-extra-small;
+      color: $text-secondary;
+      margin: $spacing-xxs 0;
+    }
+    
+    .stat-ratio {
+      font-size: $font-size-base;
+      color: $text-regular;
+    }
+  }
+}
+
+.rank-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rank-list {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.rank-item {
+  display: flex;
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  border-bottom: 1px solid $border-base;
+  cursor: pointer;
+  transition: $transition-fast;
+  
+  &:hover, &.active {
+    background: $bg-hover;
+  }
+  
+  .rank-badge {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: $font-weight-bold;
+    color: #fff;
+    background: $info-color;
+    flex-shrink: 0;
+    
+    &.top {
+      background: linear-gradient(135deg, $warning-color, $danger-color);
+    }
+    
+    &.high {
+      background: $primary-color;
+    }
+  }
+  
+  .rank-content {
+    flex: 1;
+    min-width: 0;
+    
+    .rank-text {
+      font-size: $font-size-small;
+      color: $text-primary;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 6px;
+    }
+    
+    .rank-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      
+      .score {
+        font-size: $font-size-extra-small;
+        color: $text-secondary;
+      }
+    }
+  }
+}
+
+.detail-content {
+  .highlight {
+    font-size: 18px;
+    font-weight: $font-weight-bold;
+    color: $primary-color;
+  }
+  
+  .weibo-text {
+    padding: $spacing-base;
+    background: $bg-page;
+    border-radius: $border-radius-small;
+    line-height: 1.8;
+    color: $text-primary;
+  }
+}
+
+.formula-box {
+  padding: $spacing-base;
+  background: $bg-page;
+  border-radius: $border-radius-small;
+  
+  code {
+    display: block;
+    padding: $spacing-xs;
+    background: $bg-white;
+    border-radius: $border-radius-small;
+    font-family: 'Consolas', monospace;
+    color: $primary-color;
+  }
+}
+
+.card-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: $font-weight-semibold;
+}
+
+.formula-card {
+  border-radius: $border-radius-base;
+  border-left: 4px solid $warning-color;
+
+  .formula-display {
+    text-align: center;
+    padding: $spacing-xs 0;
+
+    .formula-tex {
+      font-size: 17px;
+      font-weight: $font-weight-semibold;
+      font-family: 'Times New Roman', serif;
+      color: $text-primary;
+    }
+
+    .formula-sub {
+      margin-top: 6px;
+      font-size: $font-size-small;
+      color: $text-secondary;
+      font-family: 'Times New Roman', serif;
+    }
+  }
+}
+
+.weight-bar {
+  display: flex;
+  height: 24px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 12px;
+
+  .bar-seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    transition: width 0.3s ease;
+    min-width: 0;
+    overflow: hidden;
+
+    &.sentiment { background: $primary-color; }
+    &.heat { background: $success-color; }
+    &.timeliness { background: $warning-color; }
+  }
+}
+
+.decay-preview {
+  padding: $spacing-sm;
+  background: $bg-page;
+  border-radius: $border-radius-small;
+  margin-top: $spacing-xs;
+
+  .decay-label {
+    font-size: $font-size-extra-small;
+    color: $text-secondary;
+    margin-bottom: 6px;
+  }
+
+  .decay-ticks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $spacing-xs;
+
+    .tick {
+      font-size: $font-size-tiny;
+      padding: 2px 6px;
+      background: $bg-white;
+      border-radius: $border-radius-small;
+      border: 1px solid $border-base;
+      color: $text-regular;
+      font-family: 'Consolas', monospace;
+    }
+  }
+}
+</style>

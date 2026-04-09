@@ -1,0 +1,125 @@
+// ============================================================
+//  Design System v2 — 2026 Modern UI
+// ============================================================
+
+// ==================== 色彩方案 ====================
+// 主色调 (与登录页统一)
+$primary-color: #165DFF;
+$primary-light: #4080FF;
+$primary-lighter: #94BFFF;
+$primary-bg: #E8F0FF;
+$primary-dark: #0E42D2;
+
+// 语义色
+$success-color: #00B42A;
+$success-light: #AFF0B5;
+$warning-color: #FF7D00;
+$warning-light: #FFE4BA;
+$danger-color: #F53F3F;
+$danger-light: #FDCDC5;
+$info-color: #86909C;
+$info-light: #E5E6EB;
+
+// 中性色 — 更柔和的灰度体系
+$text-primary: #1D2129;
+$text-regular: #4E5969;
+$text-secondary: #86909C;
+$text-placeholder: #C9CDD4;
+$text-disabled: #C9CDD4;
+
+// 边框色
+$border-base: #E5E6EB;
+$border-light: #F2F3F5;
+$border-lighter: #F7F8FA;
+$border-extra-light: #F7F8FA;
+
+// 背景色
+$bg-color: #F2F3F5;
+$bg-white: #FFFFFF;
+$bg-hover: #F7F8FA;
+$bg-page: #F7F8FA;
+
+// 侧边栏 — 深色方案
+$sidebar-bg: #1A1A2E;
+$sidebar-bg-hover: rgba(255, 255, 255, 0.06);
+$sidebar-bg-active: rgba(22, 93, 255, 0.15);
+$sidebar-text: rgba(255, 255, 255, 0.65);
+$sidebar-text-active: #FFFFFF;
+$sidebar-width: 220px;
+$sidebar-width-collapsed: 64px;
+
+// ==================== 字体系统 ====================
+$font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
+
+$font-size-hero: 28px;
+$font-size-extra-large: 20px;
+$font-size-large: 16px;
+$font-size-medium: 15px;
+$font-size-base: 14px;
+$font-size-small: 13px;
+$font-size-extra-small: 12px;
+$font-size-tiny: 11px;
+
+$line-height-large: 28px;
+$line-height-base: 22px;
+$line-height-small: 18px;
+
+$font-weight-bold: 700;
+$font-weight-semibold: 600;
+$font-weight-medium: 500;
+$font-weight-normal: 400;
+
+// ==================== 间距系统 (4px base) ====================
+$spacing-xxs: 4px;
+$spacing-xs: 8px;
+$spacing-sm: 12px;
+$spacing-base: 16px;
+$spacing-md: 20px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+$spacing-xxl: 40px;
+$spacing-xxxl: 48px;
+
+// ==================== 圆角 ====================
+$border-radius-xs: 4px;
+$border-radius-small: 6px;
+$border-radius-base: 8px;
+$border-radius-medium: 10px;
+$border-radius-large: 12px;
+$border-radius-xl: 16px;
+$border-radius-round: 999px;
+$border-radius-circle: 50%;
+
+// ==================== 阴影 (分层体系) ====================
+$shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+$shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+$shadow-base: 0 4px 16px rgba(0, 0, 0, 0.08);
+$shadow-md: 0 8px 24px rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
+$shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.15);
+// 彩色阴影
+$shadow-primary: 0 4px 16px rgba(22, 93, 255, 0.2);
+$shadow-success: 0 4px 16px rgba(0, 180, 42, 0.2);
+$shadow-danger: 0 4px 16px rgba(245, 63, 63, 0.2);
+
+// 兼容旧名
+$box-shadow-base: $shadow-sm;
+$box-shadow-light: $shadow-base;
+$box-shadow-dark: $shadow-md;
+
+// ==================== 过渡动画 ====================
+$ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+$ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+$transition-base: all 0.25s $ease-smooth;
+$transition-fast: all 0.15s $ease-smooth;
+$transition-slow: all 0.4s $ease-smooth;
+
+// ==================== Z-index ====================
+$z-index-normal: 1;
+$z-index-top: 1000;
+$z-index-popper: 2000;
+$z-index-dialog: 3000;
+$z-index-message: 4000;
+
+// ==================== 头部 ====================
+$header-height: 56px;

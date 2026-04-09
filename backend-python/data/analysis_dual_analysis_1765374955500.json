@@ -1,0 +1,37 @@
+{
+  "id": "dual_analysis_1765374955500",
+  "type": "dual_dimension",
+  "data": [
+    {
+      "id": "1",
+      "text": "????",
+      "user_id": "",
+      "user_name": "",
+      "created_at": "2025-12-10T21:55:55.500308",
+      "reposts_count": 0,
+      "comments_count": 0,
+      "attitudes_count": 0,
+      "sentiment_score": 0.0,
+      "sentiment_label": "neutral",
+      "heat_score": 0.0,
+      "dual_score": 0.0,
+      "rank": 1,
+      "score_breakdown": {
+        "sentiment_score": 0.0,
+        "sentiment_contribution": 0.0,
+        "heat_score": 0.0,
+        "heat_normalized": 0.0,
+        "heat_contribution": 0.0,
+        "timeliness_score": 1.0,
+        "timeliness_contribution": 0.0,
+        "dual_score": 0.0
+      }
+    }
+  ],
+  "config": {
+    "sentiment_weight": 0.5,
+    "heat_weight": 0.5,
+    "timeliness_weight": 0.2
+  },
+  "analysis_time": "2025-12-10T21:55:55.500308"
+}

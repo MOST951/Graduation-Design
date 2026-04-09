@@ -1,0 +1,8 @@
+path: 'data/weibo_sentiment.csv'
+
+preprocessing:
+  remove_urls: true
+  remove_mentions: true
+  remove_hashtags: true
+  tokenize_with: 'jieba'
+  stopwords_path: 'data/stopwords.txt' # Example path

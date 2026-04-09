@@ -1,0 +1,26 @@
+# Use the Bitnami Spark image as a base
+FROM bitnami/spark:3.0.0
+
+# Switch to the root user to install packages and set permissions
+USER root
+
+# Copy the custom Spark configuration
+COPY ../config/spark-prod.conf /opt/bitnami/spark/conf/spark-defaults.conf
+
+# Copy the application JAR
+# Note: You will need to build the JAR first and place it in the correct directory
+COPY ../../spark-jobs/target/spark-jobs-1.0-SNAPSHOT.jar /app/spark-jobs.jar
+
+# Copy any other necessary files, such as data or models
+# COPY ./data /app/data
+
+# Switch back to the non-root spark user
+USER 1001
+
+# Set the working directory
+WORKDIR /app
+
+# The entrypoint is already configured in the base image to run spark-submit
+# We can override the CMD to specify our job
+# This is just an example; you will likely pass the main class and arguments at runtime
+# CMD ["/opt/bitnami/spark/bin/spark-submit", "--class", "com.weibo.spark.jobs.SentimentAnalysisJob", "/app/spark-jobs.jar"]

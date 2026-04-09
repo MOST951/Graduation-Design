@@ -1,0 +1,122 @@
+# ========================================
+# 微博情感分析项目 - .gitignore
+# ========================================
+
+# ====== 环境变量与敏感信息 ======
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.env
+.env.local
+.env.production
+.env.development
+
+# ====== Python ======
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+pip-log.txt
+pip-delete-this-directory.txt
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ====== IDE ======
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+.vscode/
+*.swp
+*.swo
+*~
+.cursor/
+
+# ====== Logs ======
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ====== Node.js ======
+node_modules/
+.npm
+.yarn-integrity
+
+# ====== Maven/Java ======
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+
+# ====== Data files ======
+*.data
+*.csv
+*.parquet
+data/raw/
+data/processed/
+data/cache/
+
+# ====== Secrets & Certificates ======
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+*.crt
+secrets/
+
+# ====== OS ======
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ====== Build artifacts ======
+dist/
+build/
+out/
+*.class
+
+# ====== Spark ======
+spark-warehouse/
+derby.log
+metastore_db/
+
+# ====== Models (large files) ======
+models/*.pkl
+models/*.h5
+models/*.bin
+models/*.pt
+models/*.onnx
+*.weights
+
+# ====== Docker ======
+docker-data/
+*.sqlite3
+
+# ====== Temporary files ======
+*.tmp
+*.temp
+*.bak
+*.backup

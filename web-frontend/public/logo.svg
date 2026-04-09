@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <!-- 渐变背景 -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="100%" style="stop-color:#764ba2"/>
+    </linearGradient>
+    <!-- 情感色彩渐变 -->
+    <linearGradient id="sentimentGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#67c23a"/>
+      <stop offset="50%" style="stop-color:#409eff"/>
+      <stop offset="100%" style="stop-color:#f56c6c"/>
+    </linearGradient>
+    <!-- 发光效果 -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- 圆形背景 -->
+  <circle cx="60" cy="60" r="56" fill="url(#bgGradient)"/>
+  <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+  
+  <!-- 微博风格的眼睛图标（代表舆情监控） -->
+  <g transform="translate(60, 48)">
+    <!-- 眼睛外框 -->
+    <ellipse cx="0" cy="0" rx="28" ry="18" fill="none" stroke="white" stroke-width="3" opacity="0.9"/>
+    <!-- 眼球 -->
+    <circle cx="0" cy="0" r="10" fill="white"/>
+    <!-- 瞳孔 - 数据分析图标 -->
+    <circle cx="0" cy="0" r="6" fill="#667eea"/>
+    <!-- 瞳孔高光 -->
+    <circle cx="-2" cy="-2" r="2" fill="white" opacity="0.8"/>
+  </g>
+  
+  <!-- 情感分析波形（底部） -->
+  <g transform="translate(20, 78)">
+    <!-- 情感波形线 -->
+    <path d="M0,12 Q10,0 20,12 T40,12 T60,12 T80,12" 
+          fill="none" 
+          stroke="url(#sentimentGradient)" 
+          stroke-width="3" 
+          stroke-linecap="round"
+          filter="url(#glow)"/>
+    <!-- 数据点 -->
+    <circle cx="0" cy="12" r="3" fill="#67c23a"/>
+    <circle cx="20" cy="6" r="3" fill="#67c23a"/>
+    <circle cx="40" cy="14" r="3" fill="#409eff"/>
+    <circle cx="60" cy="8" r="3" fill="#f56c6c"/>
+    <circle cx="80" cy="12" r="3" fill="#f56c6c"/>
+  </g>
+  
+  <!-- 微博标志性元素 - 简化的W -->
+  <g transform="translate(60, 28)">
+    <text x="0" y="0" 
+          font-family="Arial, sans-serif" 
+          font-size="14" 
+          font-weight="bold" 
+          fill="white" 
+          text-anchor="middle" 
+          dominant-baseline="middle"
+          opacity="0.9">W</text>
+  </g>
+</svg>

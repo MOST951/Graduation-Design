@@ -1,0 +1,20 @@
+# 忽略版本控制目录
+.git
+.github
+
+# 忽略IDE和构建工具的配置文件
+.idea
+*.iml
+.mvn
+mvnw
+mvnw.cmd
+
+# 忽略构建输出目录
+target/
+
+# 忽略日志文件和目录
+logs/
+*.log
+
+# 忽略本地配置文件
+.env

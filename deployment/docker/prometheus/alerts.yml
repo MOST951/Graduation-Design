@@ -1,0 +1,11 @@
+groups:
+- name: backend-alerts
+  rules:
+  - alert: BackendDown
+    expr: up{job="weibo-backend"} == 0
+    for: 1m
+    labels:
+      severity: 'critical'
+    annotations:
+      summary: "Backend service is down"
+      description: "The Weibo Sentiment Analysis backend service is not responding."

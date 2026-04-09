@@ -1,0 +1,8 @@
+[
+  {
+    "_comment": "请从浏览器登录微博后，按F12打开开发者工具，在Application > Cookies中找到以下字段并填入",
+    "SUB": "你的SUB值",
+    "SUBP": "你的SUBP值",
+    "WBPSESS": "你的WBPSESS值（可选）"
+  }
+]

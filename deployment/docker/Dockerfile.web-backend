@@ -1,0 +1,15 @@
+# 使用官方的 OpenJDK 11 JRE 镜像作为基础镜像
+FROM openjdk:11-jre-slim
+
+# 设置工作目录
+WORKDIR /app
+
+# 将 web-backend 模块构建的 JAR 文件复制到容器中
+# 注意：这里的路径需要根据实际的构建输出来调整
+COPY ../../web-backend/target/web-backend-1.0.0.jar app.jar
+
+# 暴露应用程序运行的端口
+EXPOSE 8080
+
+# 设置容器启动时执行的命令
+ENTRYPOINT ["java", "-jar", "app.jar"]

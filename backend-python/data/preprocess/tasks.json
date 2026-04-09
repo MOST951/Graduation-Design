@@ -1,0 +1,42 @@
+{
+  "preprocess_1765379474490": {
+    "id": "preprocess_1765379474490",
+    "name": "????",
+    "sourceTaskId": null,
+    "cleanRules": [
+      "removeSpecial"
+    ],
+    "segmentTool": "jieba",
+    "status": "completed",
+    "totalCount": 2,
+    "processedCount": 2,
+    "createdAt": "2025-12-10T23:11:15.019099"
+  },
+  "preprocess_1765379921701": {
+    "id": "preprocess_1765379921701",
+    "name": "测试预处理任务",
+    "sourceTaskId": null,
+    "cleanRules": [
+      "removeSpecial"
+    ],
+    "segmentTool": "jieba",
+    "status": "completed",
+    "totalCount": 3,
+    "processedCount": 3,
+    "createdAt": "2025-12-10T23:18:42.209004"
+  },
+  "preprocess_1765380435348": {
+    "id": "preprocess_1765380435348",
+    "name": "新能源数据预处理任务",
+    "sourceTaskId": null,
+    "cleanRules": [
+      "removeSpecial",
+      "removeUrl"
+    ],
+    "segmentTool": "jieba",
+    "status": "completed",
+    "totalCount": 10,
+    "processedCount": 10,
+    "createdAt": "2025-12-10T23:27:15.869868"
+  }
+}
