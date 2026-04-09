@@ -16,6 +16,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 *.so
 .Python
 env/
@@ -110,9 +111,11 @@ models/*.bin
 models/*.pt
 models/*.onnx
 *.weights
+backend-python/model_cache/
 
 # ====== Docker ======
 docker-data/
+*.db
 *.sqlite3
 
 # ====== Temporary files ======
