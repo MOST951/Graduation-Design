@@ -64,6 +64,24 @@ except ImportError:
     except ImportError:
         logger.warning("BERT分析器不可用")
 
+# 全局单例模型加载器
+_SINGLETON_AVAILABLE = False
+try:
+    from services.model_singleton import (
+        get_bert_tokenizer_and_model as _singleton_load,
+        is_bert_available as _singleton_bert_available,
+    )
+    _SINGLETON_AVAILABLE = True
+except ImportError:
+    try:
+        from .model_singleton import (
+            get_bert_tokenizer_and_model as _singleton_load,
+            is_bert_available as _singleton_bert_available,
+        )
+        _SINGLETON_AVAILABLE = True
+    except ImportError:
+        pass
+
 
 # ==================== 配置类 ====================
 
@@ -107,6 +125,13 @@ class HybridConfig:
     enable_cache: bool = True
     cache_size: int = 10000
     cache_ttl: int = 3600  # 秒
+    
+    # 流式处理配置
+    enable_streaming: bool = False
+    checkpoint_dir: str = './checkpoints'
+    streaming_window_size: int = 3600  # 1小时（秒）
+    batch_size: int = 100
+    streaming_interval: int = 5  # 秒
 
 
 @dataclass
@@ -473,18 +498,64 @@ class HybridSentimentAnalyzer:
             'avg_processing_time': 0.0
         }
         
-        logger.info("HybridSentimentAnalyzer初始化完成")
+        logger.info("HybridSentimentAnalyzer initialization complete")
+        
+        # Model warmup
+        self._warmup_models()
+    
+    def _warmup_models(self):
+        """Model warmup to reduce first analysis delay"""
+        logger.info("Starting model warmup...")
+        
+        # Warmup rule analyzer
+        if self.rule_analyzer:
+            try:
+                warmup_text = "This is a warmup text."
+                self.rule_analyzer.analyze(warmup_text)
+                logger.info("Rule analyzer warmup completed")
+            except Exception as e:
+                logger.warning(f"Rule analyzer warmup failed: {e}")
+        
+        # Warmup BERT analyzer
+        if BERT_AVAILABLE and not self._bert_loaded:
+            try:
+                self._load_bert()
+                if self.bert_analyzer:
+                    warmup_text = "This is a warmup text."
+                    self.bert_analyzer.predict(warmup_text)
+                    logger.info("BERT analyzer warmup completed")
+            except Exception as e:
+                logger.warning(f"BERT analyzer warmup failed: {e}")
+        
+        logger.info("Model warmup completed")
     
     def _load_bert(self):
-        """延迟加载BERT模型"""
-        if not self._bert_loaded and BERT_AVAILABLE:
+        """Delay load BERT model, 优先从全局单例获取"""
+        if self._bert_loaded:
+            return
+        
+        # 优先使用全局单例
+        if _SINGLETON_AVAILABLE:
+            try:
+                tokenizer, model, device = _singleton_load()
+                if tokenizer is not None and model is not None:
+                    # 包装为兼容接口
+                    self.bert_analyzer = _SingletonBertWrapper(tokenizer, model, device)
+                    self._bert_loaded = True
+                    logger.info("[HybridAnalyzer] BERT已从全局单例获取")
+                    return
+            except Exception as e:
+                logger.warning(f"[HybridAnalyzer] 全局单例加载失败: {e}，回退本地加载")
+        
+        # 回退：本地加载
+        if BERT_AVAILABLE:
             try:
                 self.bert_analyzer = ChineseBertSentimentModel()
                 self._bert_loaded = True
-                logger.info("BERT分析器已加载")
+                logger.info("BERT analyzer loaded (local)")
             except Exception as e:
-                logger.error(f"BERT加载失败: {e}")
-                self._bert_loaded = True  # 标记已尝试加载
+                logger.error(f"BERT loading failed: {e}")
+                self._bert_loaded = True  # Mark as attempted
     
     def analyze(self, text: str, 
                 context: Union[Dict, AnalysisContext] = None) -> HybridResult:
@@ -958,28 +1029,258 @@ class HybridSentimentAnalyzer:
         logger.info(f"状态已保存到: {path}")
     
     def load_state(self, path: str):
-        """加载状态"""
+        """Load state"""
         if not os.path.exists(path):
-            logger.warning(f"状态文件不存在: {path}")
+            logger.warning(f"State file not found: {path}")
             return
         
-        with open(path, 'r', encoding='utf-8') as f:
-            state = json.load(f)
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+            
+            # Restore configuration
+            if 'config' in state:
+                config_dict = state['config']
+                for key, value in config_dict.items():
+                    if hasattr(self.config, key):
+                        setattr(self.config, key, value)
+            
+            # Restore statistics
+            if 'stats' in state:
+                self.stats.update(state['stats'])
+            
+            # Restore learning state
+            if 'weight_history' in state:
+                self.online_learner.weight_history = state['weight_history']
+            if 'word_adjustments' in state:
+                self.online_learner.word_adjustments = state['word_adjustments']
+            if 'current_weights' in state:
+                weights = state['current_weights']
+                self.online_learner.current_rule_weight = weights[0]
+                self.online_learner.current_bert_weight = weights[1]
+            
+            logger.info(f"State loaded from: {path}")
+        except Exception as e:
+            logger.error(f"Failed to load state: {e}")
+    
+    # ==================== Streaming Analysis ====================
+    
+    def start_streaming_analysis(self, data_stream, output_callback=None):
+        """
+        Start streaming sentiment analysis
         
-        self.stats = state.get('stats', self.stats)
-        self.online_learner.weight_history = state.get('weight_history', [])
-        self.online_learner.word_adjustments = state.get('word_adjustments', {})
+        Args:
+            data_stream: Iterable of text data
+            output_callback: Callback function for results
+        """
+        if not self.config.enable_streaming:
+            logger.error("Streaming is not enabled in configuration")
+            return
         
-        weights = state.get('current_weights', (0.4, 0.6))
-        self.online_learner.current_rule_weight = weights[0]
-        self.online_learner.current_bert_weight = weights[1]
+        # Create checkpoint directory
+        os.makedirs(self.config.checkpoint_dir, exist_ok=True)
         
-        logger.info(f"状态已从 {path} 加载")
+        # Initialize streaming state
+        self._streaming_active = True
+        self._streaming_buffer = deque(maxlen=self.config.batch_size)
+        self._last_checkpoint_time = time.time()
+        
+        logger.info("Starting streaming analysis...")
+        
+        try:
+            for text in data_stream:
+                if not self._streaming_active:
+                    break
+                
+                # Check for global stop flag
+                if hasattr(self, '_global_stop_flag') and self._global_stop_flag:
+                    logger.info("Global stop flag detected, stopping streaming...")
+                    break
+                
+                # Add to buffer
+                self._streaming_buffer.append({
+                    'text': text,
+                    'timestamp': time.time()
+                })
+                
+                # Process batch when buffer is full or time interval reached
+                if (len(self._streaming_buffer) >= self.config.batch_size or 
+                    time.time() - self._last_checkpoint_time >= self.config.streaming_interval):
+                    
+                    self._process_streaming_batch(output_callback)
+                    self._last_checkpoint_time = time.time()
+            
+            # Process remaining buffer
+            if self._streaming_buffer:
+                self._process_streaming_batch(output_callback)
+                
+        except Exception as e:
+            logger.error(f"Streaming analysis error: {e}")
+        finally:
+            self._streaming_active = False
+            logger.info("Streaming analysis completed")
+    
+    def stop_streaming_analysis(self):
+        """Stop streaming analysis"""
+        self._streaming_active = False
+        logger.info("Streaming analysis stopped")
+    
+    def _process_streaming_batch(self, output_callback=None):
+        """Process a batch of streaming data"""
+        if not self._streaming_buffer:
+            return
+        
+        # Filter data within window size (1 hour)
+        current_time = time.time()
+        window_start = current_time - self.config.streaming_window_size
+        
+        filtered_data = [
+            item for item in self._streaming_buffer
+            if item['timestamp'] >= window_start
+        ]
+        
+        if not filtered_data:
+            return
+        
+        # Process texts
+        texts = [item['text'] for item in filtered_data]
+        results = self.batch_analyze(texts)
+        
+        # Add timestamps back to results
+        for i, (item, result) in enumerate(zip(filtered_data, results)):
+            result.timestamp = item['timestamp']
+        
+        # Save checkpoint
+        self._save_streaming_checkpoint(filtered_data, results)
+        
+        # Call output callback
+        if output_callback:
+            output_callback(results)
+        
+        # Clear processed data from buffer
+        for item in filtered_data:
+            try:
+                self._streaming_buffer.remove(item)
+            except ValueError:
+                pass
+    
+    def _save_streaming_checkpoint(self, data_items, results):
+        """Save streaming checkpoint"""
+        checkpoint_file = os.path.join(
+            self.config.checkpoint_dir,
+            f"checkpoint_{int(time.time())}.json"
+        )
+        
+        checkpoint_data = {
+            'timestamp': time.time(),
+            'data_count': len(data_items),
+            'results': [asdict(result) for result in results],
+            'window_size': self.config.streaming_window_size
+        }
+        
+        try:
+            with open(checkpoint_file, 'w', encoding='utf-8') as f:
+                json.dump(checkpoint_data, f, ensure_ascii=False, indent=2)
+            
+            # Clean old checkpoints (keep only last 10)
+            self._cleanup_old_checkpoints()
+            
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint: {e}")
+    
+    def _cleanup_old_checkpoints(self):
+        """Clean old checkpoint files"""
+        try:
+            checkpoint_files = [
+                f for f in os.listdir(self.config.checkpoint_dir)
+                if f.startswith('checkpoint_') and f.endswith('.json')
+            ]
+            
+            # Sort by timestamp and keep only last 10
+            checkpoint_files.sort()
+            if len(checkpoint_files) > 10:
+                for old_file in checkpoint_files[:-10]:
+                    old_path = os.path.join(self.config.checkpoint_dir, old_file)
+                    os.remove(old_path)
+                    logger.debug(f"Removed old checkpoint: {old_file}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to cleanup checkpoints: {e}")
+    
+    def set_global_stop_flag(self, stop_flag: bool):
+        """Set global stop flag for streaming"""
+        self._global_stop_flag = stop_flag
+        if stop_flag:
+            logger.info("Global stop flag set")
+        else:
+            logger.info("Global stop flag cleared")
+
+    def batch_analyze(self, texts: List[str]) -> List[HybridResult]:
+        """
+        批量分析
+        
+        Args:
+            texts: 文本列表
+        
+        Returns:
+            结果列表
+        """
+        results = []
+        for text in texts:
+            result = self.analyze(text)
+            results.append(result)
+        
+        return results
+
+class _SingletonBertWrapper:
+    """
+    将全局单例的 (tokenizer, model, device) 包装为
+    HybridSentimentAnalyzer._analyze_with_bert 期望的 predict() 接口
+    """
+
+    def __init__(self, tokenizer, model, device):
+        self._tokenizer = tokenizer
+        self._model = model
+        self._device = device
+
+    def predict(self, texts):
+        """兼容 ChineseBertSentimentModel.predict 接口"""
+        import torch
+
+        if isinstance(texts, str):
+            texts = [texts]
+
+        inputs = self._tokenizer(
+            texts, padding=True, truncation=True,
+            max_length=128, return_tensors="pt"
+        )
+        inputs = {k: v.to(self._device) for k, v in inputs.items()}
+
+        with torch.no_grad():
+            outputs = self._model(**inputs)
+            probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+
+        results = []
+        label_map = {0: 'negative', 1: 'neutral', 2: 'positive'}
+        for i, text in enumerate(texts):
+            p = probs[i].cpu().numpy()
+            pred_idx = int(p.argmax())
+            results.append({
+                'text': text,
+                'label': label_map.get(pred_idx, 'neutral'),
+                'score': float(p[2]) - float(p[0]),  # positive - negative
+                'confidence': float(p[pred_idx]),
+                'probabilities': {
+                    'positive': float(p[2]),
+                    'neutral': float(p[1]),
+                    'negative': float(p[0]),
+                },
+            })
+        return results
 
 
-# ==================== 便捷函数 ====================
+_analyzer_instance: Optional[HybridSentimentAnalyzer] = None
 
-_analyzer_instance = None
 
 def get_hybrid_analyzer() -> HybridSentimentAnalyzer:
     """获取混合分析器单例"""

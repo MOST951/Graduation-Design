@@ -90,10 +90,10 @@
           </template>
 
           <el-table
+            v-loading="isLoading"
             :data="hotSearchList"
             :row-class-name="getRowClassName"
             max-height="600"
-            v-loading="isLoading"
           >
             <!-- 排名 -->
             <el-table-column label="排名" width="80" fixed>
@@ -129,7 +129,7 @@
               <template #default="{ row }">
                 <div class="heat-cell">
                   <span class="heat-value">{{ formatHeat(row.heat) }}</span>
-                  <div class="mini-trend" :id="`trend-${row.rank}`"></div>
+                  <div :id="`trend-${row.rank}`" class="mini-trend"></div>
                 </div>
               </template>
             </el-table-column>
@@ -271,7 +271,7 @@
             </template>
           </el-table-column>
           <el-table-column label="操作" width="80">
-            <template #default="{ row, $index }">
+            <template #default="{ $index }">
               <el-button type="danger" link size="small" @click="removeAlert($index)">删除</el-button>
             </template>
           </el-table-column>

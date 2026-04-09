@@ -30,14 +30,46 @@
         
         <!-- 用户统计卡片 -->
         <el-row :gutter="16" class="stats-row">
-          <el-col :span="6"><div class="stat-card"><div class="stat-icon total"><el-icon><User /></el-icon></div><div class="stat-info"><div class="stat-value">{{ adminStore.userTotal }}</div><div class="stat-label">总用户数</div></div></div></el-col>
-          <el-col :span="6"><div class="stat-card"><div class="stat-icon active"><el-icon><CircleCheck /></el-icon></div><div class="stat-info"><div class="stat-value">{{ adminStore.activeUsers.length }}</div><div class="stat-label">正常用户</div></div></div></el-col>
-          <el-col :span="6"><div class="stat-card"><div class="stat-icon disabled"><el-icon><CircleClose /></el-icon></div><div class="stat-info"><div class="stat-value">{{ adminStore.disabledUsers.length }}</div><div class="stat-label">禁用用户</div></div></div></el-col>
-          <el-col :span="6"><div class="stat-card"><div class="stat-icon roles"><el-icon><UserFilled /></el-icon></div><div class="stat-info"><div class="stat-value">{{ adminStore.roles.length }}</div><div class="stat-label">角色数量</div></div></div></el-col>
+          <el-col :span="6">
+            <div class="stat-card">
+              <div class="stat-icon total"><el-icon><User /></el-icon></div>
+              <div class="stat-info">
+                <div class="stat-value">{{ adminStore.userTotal }}</div>
+                <div class="stat-label">总用户数</div>
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="6">
+            <div class="stat-card">
+              <div class="stat-icon active"><el-icon><CircleCheck /></el-icon></div>
+              <div class="stat-info">
+                <div class="stat-value">{{ adminStore.activeUsers.length }}</div>
+                <div class="stat-label">正常用户</div>
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="6">
+            <div class="stat-card">
+              <div class="stat-icon disabled"><el-icon><CircleClose /></el-icon></div>
+              <div class="stat-info">
+                <div class="stat-value">{{ adminStore.disabledUsers.length }}</div>
+                <div class="stat-label">禁用用户</div>
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="6">
+            <div class="stat-card">
+              <div class="stat-icon roles"><el-icon><UserFilled /></el-icon></div>
+              <div class="stat-info">
+                <div class="stat-value">{{ adminStore.roles.length }}</div>
+                <div class="stat-label">角色数量</div>
+              </div>
+            </div>
+          </el-col>
         </el-row>
         
         <!-- 用户表格 -->
-        <el-table :data="filteredUsers" v-loading="adminStore.isLoadingUsers" @selection-change="handleUserSelectionChange" stripe>
+        <el-table v-loading="adminStore.isLoadingUsers" :data="filteredUsers" stripe @selection-change="handleUserSelectionChange">
           <el-table-column type="selection" width="55" />
           <el-table-column label="用户" min-width="220">
             <template #default="{ row }">
@@ -69,7 +101,7 @@
           <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <el-button size="small" :icon="Edit" @click="handleEditUser(row)">编辑</el-button>
-              <el-dropdown @command="(cmd: string) => handleUserAction(cmd, row)" trigger="click">
+              <el-dropdown trigger="click" @command="(cmd: string) => handleUserAction(cmd, row)">
                 <el-button size="small">更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
@@ -101,9 +133,9 @@
         
         <!-- 用户编辑对话框 -->
         <el-dialog v-model="showUserDialog" :title="editingUser ? '编辑用户' : '添加用户'" width="600px" destroy-on-close>
-          <el-form :model="userForm" :rules="userFormRules" ref="userFormRef" label-width="100px">
+          <el-form ref="userFormRef" :model="userForm" :rules="userFormRules" label-width="100px">
             <el-form-item label="用户名" prop="username"><el-input v-model="userForm.username" :disabled="!!editingUser" placeholder="请输入用户名" /></el-form-item>
-            <el-form-item label="密码" prop="password" v-if="!editingUser"><el-input v-model="userForm.password" type="password" show-password placeholder="请输入密码" /></el-form-item>
+            <el-form-item v-if="!editingUser" label="密码" prop="password"><el-input v-model="userForm.password" type="password" show-password placeholder="请输入密码" /></el-form-item>
             <el-form-item label="姓名" prop="name"><el-input v-model="userForm.name" placeholder="请输入姓名" /></el-form-item>
             <el-form-item label="邮箱" prop="email"><el-input v-model="userForm.email" placeholder="请输入邮箱" /></el-form-item>
             <el-form-item label="电话" prop="phone"><el-input v-model="userForm.phone" placeholder="请输入电话" /></el-form-item>
@@ -122,7 +154,7 @@
           </el-form>
           <template #footer>
             <el-button @click="showUserDialog = false">取消</el-button>
-            <el-button type="primary" @click="handleSaveUser" :loading="isSaving">保存</el-button>
+            <el-button type="primary" :loading="isSaving" @click="handleSaveUser">保存</el-button>
           </template>
         </el-dialog>
         
@@ -173,7 +205,7 @@
         </el-row>
         
         <!-- 任务日志表格 -->
-        <el-table :data="adminStore.taskLogs" v-loading="adminStore.isLoadingLogs" stripe @row-click="handleViewTaskLog" style="cursor: pointer">
+        <el-table v-loading="adminStore.isLoadingLogs" :data="adminStore.taskLogs" stripe style="cursor: pointer" @row-click="handleViewTaskLog">
           <el-table-column prop="taskName" label="任务名称" min-width="200">
             <template #default="{ row }">
               <div class="task-name-cell">
@@ -297,11 +329,17 @@
                   <el-col :span="12"><el-form-item label="启用动态分配"><el-switch v-model="sparkConfigForm.dynamicAllocation" /></el-form-item></el-col>
                   <el-col :span="12"><el-form-item label="最大重试次数"><el-input-number v-model="sparkConfigForm.maxRetries" :min="0" :max="10" /></el-form-item></el-col>
                 </el-row>
-                <el-row :gutter="20" v-if="sparkConfigForm.dynamicAllocation">
+                <el-row v-if="sparkConfigForm.dynamicAllocation" :gutter="20">
                   <el-col :span="12"><el-form-item label="最小Executor数"><el-input-number v-model="sparkConfigForm.minExecutors" :min="1" :max="100" /></el-form-item></el-col>
                   <el-col :span="12"><el-form-item label="最大Executor数"><el-input-number v-model="sparkConfigForm.maxExecutors" :min="1" :max="1000" /></el-form-item></el-col>
                 </el-row>
-                <el-form-item><el-button type="primary" @click="handleSaveSparkConfig" :loading="isSavingConfig">保存Spark配置</el-button><el-button @click="handleResetSparkConfig">重置为默认</el-button></el-form-item>
+                <el-form-item>
+                  <el-button type="primary" :loading="isSavingConfig" @click="handleSaveSparkConfig">保存Spark配置</el-button>
+                  <el-button @click="handleResetSparkConfig">重置为默认</el-button>
+                  <el-button v-if="sparkRestartRequired" type="warning" @click="showSparkRestartDialog = true">
+                    <el-icon><Warning /></el-icon> 
+                  </el-button>
+                </el-form-item>
               </el-form>
             </el-card>
             
@@ -315,10 +353,10 @@
                 </el-row>
                 <el-row :gutter="20">
                   <el-col :span="12"><el-form-item label="用户名"><el-input v-model="emailConfigForm.username" placeholder="noreply@example.com" /></el-form-item></el-col>
-                  <el-col :span="12"><el-form-item label="密码"><el-input v-model="emailConfigForm.password" type="password" show-password placeholder="请输入密码" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="密码"><el-input v-model="emailConfigForm.password" :type="showEmailPassword ? 'text' : 'password'" show-password placeholder="请输入密码" :readonly="emailConfigForm.password === '******'" /></el-form-item></el-col>
                 </el-row>
                 <el-form-item label="启用SSL"><el-switch v-model="emailConfigForm.ssl" /></el-form-item>
-                <el-form-item><el-button type="primary" @click="handleSaveEmailConfig" :loading="isSavingConfig">保存邮件配置</el-button><el-button @click="handleTestEmail">发送测试邮件</el-button></el-form-item>
+                <el-form-item><el-button type="primary" :loading="isSavingConfig" @click="handleSaveEmailConfig">保存邮件配置</el-button><el-button @click="handleTestEmail">发送测试邮件</el-button></el-form-item>
               </el-form>
             </el-card>
             
@@ -334,7 +372,7 @@
                   <el-col :span="12"><el-form-item label="启用调试模式"><el-switch v-model="systemParamsForm.debugMode" /></el-form-item></el-col>
                   <el-col :span="12"><el-form-item label="启用操作审计"><el-switch v-model="systemParamsForm.auditEnabled" /></el-form-item></el-col>
                 </el-row>
-                <el-form-item><el-button type="primary" @click="handleSaveSystemParams" :loading="isSavingConfig">保存系统参数</el-button></el-form-item>
+                <el-form-item><el-button type="primary" :loading="isSavingConfig" @click="handleSaveSystemParams">保存系统参数</el-button></el-form-item>
               </el-form>
             </el-card>
           </el-col>
@@ -373,12 +411,12 @@
             <el-input-number v-model="sysLogLimit" :min="20" :max="500" :step="20" @change="fetchSystemLogs" />
           </div>
           <div class="header-right">
-            <el-button :icon="Refresh" @click="fetchSystemLogs" :loading="loadingSysLogs">刷新</el-button>
+            <el-button :icon="Refresh" :loading="loadingSysLogs" @click="fetchSystemLogs">刷新</el-button>
           </div>
         </div>
 
         <el-card shadow="hover" style="margin-top: 12px">
-          <div class="sys-log-list" v-loading="loadingSysLogs">
+          <div v-loading="loadingSysLogs" class="sys-log-list">
             <div v-if="systemLogs.length === 0" class="no-logs">暂无日志记录</div>
             <div v-for="(log, idx) in systemLogs" :key="idx" class="sys-log-item" :class="'log-' + log.level.toLowerCase()">
               <el-tag :type="getLogLevelType(log.level)" size="small" class="log-level-tag">{{ log.level }}</el-tag>
@@ -452,6 +490,47 @@
         </el-card>
       </el-tab-pane>
     </el-tabs>
+
+    <!-- Spark restart confirmation dialog -->
+    <el-dialog v-model="showSparkRestartDialog" title="Spark cluster restart" width="500px">
+      <el-alert type="warning" :closable="false" show-icon style="margin-bottom: 20px">
+        <template #title>
+          Spark configuration has been changed. Restarting the Spark cluster is required for changes to take effect.
+        </template>
+      </el-alert>
+      
+      <div class="restart-warning">
+        <h4>Warning: This operation will:</h4>
+        <ul>
+          <li>Stop all running Spark jobs</li>
+          <li>Terminate the Spark master and workers</li>
+          <li>Restart the cluster with new configuration</li>
+          <li>Take approximately 2-3 minutes to complete</li>
+        </ul>
+        <p style="color: #f56c6c; margin-top: 10px;">
+          <strong>Do not perform this operation during active data processing!</strong>
+        </p>
+      </div>
+      
+      <template #footer>
+        <el-button @click="showSparkRestartDialog = false">Cancel</el-button>
+        <el-button type="danger" :loading="isRestartingSpark" @click="handleRestartSparkCluster">
+          <el-icon><Warning /></el-icon>
+          Restart Spark Cluster
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Real-time log controls -->
+    <div v-if="activeTab === 'syslog'" class="real-time-controls">
+      <el-switch
+        v-model="isRealTimeLogsEnabled" active-text="Real-time logs" 
+        inactive-text="Static logs" @change="toggleRealTimeLogs"
+      />
+      <el-button v-if="isRealTimeLogsEnabled" size="small" @click="clearRealTimeLogs">
+        <el-icon><Delete /></el-icon> Clear
+      </el-button>
+    </div>
   </div>
 </template>
 
@@ -460,7 +539,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import {
   Search, Plus, Edit, Delete, View, Refresh, Lock, Unlock, Key, ArrowDown,
   User, UserFilled, CircleCheck, CircleClose, Document, Loading, SuccessFilled, CircleCloseFilled,
-  Download, DataAnalysis, Operation, Connection,
+  Download, DataAnalysis, Operation, Connection, Warning,
 } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
 import { useAdminStore, type TaskLog } from '@/store/admin';
@@ -558,6 +637,15 @@ const selectedRoleIds = ref<string[]>([]);
 const showRoleDialog = ref(false);
 const editingRole = ref<any>(null);
 const roleForm = ref({ name: '', code: '', description: '' });
+
+// ==================== Spark重启、密码显示、WebSocket日志状态 ====================
+const sparkRestartRequired = ref(false);
+const showSparkRestartDialog = ref(false);
+const showEmailPassword = ref(false);
+const isRestartingSpark = ref(false);
+const eventSource = ref<EventSource | null>(null);
+const realTimeLogs = ref<{ message: string; level: string; timestamp: string }[]>([]);
+const isRealTimeLogsEnabled = ref(false);
 
 // ==================== 计算属性 ====================
 const filteredUsers = computed(() => {
@@ -811,17 +899,66 @@ const handleViewTaskLog = (row: TaskLog) => {
   currentTaskLog.value = row;
   showLogDialog.value = true;
 };
-
-// ==================== 系统设置操作 ====================
 const refreshSystemMetrics = () => adminStore.fetchSystemMetrics();
 
 const handleSaveSparkConfig = async () => {
-  isSavingConfig.value = true;
   try {
-    await adminStore.saveSparkConfig(sparkConfigForm.value as any);
-    ElMessage.success('Spark配置保存成功');
+    isSavingConfig.value = true;
+    
+    // Call API to save Spark config
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.put('/admin/config/spark', sparkConfigForm.value);
+    
+    if (res.data.code === 200) {
+      ElMessage.success('Spark configuration saved successfully');
+      
+      // Show restart warning if required
+      if (res.data.data?.requires_restart) {
+        sparkRestartRequired.value = true;
+        ElMessage.warning('Spark cluster restart required for changes to take effect');
+      }
+    }
+  } catch (error) {
+    ElMessage.error('Failed to save Spark configuration');
+    console.error('Spark config save error:', error);
   } finally {
     isSavingConfig.value = false;
+  }
+};
+
+const handleRestartSparkCluster = async () => {
+  try {
+    isRestartingSpark.value = true;
+    
+    // Call API to restart Spark cluster
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.post('/admin/spark/restart', { confirm: true });
+    
+    if (res.data.code === 200) {
+      ElMessage.success('Spark cluster restart initiated');
+      showSparkRestartDialog.value = false;
+      sparkRestartRequired.value = false;
+      
+      // Poll for restart completion
+      const checkRestartStatus = async () => {
+        try {
+          const statusRes = await apiClient.get('/admin/system/metrics');
+          if (statusRes.data.code === 200) {
+            ElMessage.success('Spark cluster restarted successfully');
+          }
+        } catch (error) {
+          // Restart still in progress
+          setTimeout(checkRestartStatus, 10000); // Check every 10 seconds
+        }
+      };
+      
+      setTimeout(checkRestartStatus, 30000); // Start checking after 30 seconds
+    }
+  } catch (error) {
+    ElMessage.error('Failed to restart Spark cluster');
+    console.error('Spark restart error:', error);
+  } finally {
+    isRestartingSpark.value = false;
   }
 };
 
@@ -840,39 +977,149 @@ const handleResetSparkConfig = () => {
     minExecutors: 1,
     maxExecutors: 10,
   };
-  ElMessage.info('已重置为默认配置');
+  ElMessage.info('Reset to default configuration');
 };
 
 const handleSaveEmailConfig = async () => {
-  isSavingConfig.value = true;
   try {
-    await new Promise(r => setTimeout(r, 300));
-    ElMessage.success('邮件配置保存成功');
+    isSavingConfig.value = true;
+    
+    // Mask password if it's the masked value
+    const configData = { ...emailConfigForm.value };
+    if (configData.password === '******') {
+      delete configData.password; // Don't send masked password
+    }
+    
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.put('/admin/config/email', configData);
+    
+    if (res.data.code === 200) {
+      ElMessage.success('Email configuration saved successfully');
+    }
+  } catch (error) {
+    ElMessage.error('Failed to save email configuration');
+    console.error('Email config save error:', error);
   } finally {
     isSavingConfig.value = false;
   }
 };
 
 const handleTestEmail = async () => {
-  ElMessage.info('正在发送测试邮件...');
-  const result = await adminStore.testEmail({ ...emailConfigForm.value, to: 'test@example.com' });
-  if (result.success) {
-    ElMessage.success(result.message);
-  } else {
-    ElMessage.error(result.message);
+  try {
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.post('/admin/config/email/test', {
+      to: 'test@example.com',
+      subject: 'Test Email from Weibo Sentiment System',
+      message: 'This is a test email to verify email configuration.'
+    });
+    
+    if (res.data.code === 200) {
+      ElMessage.success('Test email sent successfully');
+    }
+  } catch (error) {
+    ElMessage.error('Failed to send test email');
+    console.error('Test email error:', error);
   }
 };
 
 const handleSaveSystemParams = async () => {
-  isSavingConfig.value = true;
   try {
-    await new Promise(r => setTimeout(r, 300));
-    ElMessage.success('系统参数保存成功');
+    isSavingConfig.value = true;
+    
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.put('/admin/config/system', systemParamsForm.value);
+    
+    if (res.data.code === 200) {
+      ElMessage.success('System parameters saved successfully');
+    }
+  } catch (error) {
+    ElMessage.error('Failed to save system parameters');
+    console.error('System params save error:', error);
   } finally {
     isSavingConfig.value = false;
   }
 };
 
+// ==================== WebSocket real-time logs ====================
+const toggleRealTimeLogs = (enabled: boolean) => {
+  if (enabled) {
+    startRealTimeLogs();
+  } else {
+    stopRealTimeLogs();
+  }
+};
+
+const startRealTimeLogs = () => {
+  try {
+    // Create EventSource for server-sent events
+    eventSource.value = new EventSource('/api/admin/logs/stream');
+    
+    eventSource.value.onmessage = (event) => {
+      try {
+        const logData = JSON.parse(event.data);
+        realTimeLogs.value.unshift(logData);
+        
+        // Keep only last 100 logs
+        if (realTimeLogs.value.length > 100) {
+          realTimeLogs.value = realTimeLogs.value.slice(0, 100);
+        }
+      } catch (error) {
+        console.error('Error parsing log data:', error);
+      }
+    };
+    
+    eventSource.value.onerror = (error) => {
+      console.error('EventSource error:', error);
+      ElMessage.error('Real-time logs connection error');
+      stopRealTimeLogs();
+    };
+    
+    ElMessage.success('Real-time logs enabled');
+  } catch (error) {
+    console.error('Error starting real-time logs:', error);
+    ElMessage.error('Failed to start real-time logs');
+  }
+};
+
+const stopRealTimeLogs = () => {
+  if (eventSource.value) {
+    eventSource.value.close();
+    eventSource.value = null;
+  }
+  ElMessage.info('Real-time logs disabled');
+};
+
+const clearRealTimeLogs = () => {
+  realTimeLogs.value = [];
+  ElMessage.info('Real-time logs cleared');
+};
+
+// ==================== Configuration loading ====================
+const loadConfigurations = async () => {
+  try {
+    const { default: apiClient } = await import('@/api/index');
+    
+    // Load Spark config
+    const sparkRes = await apiClient.get('/admin/config/spark');
+    if (sparkRes.data.code === 200) {
+      Object.assign(sparkConfigForm.value, sparkRes.data.data);
+    }
+    
+    // Load email config (password will be masked)
+    const emailRes = await apiClient.get('/admin/config/email');
+    if (emailRes.data.code === 200) {
+      Object.assign(emailConfigForm.value, emailRes.data.data);
+    }
+    
+    // Load system params
+    const systemRes = await apiClient.get('/admin/config/system');
+    if (systemRes.data.code === 200) {
+      Object.assign(systemParamsForm.value, systemRes.data.data);
+    }
+  } catch (error) {
+    console.error('Error loading configurations:', error);
+  }
+};
 // ==================== 权限管理操作 ====================
 const handleAddRole = () => {
   editingRole.value = null;
@@ -927,8 +1174,11 @@ onMounted(async () => {
     adminStore.fetchUsers(),
     adminStore.fetchRoles(),
     adminStore.fetchTaskLogs(),
+    loadConfigurations(),
   ]);
 });
+
+// ==================== 
 </script>
 
 <style scoped lang="scss">
@@ -1201,4 +1451,37 @@ onMounted(async () => {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-</style>
+
+.restart-warning {
+  h4 {
+    margin: 0 0 $spacing-sm 0;
+    color: $warning-color;
+    font-size: $font-size-medium;
+  }
+  
+  ul {
+    margin: $spacing-sm 0;
+    padding-left: $spacing-lg;
+    
+    li {
+      margin-bottom: $spacing-xs;
+      color: $text-regular;
+      font-size: $font-size-small;
+    }
+  }
+}
+
+.real-time-controls {
+  position: fixed;
+  top: 120px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm $spacing-base;
+  background: $bg-white;
+  border-radius: $border-radius-base;
+  box-shadow: $shadow-lg;
+  border: 1px solid $border-base;
+}

@@ -6,16 +6,16 @@
         <el-button-group size="small">
           <el-button
             :type="viewMode === 'side-by-side' ? 'primary' : 'default'"
-            @click="viewMode = 'side-by-side'"
             :aria-label="'Side by side view'"
+            @click="viewMode = 'side-by-side'"
           >
             <el-icon><Operation /></el-icon>
             Side by Side
           </el-button>
           <el-button
             :type="viewMode === 'overlay' ? 'primary' : 'default'"
-            @click="viewMode = 'overlay'"
             :aria-label="'Overlay view'"
+            @click="viewMode = 'overlay'"
           >
             <el-icon><View /></el-icon>
             Overlay
@@ -107,8 +107,8 @@
       <div class="pagination-controls">
         <el-button
           :disabled="currentIndex === 0"
-          @click="previousItem"
           :aria-label="'Previous item'"
+          @click="previousItem"
         >
           <el-icon><ArrowLeft /></el-icon>
           Previous
@@ -121,16 +121,16 @@
             :max="totalPages"
             size="small"
             style="width: 80px"
-            @change="goToPage"
             :aria-label="'Go to page'"
+            @change="goToPage"
           />
           <span class="page-text">/ {{ totalPages }}</span>
         </div>
         
         <el-button
           :disabled="currentIndex === items.length - 1"
-          @click="nextItem"
           :aria-label="'Next item'"
+          @click="nextItem"
         >
           Next
           <el-icon><ArrowRight /></el-icon>

@@ -5,9 +5,9 @@
         <el-button 
           text 
           size="small" 
-          @click="clearLogs"
           :disabled="logs.length === 0"
           aria-label="Clear logs"
+          @click="clearLogs"
         >
           <el-icon><Delete /></el-icon>
           Clear
@@ -34,8 +34,8 @@
         <el-button
           text
           size="small"
-          @click="scrollToBottom"
           aria-label="Scroll to bottom"
+          @click="scrollToBottom"
         >
           <el-icon><ArrowDown /></el-icon>
         </el-button>
@@ -45,8 +45,8 @@
     <div 
       ref="scrollContainer"
       class="log-container"
-      @scroll="handleScroll"
       :style="{ height: height + 'px' }"
+      @scroll="handleScroll"
     >
       <div class="log-content">
         <div
@@ -67,8 +67,8 @@
         <!-- Expanded details -->
         <div
           v-for="(log, index) in visibleLogs"
-          :key="`details-${log.timestamp}-${index}`"
           v-show="expandedItems.has(index)"
+          :key="`details-${log.timestamp}-${index}`"
           class="log-details-content"
         >
           <pre>{{ JSON.stringify(log.details, null, 2) }}</pre>

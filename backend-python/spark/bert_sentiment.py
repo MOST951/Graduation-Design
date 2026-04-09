@@ -153,6 +153,9 @@ class ChineseBERTSentimentAnalyzer:
         """
         初始化模型
         
+        优先从全局单例获取已加载的 tokenizer/model，
+        避免重复加载；仅当单例不可用时走本地加载路径。
+        
         Returns:
             是否初始化成功
         """
@@ -164,8 +167,26 @@ class ChineseBERTSentimentAnalyzer:
             self._initialized = True
             return True
         
+        # ---- 优先委托全局单例 ----
         try:
-            logger.info(f"加载模型: {self.model_name}")
+            from services.model_singleton import get_bert_tokenizer_and_model
+            tokenizer, model, device = get_bert_tokenizer_and_model()
+            if tokenizer is not None and model is not None:
+                self.tokenizer = tokenizer
+                self.model = model
+                self.device = str(device) if device else self.device
+                self._initialized = True
+                logger.info("[ChineseBERTSentimentAnalyzer] 已从全局单例获取模型")
+                return True
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.warning(f"[ChineseBERTSentimentAnalyzer] 全局单例加载失败: {e}，回退本地加载")
+        
+        # ---- 本地加载（兜底） ----
+        try:
+            logger.info(f"正在加载模型: {self.model_name}")
+            cache_dir = os.environ.get("TRANSFORMERS_CACHE", "./model_cache")
             
             # 尝试使用pipeline（更简单）
             try:
@@ -175,17 +196,19 @@ class ChineseBERTSentimentAnalyzer:
                     tokenizer=self.model_name,
                     device=0 if self.device == "cuda" else -1,
                     max_length=SentimentModelConfig.MAX_LENGTH,
-                    truncation=True
+                    truncation=True,
+                    model_kwargs={"cache_dir": cache_dir},
                 )
                 logger.info("Pipeline模式初始化成功")
             except Exception as e:
                 logger.warning(f"Pipeline初始化失败: {e}，尝试手动加载")
                 
                 # 手动加载模型
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, cache_dir=cache_dir)
                 self.model = AutoModelForSequenceClassification.from_pretrained(
                     self.model_name,
-                    num_labels=3
+                    num_labels=3,
+                    cache_dir=cache_dir,
                 )
                 self.model.to(self.device)
                 self.model.eval()

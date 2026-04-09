@@ -8,7 +8,7 @@
     <el-tabs v-model="activeTab" class="database-tabs">
       <!-- MySQL Configuration -->
       <el-tab-pane label="MySQL" name="mysql">
-        <el-form :model="mysqlConfig" :rules="mysqlRules" ref="mysqlFormRef" label-position="top">
+        <el-form ref="mysqlFormRef" :model="mysqlConfig" :rules="mysqlRules" label-position="top">
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="Host" prop="host">
@@ -43,9 +43,9 @@
             <div class="connection-actions">
               <el-button
                 type="primary"
-                @click="testMySQLConnection"
                 :loading="mysqlTesting"
                 :aria-label="'Test MySQL connection'"
+                @click="testMySQLConnection"
               >
                 <el-icon v-if="!mysqlTestResult"><Connection /></el-icon>
                 <el-icon v-else-if="mysqlTestResult === 'success'"><CircleCheck /></el-icon>
@@ -55,9 +55,9 @@
               
               <el-button
                 type="success"
-                @click="saveMySQLConfig"
                 :disabled="mysqlTestResult !== 'success'"
                 :aria-label="'Save MySQL configuration'"
+                @click="saveMySQLConfig"
               >
                 <el-icon><Check /></el-icon>
                 Save Configuration
@@ -69,7 +69,7 @@
       
       <!-- HBase Configuration -->
       <el-tab-pane label="HBase" name="hbase">
-        <el-form :model="hbaseConfig" :rules="hbaseRules" ref="hbaseFormRef" label-position="top">
+        <el-form ref="hbaseFormRef" :model="hbaseConfig" :rules="hbaseRules" label-position="top">
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="Zookeeper Quorum" prop="quorum">
@@ -104,9 +104,9 @@
             <div class="connection-actions">
               <el-button
                 type="primary"
-                @click="testHBaseConnection"
                 :loading="hbaseTesting"
                 :aria-label="'Test HBase connection'"
+                @click="testHBaseConnection"
               >
                 <el-icon v-if="!hbaseTestResult"><Connection /></el-icon>
                 <el-icon v-else-if="hbaseTestResult === 'success'"><CircleCheck /></el-icon>
@@ -116,9 +116,9 @@
               
               <el-button
                 type="success"
-                @click="saveHBaseConfig"
                 :disabled="hbaseTestResult !== 'success'"
                 :aria-label="'Save HBase configuration'"
+                @click="saveHBaseConfig"
               >
                 <el-icon><Check /></el-icon>
                 Save Configuration

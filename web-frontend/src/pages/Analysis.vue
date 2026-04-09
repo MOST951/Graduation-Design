@@ -31,7 +31,7 @@
         </el-form-item>
         
         <el-form-item>
-          <el-button type="primary" :icon="DataAnalysis" @click="handleAnalyze" :loading="analyzing">
+          <el-button type="primary" :icon="DataAnalysis" :loading="analyzing" @click="handleAnalyze">
             开始分析
           </el-button>
           <el-button :icon="Download" @click="handleExport">导出</el-button>

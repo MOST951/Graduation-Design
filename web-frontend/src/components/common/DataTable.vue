@@ -17,8 +17,8 @@
             :placeholder="searchPlaceholder"
             :aria-label="searchPlaceholder"
             clearable
-            @input="handleSearch"
             class="search-input"
+            @input="handleSearch"
           >
             <template #prefix>
               <el-icon><Search /></el-icon>
@@ -31,8 +31,8 @@
             v-model="selectedFilter"
             :placeholder="filterPlaceholder"
             :aria-label="filterPlaceholder"
-            @change="handleFilter"
             class="filter-select"
+            @change="handleFilter"
           >
             <el-option
               v-for="option in filterOptions"
@@ -46,9 +46,9 @@
         <el-button
           type="primary"
           :aria-label="exportButtonLabel"
-          @click="handleExport"
           :loading="isExporting"
           class="export-button"
+          @click="handleExport"
         >
           <el-icon><Download /></el-icon>
           Export
@@ -57,7 +57,7 @@
     </div>
 
     <!-- Loading state -->
-    <div v-if="isLoading" class="table-loading">
+    <div v-if="loading" class="table-loading">
       <SkeletonLoader variant="table" :rows="5" :columns="columns.length" />
       <div class="loading-overlay" aria-live="polite" aria-atomic="true">
         Loading data...
@@ -73,7 +73,7 @@
         show-icon
         :closable="false"
       />
-      <el-button @click="handleRetry" class="retry-button">
+      <el-button class="retry-button" @click="handleRetry">
         <el-icon><Refresh /></el-icon>
         Retry
       </el-button>
@@ -85,7 +85,7 @@
         <el-icon class="empty-icon"><Document /></el-icon>
         <h3 class="empty-title">{{ emptyTitle }}</h3>
         <p class="empty-description">{{ emptyDescription }}</p>
-        <el-button v-if="showRefreshButton" @click="handleRefresh" type="primary">
+        <el-button v-if="showRefreshButton" type="primary" @click="handleRefresh">
           <el-icon><Refresh /></el-icon>
           Refresh
         </el-button>
@@ -103,11 +103,11 @@
         :data="paginatedData"
         :row-key="rowKey"
         :default-sort="defaultSort"
-        @sort-change="handleSortChange"
-        @selection-change="handleSelectionChange"
         class="data-table"
         :aria-label="`${title} table with ${paginatedData.length} rows`"
         role="table"
+        @sort-change="handleSortChange"
+        @selection-change="handleSelectionChange"
       >
         <!-- Selection column -->
         <el-table-column
@@ -180,8 +180,8 @@
                 :type="action.type"
                 size="small"
                 :aria-label="action.ariaLabel"
-                @click="action.handler(row, $index)"
                 class="action-button"
+                @click="action.handler(row, $index)"
               >
                 <el-icon v-if="action.icon">
                   <component :is="action.icon" />
@@ -201,9 +201,9 @@
           :page-sizes="[10, 20, 50, 100]"
           :total="totalItems"
           layout="total, sizes, prev, pager, next, jumper"
+          :aria-label="`${title} pagination`"
           @size-change="handleSizeChange"
           @current-change="handlePageChange"
-          :aria-label="`${title} pagination`"
         />
       </div>
     </div>

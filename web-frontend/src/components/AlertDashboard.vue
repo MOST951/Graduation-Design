@@ -16,8 +16,8 @@
         </el-tag>
         <el-switch 
           v-model="monitorEnabled" 
-          @change="toggleMonitor"
           style="margin-left: 12px"
+          @change="toggleMonitor"
         />
         <el-button :icon="Setting" @click="showConfigDialog = true">
           预警配置
@@ -115,7 +115,7 @@
         <div class="metric-content">
           <div class="metric-value">{{ alerts.length }}</div>
           <div class="metric-label">待处理预警</div>
-          <div class="metric-trend" v-if="alerts.length > 0">
+          <div v-if="alerts.length > 0" class="metric-trend">
             <el-button type="danger" size="small" plain @click="scrollToAlerts">立即查看</el-button>
           </div>
         </div>
@@ -159,16 +159,16 @@
     </el-card>
     
     <!-- 预警事件列表 -->
-    <div class="alerts-section" ref="alertsSectionRef">
+    <div ref="alertsSectionRef" class="alerts-section">
       <div class="section-header">
         <span><el-icon><Bell /></el-icon> 预警事件列表</span>
         <div class="section-actions">
-          <el-button size="small" :icon="Refresh" @click="checkAlerts" :loading="checking">刷新</el-button>
-          <el-button size="small" type="danger" plain @click="clearAlerts" v-if="alerts.length > 0">清空全部</el-button>
+          <el-button size="small" :icon="Refresh" :loading="checking" @click="checkAlerts">刷新</el-button>
+          <el-button v-if="alerts.length > 0" size="small" type="danger" plain @click="clearAlerts">清空全部</el-button>
         </div>
       </div>
       
-      <div class="alerts-list" v-if="alerts.length > 0">
+      <div v-if="alerts.length > 0" class="alerts-list">
         <transition-group name="alert-fade">
           <div 
             v-for="alert in alerts" 
@@ -189,7 +189,7 @@
               <div class="alert-desc">{{ alert.description }}</div>
               <div class="alert-footer">
                 <span class="alert-time"><el-icon><Clock /></el-icon> {{ alert.time }}</span>
-                <span class="alert-source" v-if="alert.source">来源: {{ alert.source }}</span>
+                <span v-if="alert.source" class="alert-source">来源: {{ alert.source }}</span>
               </div>
             </div>
             <div class="alert-actions">

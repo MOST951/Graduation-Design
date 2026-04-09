@@ -49,28 +49,28 @@
                 <span class="detail-label">Duration:</span>
                 <span class="detail-value">{{ formatDuration(stage.duration) }}</span>
               </div>
-              <div class="detail-item" v-if="stage.error">
+              <div v-if="stage.error" class="detail-item">
                 <span class="detail-label error">Error:</span>
                 <span class="detail-value error">{{ stage.error }}</span>
               </div>
-              <div class="detail-item" v-if="stage.startTime">
+              <div v-if="stage.startTime" class="detail-item">
                 <span class="detail-label">Started:</span>
                 <span class="detail-value">{{ formatTime(stage.startTime) }}</span>
               </div>
-              <div class="detail-item" v-if="stage.endTime">
+              <div v-if="stage.endTime" class="detail-item">
                 <span class="detail-label">Ended:</span>
                 <span class="detail-value">{{ formatTime(stage.endTime) }}</span>
               </div>
             </div>
             
             <!-- Stage Actions -->
-            <div class="step-actions" v-if="showStageActions(stage)">
+            <div v-if="showStageActions(stage)" class="step-actions">
               <el-button
                 v-if="stage.status === 'failed'"
                 type="warning"
                 size="small"
-                @click="$emit('retry-stage', index)"
                 :loading="stage.isRetrying"
+                @click="$emit('retry-stage', index)"
               >
                 <el-icon><RefreshRight /></el-icon>
                 Retry from Here
@@ -111,7 +111,7 @@
     </el-steps>
     
     <!-- Overall Progress -->
-    <div class="overall-progress" v-if="showOverallProgress">
+    <div v-if="showOverallProgress" class="overall-progress">
       <div class="progress-header">
         <span class="progress-title">Overall Progress</span>
         <span class="progress-percentage">{{ overallPercentage }}%</span>

@@ -1,12 +1,9 @@
 /**
  * 数据预处理模块 API
  */
-import axios from 'axios';
+import apiClient from '@/api';
 
-const api = axios.create({
-  baseURL: '/api/preprocess',
-  timeout: 60000,
-});
+const api = apiClient;
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -103,7 +100,7 @@ export async function createPreprocessTask(data: {
   config: PreprocessConfig;
 }): Promise<PreprocessTask> {
   try {
-    const response = await api.post<PreprocessTask>('/tasks', data);
+    const response = await api.post<PreprocessTask>('/preprocess/tasks', data);
     return response.data;
   } catch (error) {
     await sleep(500);
@@ -127,7 +124,7 @@ export async function getPreprocessTasks(params?: {
   type?: string;
 }): Promise<PreprocessTask[]> {
   try {
-    const response = await api.get<PreprocessTask[]>('/tasks', { params });
+    const response = await api.get<PreprocessTask[]>('/preprocess/tasks', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -143,7 +140,7 @@ export async function cleanData(data: {
   config: PreprocessConfig['clean'];
 }): Promise<{ taskId: string }> {
   try {
-    const response = await api.post('/clean', data);
+    const response = await api.post('/preprocess/clean', data);
     return response.data;
   } catch (error) {
     await sleep(500);
@@ -160,7 +157,7 @@ export async function segmentText(data: {
   customDict?: string[];
 }): Promise<{ words: string[] }> {
   try {
-    const response = await api.post('/segment', data);
+    const response = await api.post('/preprocess/segment', data);
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -179,7 +176,7 @@ export async function extractFeatures(data: {
   config?: any;
 }): Promise<{ taskId: string }> {
   try {
-    const response = await api.post('/extract', data);
+    const response = await api.post('/preprocess/extract', data);
     return response.data;
   } catch (error) {
     await sleep(800);
@@ -242,7 +239,7 @@ export async function createPipeline(data: {
   }>;
 }): Promise<{ id: string }> {
   try {
-    const response = await api.post('/pipeline', data);
+    const response = await api.post('/preprocess/pipeline', data);
     return response.data;
   } catch (error) {
     await sleep(400);

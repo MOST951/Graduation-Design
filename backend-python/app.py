@@ -2,18 +2,13 @@
 微博情感分析系统 - 后端主应用
 Flask + CORS支持
 """
-import os
-import logging
 from flask import Flask, jsonify
 from flask_cors import CORS
 
-# 配置日志
-log_level = os.getenv('LOG_LEVEL', 'INFO')
-logging.basicConfig(
-    level=getattr(logging, log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# 
+from config import config
+from utils.logger import get_logger
+logger = get_logger(__name__)
 
 from api.collection import collection_bp
 from api.sentiment import sentiment_bp
@@ -45,13 +40,12 @@ ANALYSIS_PIPELINE_AVAILABLE = False
 # 创建Flask应用
 app = Flask(__name__)
 
-# 从环境变量加载配置
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-app.config['DEBUG'] = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+# 
+app.config['SECRET_KEY'] = config.flask.secret_key
+app.config['DEBUG'] = config.flask.debug
 
-# 配置CORS - 从环境变量读取允许的源
-cors_origins_str = os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173')
-cors_origins = [origin.strip() for origin in cors_origins_str.split(',')]
+# 
+cors_origins = config.flask.cors_origins
 
 CORS(app, resources={
     r"/api/*": {
@@ -180,17 +174,13 @@ def preload_models():
 if __name__ == '__main__':
     logger.info('Starting Weibo Sentiment Analysis Backend...')
     
-    # 启动时预加载模型（后台异步）
+    # 
     preload_models_on_startup()
     
-    # 从环境变量读取配置
-    host = os.getenv('FLASK_HOST', '0.0.0.0')
-    port = int(os.getenv('FLASK_RUN_PORT', '5000'))
-    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    
+    # 
     app.run(
-        host=host,
-        port=port,
-        debug=debug,
+        host=config.flask.host,
+        port=config.flask.port,
+        debug=config.flask.debug,
         threaded=True
     )

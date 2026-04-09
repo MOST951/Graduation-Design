@@ -10,9 +10,9 @@
         <el-button
           text
           size="small"
-          @click="clearAll"
           :disabled="keywords.length === 0"
           :aria-label="'Clear all keywords'"
+          @click="clearAll"
         >
           <el-icon><Delete /></el-icon>
           Clear All
@@ -26,17 +26,17 @@
         <el-input
           v-model="inputValue"
           placeholder="Enter keyword to subscribe..."
-          @keyup.enter="addKeyword"
           clearable
           class="keyword-input"
           :aria-label="'Keyword input for subscription'"
+          @keyup.enter="addKeyword"
         >
           <template #append>
             <el-button
               type="primary"
-              @click="addKeyword"
               :disabled="!inputValue.trim()"
               :aria-label="'Add keyword'"
+              @click="addKeyword"
             >
               <el-icon><Plus /></el-icon>
               Add
@@ -72,15 +72,15 @@
             <el-switch
               v-model="keyword.active"
               size="small"
-              @change="toggleKeyword(keyword)"
               :aria-label="`Toggle keyword ${keyword.text}`"
+              @change="toggleKeyword(keyword)"
             />
             <el-button
               text
               size="small"
               type="danger"
-              @click="removeKeyword(index)"
               :aria-label="`Remove keyword ${keyword.text}`"
+              @click="removeKeyword(index)"
             >
               <el-icon><Close /></el-icon>
             </el-button>
@@ -106,8 +106,8 @@
           v-for="preset in presetKeywords"
           :key="preset"
           class="preset-tag"
-          @click="addPresetKeyword(preset)"
           :aria-label="`Add preset keyword ${preset}`"
+          @click="addPresetKeyword(preset)"
         >
           {{ preset }}
         </el-tag>

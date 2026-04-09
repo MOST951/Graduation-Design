@@ -24,7 +24,7 @@
 
     <!-- 统计指标卡片 -->
     <el-row :gutter="20" class="stat-cards">
-      <el-col :xs="24" :sm="12" :md="6" v-for="card in statCards" :key="card.title">
+      <el-col v-for="card in statCards" :key="card.title" :xs="24" :sm="12" :md="6">
         <div class="stat-card" :class="card.type">
           <div class="stat-header">
             <span class="stat-title">{{ card.title }}</span>

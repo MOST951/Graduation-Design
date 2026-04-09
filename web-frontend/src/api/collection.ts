@@ -2,54 +2,17 @@
  * 数据采集模块 API
  */
 import apiClient from './index';
-
-// ==================== 类型定义 ====================
-
-/** 任务状态 */
-export type TaskStatus = 'waiting' | 'running' | 'completed' | 'failed' | 'paused';
-
-/** 平台类型 */
-export type Platform = 'weibo' | 'wechat' | 'douyin' | 'zhihu' | 'xiaohongshu';
-
-/** 关键词配置 */
-export interface Keyword {
-  word: string;
-  weight: number;
-}
-
-/** 任务配置 */
-export interface TaskConfig {
-  name: string;
-  keywords: Keyword[];
-  platforms: Platform[];
-  weiboOptions?: string[];
-  dateRange?: [string, string] | null;
-  dataLimit: number;
-  requestInterval: number;
-  useProxy: boolean;
-  proxyList?: string;
-  rotateUserAgent: boolean;
-  downloadMedia: boolean;
-  enableSchedule: boolean;
-  cronExpression?: string;
-  maxExecutions?: number;
-}
-
-/** 任务实体 */
-export interface Task {
-  id: number;
-  name: string;
-  keywords: string[];
-  status: TaskStatus;
-  progress: number;
-  collectedCount: number;
-  failedCount: number;
-  config: TaskConfig;
-  createdAt: string;
-  updatedAt: string;
-  startedAt?: string;
-  completedAt?: string;
-}
+import type {
+  TaskStatus,
+  Platform,
+  Keyword,
+  TaskConfig,
+  CollectionTask,
+  TaskLog,
+  ApiResponse,
+  PageResponse,
+  CreateTaskRequest
+} from './types';
 
 /** 任务列表查询参数 */
 export interface TaskListParams {
@@ -62,23 +25,6 @@ export interface TaskListParams {
   sortOrder?: 'asc' | 'desc';
   startDate?: string;
   endDate?: string;
-}
-
-/** 分页响应 */
-export interface PageResponse<T> {
-  list: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
-
-/** 任务日志 */
-export interface TaskLog {
-  id: number;
-  taskId: number;
-  level: 'INFO' | 'WARN' | 'ERROR';
-  message: string;
-  timestamp: string;
 }
 
 /** 任务统计 */
@@ -117,7 +63,7 @@ export interface ProxyTestResult {
 /**
  * 获取任务列表
  */
-export async function getTasks(params: TaskListParams = {}): Promise<PageResponse<Task>> {
+export async function getTasks(params: TaskListParams = {}): Promise<PageResponse<CollectionTask>> {
   const response = await apiClient.get('/collection/tasks', { params });
   return response.data.data;
 }
@@ -125,7 +71,7 @@ export async function getTasks(params: TaskListParams = {}): Promise<PageRespons
 /**
  * 获取单个任务详情
  */
-export async function getTask(id: number): Promise<Task> {
+export async function getTask(id: number): Promise<CollectionTask> {
   const response = await apiClient.get(`/collection/tasks/${id}`);
   return response.data.data;
 }
@@ -133,7 +79,7 @@ export async function getTask(id: number): Promise<Task> {
 /**
  * 创建任务
  */
-export async function createTask(data: TaskConfig): Promise<Task> {
+export async function createTask(data: CreateTaskRequest): Promise<CollectionTask> {
   const response = await apiClient.post('/collection/tasks', data);
   return response.data.data;
 }
@@ -141,7 +87,7 @@ export async function createTask(data: TaskConfig): Promise<Task> {
 /**
  * 更新任务
  */
-export async function updateTask(id: number, data: Partial<TaskConfig>): Promise<Task> {
+export async function updateTask(id: number, data: Partial<TaskConfig>): Promise<CollectionTask> {
   const response = await apiClient.put(`/collection/tasks/${id}`, data);
   return response.data.data;
 }
@@ -163,7 +109,7 @@ export async function batchDeleteTasks(ids: number[]): Promise<void> {
 /**
  * 启动任务
  */
-export async function startTask(id: number): Promise<Task> {
+export async function startTask(id: number): Promise<CollectionTask> {
   const response = await apiClient.post(`/collection/tasks/${id}/start`);
   return response.data.data;
 }
@@ -171,7 +117,7 @@ export async function startTask(id: number): Promise<Task> {
 /**
  * 停止任务
  */
-export async function stopTask(id: number): Promise<Task> {
+export async function stopTask(id: number): Promise<CollectionTask> {
   const response = await apiClient.post(`/collection/tasks/${id}/stop`);
   return response.data.data;
 }
@@ -179,7 +125,7 @@ export async function stopTask(id: number): Promise<Task> {
 /**
  * 暂停任务
  */
-export async function pauseTask(id: number): Promise<Task> {
+export async function pauseTask(id: number): Promise<CollectionTask> {
   const response = await apiClient.post(`/collection/tasks/${id}/pause`);
   return response.data.data;
 }
@@ -187,7 +133,7 @@ export async function pauseTask(id: number): Promise<Task> {
 /**
  * 恢复任务
  */
-export async function resumeTask(id: number): Promise<Task> {
+export async function resumeTask(id: number): Promise<CollectionTask> {
   const response = await apiClient.post(`/collection/tasks/${id}/resume`);
   return response.data.data;
 }
@@ -195,7 +141,7 @@ export async function resumeTask(id: number): Promise<Task> {
 /**
  * 重试失败任务
  */
-export async function retryTask(id: number): Promise<Task> {
+export async function retryTask(id: number): Promise<CollectionTask> {
   const response = await apiClient.post(`/collection/tasks/${id}/retry`);
   return response.data.data;
 }

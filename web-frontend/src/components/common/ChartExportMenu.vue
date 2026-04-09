@@ -59,7 +59,7 @@ const handleCommand = async (command: string) => {
         await exportAsImage('png')
         break
       case 'jpg':
-        await exportAsImage('jpg')
+        await exportAsImage('jpeg')
         break
       case 'svg':
         await exportAsSVG()
@@ -75,7 +75,7 @@ const handleCommand = async (command: string) => {
   }
 }
 
-const exportAsImage = async (format: 'png' | 'jpg') => {
+const exportAsImage = async (format: 'png' | 'jpeg') => {
   const dataURL = props.chartInstance!.getDataURL({
     type: format,
     pixelRatio: 2,

@@ -300,9 +300,10 @@ function startRealtimeUpdate() {
         value: lastPoint.value + (Math.random() - 0.5) * 10,
       };
       
-      props.data.push(newPoint);
-      if (props.data.length > 1000) {
-        props.data.shift();
+      const dataArr = props.data as DataPoint[];
+      dataArr.push(newPoint);
+      if (dataArr.length > 1000) {
+        dataArr.shift();
       }
       
       updateChart();

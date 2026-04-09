@@ -55,7 +55,7 @@
       
       <!-- 作业统计 -->
       <el-row :gutter="16">
-        <el-col :span="6" v-for="stat in jobStats" :key="stat.key">
+        <el-col v-for="stat in jobStats" :key="stat.key" :span="6">
           <div class="stat-item" :class="stat.key">
             <div class="stat-value">{{ stat.value }}</div>
             <div class="stat-label">{{ stat.label }}</div>
@@ -90,7 +90,7 @@
         <el-button size="small" @click="openSparkUI">
           <el-icon><Link /></el-icon> Spark UI
         </el-button>
-        <el-button size="small" @click="refreshMetrics" :loading="loading">
+        <el-button size="small" :loading="loading" @click="refreshMetrics">
           <el-icon><Refresh /></el-icon> 刷新
         </el-button>
       </div>

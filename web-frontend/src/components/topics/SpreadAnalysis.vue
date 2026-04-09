@@ -330,7 +330,7 @@
           </el-descriptions-item>
         </el-descriptions>
 
-        <div class="node-content" v-if="selectedNode.content">
+        <div v-if="selectedNode.content" class="node-content">
           <h4>发布内容</h4>
           <div class="content-text">{{ selectedNode.content }}</div>
           <div class="content-stats">

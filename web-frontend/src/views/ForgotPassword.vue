@@ -59,9 +59,9 @@
                   type="primary"
                   :disabled="countdown > 0 || sendingCode"
                   :loading="sendingCode"
-                  @click="sendCode"
                   class="send-code-btn"
                   size="large"
+                  @click="sendCode"
                 >
                   {{ countdown > 0 ? `${countdown}s后重发` : '获取验证码' }}
                 </el-button>
@@ -70,10 +70,10 @@
 
             <el-button
               type="primary"
-              @click="verifyEmail"
               :loading="verifying"
               class="action-button"
               size="large"
+              @click="verifyEmail"
             >
               下一步
             </el-button>
@@ -124,10 +124,10 @@
 
             <el-button
               type="primary"
-              @click="resetPassword"
               :loading="resetting"
               class="action-button"
               size="large"
+              @click="resetPassword"
             >
               重置密码
             </el-button>
@@ -143,15 +143,15 @@
           <p class="success-desc">您的密码已成功重置，请使用新密码登录</p>
           <el-button
             type="primary"
-            @click="goToLogin"
             class="action-button"
             size="large"
+            @click="goToLogin"
           >
             立即登录
           </el-button>
         </div>
 
-        <div class="back-link" v-if="currentStep < 2">
+        <div v-if="currentStep < 2" class="back-link">
           <el-link type="primary" :underline="false" @click="goToLogin">
             <el-icon><ArrowLeft /></el-icon>
             返回登录

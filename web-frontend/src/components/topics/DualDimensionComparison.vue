@@ -26,7 +26,7 @@
             <el-icon><Document /></el-icon> 生成报告
           </el-button>
         </el-button-group>
-        <el-button type="primary" size="small" @click="loadData" :loading="loading">
+        <el-button type="primary" size="small" :loading="loading" @click="loadData">
           <el-icon><Refresh /></el-icon> 刷新
         </el-button>
       </div>
@@ -46,7 +46,7 @@
               <el-tag type="success" size="small">情感×热度</el-tag>
             </div>
           </template>
-          <div class="ranking-list" v-loading="loading">
+          <div v-loading="loading" class="ranking-list">
             <div 
               v-for="(item, index) in dualRanking" 
               :key="'dual-' + index"
@@ -121,7 +121,7 @@
               <el-tag type="info" size="small">仅热度</el-tag>
             </div>
           </template>
-          <div class="ranking-list" v-loading="loading">
+          <div v-loading="loading" class="ranking-list">
             <div 
               v-for="(item, index) in traditionalRanking" 
               :key="'trad-' + index"
@@ -161,7 +161,7 @@
       <div ref="scatterChartRef" class="scatter-chart"></div>
       
       <!-- 象限说明 -->
-      <div class="quadrant-legend" v-if="showQuadrantLabels">
+      <div v-if="showQuadrantLabels" class="quadrant-legend">
         <div class="quadrant q1">
           <strong>第一象限</strong>
           <span>高情感+高热度</span>
@@ -186,7 +186,7 @@
     </el-card>
 
     <!-- 趋势分析 -->
-    <el-card class="trend-card" shadow="hover" v-if="selectedTopic">
+    <el-card v-if="selectedTopic" class="trend-card" shadow="hover">
       <template #header>
         <div class="card-header">
           <span><el-icon><TrendCharts /></el-icon> 话题趋势: {{ selectedTopic.topic }}</span>

@@ -15,6 +15,8 @@ import math
 import time
 import logging
 import threading
+import json
+import os
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -34,27 +36,173 @@ except ImportError:
     BERT_AVAILABLE = False
     logger.warning("ChineseBERT模块不可用，级联策略将仅使用词典方法")
 
+# 全局单例模型加载器
+_SINGLETON_AVAILABLE = False
+try:
+    from services.model_singleton import (
+        get_bert_tokenizer_and_model as _singleton_load,
+        is_bert_available as _singleton_bert_available,
+    )
+    _SINGLETON_AVAILABLE = True
+except ImportError:
+    pass
 
-# ==================== 配置 ====================
+
+# ==================== 配置 ==================== 
+
+class CheckpointManager:
+    """ """
+    
+    def __init__(self, checkpoint_dir: str = "./checkpoints"):
+        self.checkpoint_dir = checkpoint_dir
+        os.makedirs(checkpoint_dir, exist_ok=True)
+    
+    def save_checkpoint(self, batch_id: str, stage: str, processed_ids: List[str], 
+                       config: Dict, metadata: Dict = None):
+        """ """
+        checkpoint_data = {
+            'batch_id': batch_id,
+            'stage': stage,
+            'processed_ids': processed_ids,
+            'config': config,
+            'metadata': metadata or {},
+            'timestamp': datetime.now().isoformat(),
+            'min_id': min(processed_ids) if processed_ids else None,
+            'max_id': max(processed_ids) if processed_ids else None,
+            'count': len(processed_ids)
+        }
+        
+        checkpoint_file = os.path.join(self.checkpoint_dir, f"{batch_id}_{stage}.json")
+        with open(checkpoint_file, 'w', encoding='utf-8') as f:
+            json.dump(checkpoint_data, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Checkpoint saved: {checkpoint_file} (processed {len(processed_ids)} records)")
+    
+    def load_checkpoint(self, batch_id: str, stage: str) -> Optional[Dict]:
+        """ """
+        checkpoint_file = os.path.join(self.checkpoint_dir, f"{batch_id}_{stage}.json")
+        if not os.path.exists(checkpoint_file):
+            return None
+        
+        try:
+            with open(checkpoint_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint {checkpoint_file}: {e}")
+            return None
+    
+    def get_resume_range(self, batch_id: str, stage: str) -> Optional[Tuple[str, str]]:
+        """ """
+        checkpoint = self.load_checkpoint(batch_id, stage)
+        if not checkpoint:
+            return None
+        
+        if checkpoint.get('max_id'):
+            return (checkpoint['max_id'], None)  # 
+        return None
+    
+    def delete_checkpoint(self, batch_id: str, stage: str = None):
+        """ """
+        if stage:
+            checkpoint_file = os.path.join(self.checkpoint_dir, f"{batch_id}_{stage}.json")
+            if os.path.exists(checkpoint_file):
+                os.remove(checkpoint_file)
+                logger.info(f"Checkpoint deleted: {checkpoint_file}")
+        else:
+            # 
+            for filename in os.listdir(self.checkpoint_dir):
+                if filename.startswith(f"{batch_id}_"):
+                    os.remove(os.path.join(self.checkpoint_dir, filename))
+            logger.info(f"All checkpoints for batch {batch_id} deleted")
+
 
 class PipelineConfig:
-    """流水线配置"""
-    # 级联策略阈值 θ (公式4-3)
+    """ """
+    # 
     confidence_threshold: float = 0.7
 
-    # 热度权重 (公式4-5)
+    # 
     repost_factor: float = 1.0
     comment_factor: float = 2.0
     like_factor: float = 1.0
-    max_heat_reference: float = 100000.0  # 归一化参考最大值
+    max_heat_reference: float = 100000.0  # 
 
-    # 半衰期 (公式4-6)
+    # 
     decay_half_life_hours: float = 12.0
 
-    # 最终排序权重 (公式4-7)
-    sentiment_weight: float = 0.4   # ω₁
-    heat_weight: float = 0.4        # ω₂
-    timeliness_weight: float = 0.2  # ω₃
+    # 
+    sentiment_weight: float = 0.4   # 
+    heat_weight: float = 0.4        # 
+    timeliness_weight: float = 0.2  # 
+    
+    # 
+    spark_config: Dict = {}
+    cleaning_rules: Dict = {}
+    custom_params: Dict = {}
+    
+    # 
+    schedule_cron: str = ""
+    dependencies: List[str] = []
+    
+    def to_dict(self) -> Dict:
+        """ """
+        return {
+            'confidence_threshold': self.confidence_threshold,
+            'repost_factor': self.repost_factor,
+            'comment_factor': self.comment_factor,
+            'like_factor': self.like_factor,
+            'max_heat_reference': self.max_heat_reference,
+            'decay_half_life_hours': self.decay_half_life_hours,
+            'sentiment_weight': self.sentiment_weight,
+            'heat_weight': self.heat_weight,
+            'timeliness_weight': self.timeliness_weight,
+            'spark_config': self.spark_config,
+            'cleaning_rules': self.cleaning_rules,
+            'custom_params': self.custom_params,
+            'schedule_cron': self.schedule_cron,
+            'dependencies': self.dependencies
+        }
+    
+    @classmethod
+    def from_dict(cls, config_dict: Dict) -> 'PipelineConfig':
+        """ """
+        config = cls()
+        for key, value in config_dict.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+        return config
+    
+    def validate(self) -> List[str]:
+        """ """
+        errors = []
+        
+        if self.confidence_threshold < 0 or self.confidence_threshold > 1:
+            errors.append("confidence_threshold must be between 0 and 1")
+        
+        if self.decay_half_life_hours <= 0:
+            errors.append("decay_half_life_hours must be positive")
+        
+        total_weight = self.sentiment_weight + self.heat_weight + self.timeliness_weight
+        if abs(total_weight - 1.0) > 0.01:
+            errors.append(f"Weights must sum to 1.0 (current: {total_weight})")
+        
+        if self.schedule_cron and not self._validate_cron(self.schedule_cron):
+            errors.append("Invalid cron expression")
+        
+        return errors
+    
+    def _validate_cron(self, cron_expr: str) -> bool:
+        """ """
+        try:
+            import croniter
+            croniter.croniter(cron_expr)
+            return True
+        except ImportError:
+            # 
+            parts = cron_expr.split()
+            return len(parts) == 5
+        except:
+            return False 
 
 
 # ==================== 情感分析阶段 ====================
@@ -70,7 +218,22 @@ class SentimentStage:
     def __init__(self, config: PipelineConfig):
         self.config = config
         self._bert = None
-        if BERT_AVAILABLE:
+        
+        # 优先从全局单例获取已加载的 ChineseBERT
+        if _SINGLETON_AVAILABLE:
+            try:
+                tokenizer, model, device = _singleton_load()
+                if tokenizer is not None and model is not None:
+                    # 复用 ChineseBertSentimentAnalyzer 单例（它内部也会从 singleton 获取）
+                    if BERT_AVAILABLE:
+                        self._bert = ChineseBertSentimentAnalyzer()
+                        self._bert.initialize()
+                    logger.info("[SentimentStage] ChineseBERT已从全局单例加载，级联策略就绪")
+            except Exception as e:
+                logger.warning(f"[SentimentStage] 全局单例加载失败: {e}，回退本地加载")
+        
+        # 回退：本地加载
+        if self._bert is None and BERT_AVAILABLE:
             try:
                 self._bert = ChineseBertSentimentAnalyzer()
                 self._bert.initialize()
@@ -289,12 +452,16 @@ class PipelineService:
         self.config = config or PipelineConfig()
         self.sentiment_stage = SentimentStage(self.config)
         self.ranking_stage = RankingStage(self.config)
+        self.checkpoint_manager = CheckpointManager()
         self._running = False
         self._last_result: Optional[Dict] = None
         # 历史记录（内存存储，最近50条）
         self._history: List[Dict] = []
         # 断点续跑：保存上一次失败的状态
         self._checkpoint: Optional[Dict] = None
+        # 
+        self._scheduler = None
+        self._websocket_clients = set()
 
     def run_pipeline(self, limit: int = 500) -> Dict:
         """
@@ -395,27 +562,194 @@ class PipelineService:
             result['status'] = 'failed'
             result['error'] = str(e)
             result['total_duration_s'] = round(time.time() - pipeline_start, 2)
-            self._last_result = result
-            return result
         finally:
             self._running = False
 
-    def run_pipeline_async(self, limit: int = 500) -> Dict:
+    def run_pipeline_async(self, limit: int = 500, resume_from: str = None, batch_id: str = None) -> Dict:
         """异步执行流水线"""
         if self._running:
             return {'status': 'error', 'message': '流水线正在运行中'}
 
-        thread = threading.Thread(target=self.run_pipeline, args=(limit,), daemon=True)
+        thread = threading.Thread(target=self.run_pipeline, args=(limit, resume_from, batch_id), daemon=True)
         thread.start()
         return {'status': 'started', 'message': '流水线已在后台启动'}
 
     def get_status(self) -> Dict:
-        """获取流水线状态"""
+        """ """
         return {
             'running': self._running,
             'last_result': self._last_result,
             'bert_available': BERT_AVAILABLE and self.sentiment_stage._bert is not None,
         }
+    
+    def _run_sentiment_stage_with_checkpoint(self, limit: int, batch_id: str, resume_range: Tuple[str, str] = None) -> Dict:
+        """ """
+        db = get_db_service()
+        
+        # 
+        where_clause = "sentiment_score IS NULL"
+        if resume_range and resume_range[0]:
+            where_clause += f" AND weibo_id > '{resume_range[0]}'"
+        
+        weibo_data = db.fetch_unprocessed_weibo(limit=limit, where_clause=where_clause)
+        processed_ids = []
+        
+        if not weibo_data:
+            logger.info("No unprocessed weibo data found for sentiment analysis")
+            return {'processed_ids': processed_ids, 'count': 0}
+        
+        logger.info(f"Processing {len(weibo_data)} weibo for sentiment analysis")
+        
+        for weibo in weibo_data:
+            try:
+                # 
+                sentiment_result = self.sentiment_stage.analyze(weibo['content'])
+                
+                # 
+                db.update_sentiment_result(weibo['weibo_id'], sentiment_result)
+                processed_ids.append(weibo['weibo_id'])
+                
+                # 
+                if len(processed_ids) % 100 == 0:
+                    logger.info(f"Processed {len(processed_ids)}/{len(weibo_data)} sentiment analyses")
+                    
+            except Exception as e:
+                logger.error(f"Failed to process sentiment for weibo {weibo['weibo_id']}: {e}")
+                continue
+        
+        return {'processed_ids': processed_ids, 'count': len(processed_ids)}
+    
+    def _run_ranking_stage_with_checkpoint(self, limit: int, batch_id: str) -> Dict:
+        """ """
+        db = get_db_service()
+        
+        # 
+        weibo_data = db.fetch_weibo_for_ranking(limit=limit)
+        processed_ids = []
+        
+        if not weibo_data:
+            logger.info("No weibo data found for ranking")
+            return {'processed_ids': processed_ids, 'count': 0}
+        
+        logger.info(f"Processing {len(weibo_data)} weibo for ranking")
+        
+        # 
+        ranked_results = self.ranking_stage.rank(weibo_data)
+        
+        # 
+        for result in ranked_results:
+            try:
+                db.update_ranking_result(result['weibo_id'], result)
+                processed_ids.append(result['weibo_id'])
+            except Exception as e:
+                logger.error(f"Failed to update ranking for weibo {result['weibo_id']}: {e}")
+                continue
+        
+        return {'processed_ids': processed_ids, 'count': len(processed_ids)}
+    
+    def _broadcast_status(self, status: Dict):
+        """ """
+        import json
+        message = json.dumps(status, ensure_ascii=False)
+        
+        # 
+        for client in self._websocket_clients.copy():
+            try:
+                client.send(message)
+            except Exception as e:
+                logger.error(f"Failed to send WebSocket message: {e}")
+                self._websocket_clients.discard(client)
+    
+    def add_websocket_client(self, client):
+        """ """
+        self._websocket_clients.add(client)
+    
+    def remove_websocket_client(self, client):
+        """ """
+        self._websocket_clients.discard(client)
+    
+    def _trigger_dependencies(self, completed_batch_id: str):
+        """ """
+        if not self.config.dependencies:
+            return
+        
+        logger.info(f"Checking dependencies for completed batch {completed_batch_id}")
+        
+        # 
+        for dependency_pipeline_id in self.config.dependencies:
+            try:
+                # 
+                dependency_service = self._get_dependency_service(dependency_pipeline_id)
+                if dependency_service:
+                    logger.info(f"Triggering dependent pipeline: {dependency_pipeline_id}")
+                    dependency_service.run_pipeline_async()
+            except Exception as e:
+                logger.error(f"Failed to trigger dependency {dependency_pipeline_id}: {e}")
+    
+    def _get_dependency_service(self, pipeline_id: str):
+        """ """
+        # 
+        # 
+        return None
+    
+    def schedule_pipeline(self, cron_expression: str):
+        """ """
+        try:
+            import croniter
+            from datetime import datetime
+            
+            self.config.schedule_cron = cron_expression
+            cron = croniter.croniter(cron_expression)
+            
+            # 
+            next_run = cron.get_next(datetime)
+            logger.info(f"Pipeline scheduled with cron '{cron_expression}', next run: {next_run}")
+            
+            # 
+            if self._scheduler:
+                self._scheduler.cancel()
+            
+            # 
+            self._scheduler = threading.Timer(
+                (next_run - datetime.now()).total_seconds(),
+                self._scheduled_run
+            )
+            self._scheduler.start()
+            
+        except ImportError:
+            logger.error("croniter package not available for scheduling")
+        except Exception as e:
+            logger.error(f"Failed to schedule pipeline: {e}")
+    
+    def _scheduled_run(self):
+        """ """
+        logger.info("Executing scheduled pipeline run")
+        self.run_pipeline_async()
+        
+        # 
+        if self.config.schedule_cron:
+            self.schedule_pipeline(self.config.schedule_cron)
+    
+    def get_checkpoints(self, batch_id: str) -> Dict:
+        """ """
+        checkpoints = {}
+        for stage in self.STAGES:
+            checkpoint = self.checkpoint_manager.load_checkpoint(batch_id, stage)
+            if checkpoint:
+                checkpoints[stage] = checkpoint
+        return checkpoints
+    
+    def resume_from_checkpoint(self, batch_id: str, stage: str) -> Dict:
+        """ """
+        checkpoint = self.checkpoint_manager.load_checkpoint(batch_id, stage)
+        if not checkpoint:
+            return {'status': 'error', 'message': f'No checkpoint found for batch {batch_id}, stage {stage}'}
+        
+        return self.run_pipeline(
+            limit=checkpoint.get('metadata', {}).get('limit', 500),
+            resume_from=stage,
+            batch_id=batch_id
+        )
 
 
 # ==================== 单例 ====================

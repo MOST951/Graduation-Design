@@ -62,18 +62,52 @@
       <el-col :span="8">
         <el-card header="采集配置" shadow="hover">
           <el-form label-position="top" size="default">
-            <el-form-item label="关键词">
-              <el-select
-                v-model="config.keywords"
-                multiple
-                filterable
-                allow-create
-                default-first-option
-                placeholder="输入关键词，回车添加"
-                style="width: 100%"
-              >
-                <el-option v-for="kw in defaultKeywords" :key="kw" :label="kw" :value="kw" />
-              </el-select>
+            <el-form-item label="Keyword">
+              <div class="keyword-input-container">
+                <el-tag
+                  v-for="(keyword, index) in config.keywords"
+                  :key="index"
+                  closable
+                  @close="removeKeyword(index)"
+                  class="keyword-tag"
+                >
+                  {{ keyword }}
+                </el-tag>
+                
+                <el-input
+                  v-if="inputVisible"
+                  ref="keywordInput"
+                  v-model="inputValue"
+                  size="small"
+                  class="keyword-input"
+                  @keyup.enter="handleInputConfirm"
+                  @blur="handleInputConfirm"
+                  placeholder="Enter keyword"
+                />
+                
+                <el-button
+                  v-else
+                  size="small"
+                  class="button-new-keyword"
+                  @click="showInput"
+                >
+                  + Add Keyword
+                </el-button>
+              </div>
+              
+              <!-- Keyword suggestions -->
+              <div class="keyword-suggestions" v-if="!inputVisible && config.keywords.length === 0">
+                <span class="suggestion-label">Popular keywords: </span>
+                <el-tag
+                  v-for="suggestion in defaultKeywords.slice(0, 5)"
+                  :key="suggestion"
+                  size="small"
+                  class="suggestion-tag"
+                  @click="addKeyword(suggestion)"
+                >
+                  {{ suggestion }}
+                </el-tag>
+              </div>
             </el-form-item>
             
             <el-form-item label="时间范围">
@@ -235,18 +269,26 @@
               <el-button text size="small" @click="clearLogs">清空</el-button>
             </div>
           </template>
-          <div class="log-container" ref="logContainer">
-            <div
-              v-for="(log, index) in logs"
-              :key="index"
-              class="log-item"
-              :class="log.level"
-            >
-              <span class="log-time">{{ log.time }}</span>
-              <span class="log-level">[{{ log.level.toUpperCase() }}]</span>
-              <span class="log-message">{{ log.message }}</span>
-            </div>
-          </div>
+          <el-table 
+            :data="logs" 
+            max-height="300px" 
+            size="small"
+            ref="logTable"
+            class="log-table"
+          >
+            <el-table-column prop="time" label="Time" width="80" />
+            <el-table-column prop="level" label="Level" width="80">
+              <template #default="{ row }">
+                <el-tag 
+                  :type="getLogLevelType(row.level)" 
+                  size="small"
+                >
+                  {{ row.level.toUpperCase() }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="message" label="Message" />
+          </el-table>
         </el-card>
         
         <!-- 数据预览 -->
@@ -329,6 +371,7 @@ const crawlProgress = ref(0);
 const totalCollected = ref(0);
 const showConfigDialog = ref(false);
 const logContainer = ref<HTMLElement>();
+const logTable = ref();
 
 // 数据流状态
 const currentPhase = ref<'idle' | 'crawl' | 'clean' | 'analyze' | 'rank' | 'done'>('idle');
@@ -364,6 +407,10 @@ const advancedConfig = reactive({
 });
 
 const defaultKeywords = ['人工智能', '新能源', '科技', '经济', '教育', '健康', '环保'];
+
+const inputVisible = ref(false);
+const inputValue = ref('');
+const keywordInput = ref();
 
 // 统计数据
 const stats = reactive({
@@ -686,15 +733,18 @@ const addLog = (level: string, message: string) => {
     message,
   });
   
-  // 限制日志数量
+  // 
   if (logs.value.length > 100) {
     logs.value.shift();
   }
   
-  // 滚动到底部
+  // 
   nextTick(() => {
-    if (logContainer.value) {
-      logContainer.value.scrollTop = logContainer.value.scrollHeight;
+    if (logTable.value) {
+      const tableBody = logTable.value.$el.querySelector('.el-table__body-wrapper');
+      if (tableBody) {
+        tableBody.scrollTop = tableBody.scrollHeight;
+      }
     }
   });
 };
@@ -717,28 +767,12 @@ const getStatusType = (status: string) => {
     completed: 'success',
     failed: 'danger',
     stopped: 'warning',
-    pending: 'info',
   };
   return map[status] || 'info';
 };
 
-// 获取状态标签
-const getStatusLabel = (status: string) => {
-  const map: Record<string, string> = {
-    running: '运行中',
-    completed: '已完成',
-    failed: '失败',
-    stopped: '已停止',
-    pending: '等待中',
-  };
-  return map[status] || status;
-};
-
-// 加载热搜作为预览 - 使用Store
-const loadPreviewData = async () => {
+const fetchPreviewData = async (hotList: any[]) => {
   try {
-    await weiboStore.fetchHotSearch();
-    const hotList = weiboStore.hotSearches;
     previewData.value = hotList.slice(0, 5).map((item: any, index: number) => ({
       id: index,
       author: '微博热搜',
@@ -749,7 +783,6 @@ const loadPreviewData = async () => {
       likes: item.heat || Math.floor(Math.random() * 10000),
     }));
   } catch (error) {
-    // 使用模拟数据
     previewData.value = [
       { id: 1, author: '用户A', content: '这是一条测试微博内容...', time: '5分钟前', comments: 123, shares: 45, likes: 678 },
       { id: 2, author: '用户B', content: '今天天气真好，适合出门...', time: '10分钟前', comments: 89, shares: 23, likes: 456 },
@@ -846,14 +879,44 @@ const startRateTracking = () => {
   }, 2000);
 };
 
+// 
+const showInput = () => {
+  inputVisible.value = true;
+  nextTick(() => {
+    keywordInput.value?.focus();
+  });
+};
+
+const handleInputConfirm = () => {
+  if (inputValue.value && config.keywords.indexOf(inputValue.value) === -1) {
+    config.keywords.push(inputValue.value);
+    addLog('info', `Added keyword: ${inputValue.value}`);
+  }
+  inputVisible.value = false;
+  inputValue.value = '';
+};
+
+const removeKeyword = (index: number) => {
+  const removed = config.keywords.splice(index, 1)[0];
+  addLog('info', `Removed keyword: ${removed}`);
+};
+
+const addKeyword = (keyword: string) => {
+  if (config.keywords.indexOf(keyword) === -1) {
+    config.keywords.push(keyword);
+    addLog('info', `Added suggested keyword: ${keyword}`);
+  }
+};
+
 onMounted(() => {
-  addLog('info', '数据采集模块已就绪');
-  addLog('info', '支持完整数据流: 微博爬虫 → HDFS → Spark清洗 → HBase → 双维度排序');
+  addLog('info', 'Data collection module ready');
+  addLog('info', 'Supports complete data flow: Weibo crawler -> HDFS -> Spark cleaning -> HBase -> dual dimension ranking');
   loadPreviewData();
   nextTick(() => {
     initRateChart();
     startRateTracking();
   });
+  // ... (rest of the code remains the same)
   window.addEventListener('resize', () => rateChart?.resize());
 });
 
@@ -1057,8 +1120,51 @@ onUnmounted(() => {
   align-items: center;
 }
 
+.keyword-input-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  
+  .keyword-tag {
+    margin: 4px 0;
+  }
+  
+  .keyword-input {
+    width: 120px;
+    margin: 4px 0;
+  }
+  
+  .button-new-keyword {
+    margin: 4px 0;
+  }
+}
+
+.keyword-suggestions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  
+  .suggestion-label {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+  }
+  
+  .suggestion-tag {
+    cursor: pointer;
+    margin: 2px;
+    
+    &:hover {
+      background-color: var(--el-color-primary-light-9);
+    }
+  }
+}
+
 .log-container {
   height: 300px;
+  overflow-y: auto;
   overflow-y: auto;
   font-family: 'Consolas', monospace;
   font-size: $font-size-extra-small;

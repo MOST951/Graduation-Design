@@ -1,12 +1,9 @@
 /**
  * 用户行为分析模块 API
  */
-import axios from 'axios';
+import apiClient from '@/api';
 
-const api = axios.create({
-  baseURL: '/api/user-behavior',
-  timeout: 30000,
-});
+const api = apiClient;
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -142,7 +139,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile> {
  */
 export async function batchGetUserProfiles(userIds: string[]): Promise<UserProfile[]> {
   try {
-    const response = await api.post<UserProfile[]>('/profile/batch', { userIds });
+    const response = await api.post<UserProfile[]>('/user-behavior/profile/batch', { userIds });
     return response.data;
   } catch (error) {
     await sleep(500);
@@ -187,7 +184,7 @@ export async function identifyKOLs(params?: {
   category?: string;
 }): Promise<UserProfile[]> {
   try {
-    const response = await api.get<UserProfile[]>('/kol', { params });
+    const response = await api.get<UserProfile[]>('/user-behavior/kol', { params });
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -204,7 +201,7 @@ export async function analyzePropagation(params: {
   maxDepth?: number;
 }): Promise<PropagationPath> {
   try {
-    const response = await api.post<PropagationPath>('/propagation', params);
+    const response = await api.post<PropagationPath>('/user-behavior/propagation', params);
     return response.data;
   } catch (error) {
     await sleep(600);
@@ -237,7 +234,7 @@ export async function segmentUsers(params: {
   numClusters?: number;
 }): Promise<UserSegment[]> {
   try {
-    const response = await api.post<UserSegment[]>('/segment', params);
+    const response = await api.post<UserSegment[]>('/user-behavior/segment', params);
     return response.data;
   } catch (error) {
     await sleep(800);
@@ -264,7 +261,7 @@ export async function segmentUsers(params: {
  */
 export async function getUserSegments(): Promise<UserSegment[]> {
   try {
-    const response = await api.get<UserSegment[]>('/segments');
+    const response = await api.get<UserSegment[]>('/user-behavior/segments');
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -285,7 +282,7 @@ export async function predictBehavior(params: {
   factors: Array<{ name: string; impact: number }>;
 }> {
   try {
-    const response = await api.post('/predict', params);
+    const response = await api.post('/user-behavior/predict', params);
     return response.data;
   } catch (error) {
     await sleep(500);
@@ -321,7 +318,7 @@ export async function getUserBehaviorStats(params?: {
   }>;
 }> {
   try {
-    const response = await api.get('/stats', { params });
+    const response = await api.get('/user-behavior/stats', { params });
     return response.data;
   } catch (error) {
     await sleep(300);

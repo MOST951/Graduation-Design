@@ -14,8 +14,8 @@
           size="small" 
           effect="plain"
           class="connectivity-tag"
-          @click="checkConnectivity"
           :loading="connectivityChecking"
+          @click="checkConnectivity"
         >
           <el-icon v-if="!connectivityChecking"><Connection /></el-icon>
           {{ connectivityText }} ({{ overallConnectivity.toFixed(0) }}%)
@@ -32,7 +32,7 @@
             <div class="card-header">
               <span>微博实时热搜</span>
               <div class="header-actions">
-                <el-button text :icon="Refresh" @click="doRefreshHotSearch" size="small" :loading="hotSearchLoading">
+                <el-button text :icon="Refresh" size="small" :loading="hotSearchLoading" @click="doRefreshHotSearch">
                   刷新
                 </el-button>
                 <span v-if="lastRefreshTime" class="refresh-time">

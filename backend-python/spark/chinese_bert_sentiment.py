@@ -29,6 +29,16 @@ import numpy as np
 from functools import lru_cache
 import threading
 
+# 全局单例模型加载器
+try:
+    from services.model_singleton import (
+        get_bert_tokenizer_and_model as _singleton_load,
+        is_bert_available as _singleton_available,
+    )
+    _SINGLETON_AVAILABLE = True
+except ImportError:
+    _SINGLETON_AVAILABLE = False
+
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
@@ -282,6 +292,9 @@ class ChineseBertSentimentAnalyzer:
         """
         初始化模型
         
+        优先从全局单例 model_singleton 获取已加载的 tokenizer/model，
+        避免重复加载；仅当单例不可用时才走本地加载路径。
+        
         Returns:
             是否初始化成功
         """
@@ -292,6 +305,23 @@ class ChineseBertSentimentAnalyzer:
             self._initialized = True
             return True
         
+        # ---- 优先委托给全局单例 ----
+        if _SINGLETON_AVAILABLE:
+            try:
+                tokenizer, model, device = _singleton_load()
+                if tokenizer is not None and model is not None:
+                    self.tokenizer = tokenizer
+                    self.model = model
+                    self.device = device
+                    self._initialized = True
+                    logger.info("[ChineseBertSentimentAnalyzer] 已从全局单例获取模型")
+                    return True
+                else:
+                    logger.warning("[ChineseBertSentimentAnalyzer] 全局单例返回空，回退本地加载")
+            except Exception as e:
+                logger.warning(f"[ChineseBertSentimentAnalyzer] 全局单例加载失败: {e}，回退本地加载")
+        
+        # ---- 本地加载（兜底） ----
         try:
             logger.info(f"正在加载模型: {self.config.model_name}")
             start_time = time.time()
@@ -300,43 +330,38 @@ class ChineseBertSentimentAnalyzer:
             self.device = self._setup_device()
             
             # 创建缓存目录
-            os.makedirs(self.config.cache_dir, exist_ok=True)
+            cache_dir = os.environ.get("TRANSFORMERS_CACHE", self.config.cache_dir)
+            os.makedirs(cache_dir, exist_ok=True)
             
             # 加载tokenizer
             logger.info("加载Tokenizer...")
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.config.model_name,
-                cache_dir=self.config.cache_dir if self.config.use_cache else None,
+                cache_dir=cache_dir,
             )
             
             # 加载模型
             logger.info("加载模型...")
             try:
-                # 尝试加载情感分类模型
                 self.model = AutoModelForSequenceClassification.from_pretrained(
                     self.config.model_name,
                     num_labels=self.config.num_labels,
-                    cache_dir=self.config.cache_dir if self.config.use_cache else None,
+                    cache_dir=cache_dir,
                 )
             except Exception as e:
                 logger.warning(f"加载分类模型失败: {e}，尝试加载基础模型")
-                # 加载基础模型并添加分类头
                 base_model = BertModel.from_pretrained(
                     self.config.model_name,
-                    cache_dir=self.config.cache_dir if self.config.use_cache else None,
+                    cache_dir=cache_dir,
                 )
                 self.model = BertForSequenceClassificationCustom(
                     base_model, 
                     self.config.num_labels
                 )
             
-            # 移动到设备
             self.model.to(self.device)
-            
-            # 设置为评估模式
             self.model.eval()
             
-            # 半精度优化
             if self.config.use_fp16 and self.device.type == 'cuda':
                 self.model.half()
                 logger.info("已启用FP16半精度推理")

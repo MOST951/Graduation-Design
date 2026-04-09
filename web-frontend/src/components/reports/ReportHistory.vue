@@ -4,10 +4,10 @@
       <h2>报告历史</h2>
       <div class="header-actions">
         <el-button :icon="Refresh" @click="handleRefresh">刷新</el-button>
-        <el-button :icon="Download" @click="handleBatchDownload" :disabled="!selectedReports.length">
+        <el-button :icon="Download" :disabled="!selectedReports.length" @click="handleBatchDownload">
           批量下载
         </el-button>
-        <el-button :icon="Delete" type="danger" @click="handleBatchDelete" :disabled="!selectedReports.length">
+        <el-button :icon="Delete" type="danger" :disabled="!selectedReports.length" @click="handleBatchDelete">
           批量删除
         </el-button>
       </div>
@@ -30,7 +30,7 @@
         <el-option label="专项" value="special" />
       </el-select>
       
-      <el-select v-model="statusFilter" placeholder="状态" clearable style="width="150px">
+      <el-select v-model="statusFilter" placeholder="状态" clearable style="width: 150px">
         <el-option label="全部" value="" />
         <el-option label="草稿" value="draft" />
         <el-option label="已完成" value="completed" />
@@ -48,8 +48,8 @@
     </div>
     
     <el-table
-      :data="filteredReports"
       v-loading="isLoading"
+      :data="filteredReports"
       @selection-change="handleSelectionChange"
     >
       <el-table-column type="selection" width="55" />
@@ -58,7 +58,7 @@
         <template #default="{ row }">
           <div class="report-name">
             <el-icon><Document /></el-icon>
-            <span @click="handleViewReport(row)" class="clickable">{{ row.name }}</span>
+            <span class="clickable" @click="handleViewReport(row)">{{ row.name }}</span>
             <el-tag v-if="row.hasVersions" size="small" type="info">
               v{{ row.currentVersion }}
             </el-tag>

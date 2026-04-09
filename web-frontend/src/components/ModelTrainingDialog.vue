@@ -290,7 +290,7 @@
           <el-button v-if="currentStep > 0 && !isTraining" @click="prevStep">上一步</el-button>
         </div>
         <div class="footer-right">
-          <el-button @click="handleClose" :disabled="isTraining">取消</el-button>
+          <el-button :disabled="isTraining" @click="handleClose">取消</el-button>
           
           <!-- Step 0 & 1: 下一步 -->
           <el-button v-if="currentStep < 2" type="primary" @click="nextStep">

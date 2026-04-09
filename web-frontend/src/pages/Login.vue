@@ -17,15 +17,15 @@
           <div class="logo-area">
             <div class="logo-icon">
               <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="40" cy="40" r="38" stroke="url(#logoGrad)" stroke-width="3" fill="rgba(255,255,255,0.1)"/>
-                <ellipse cx="40" cy="35" rx="18" ry="12" fill="white" opacity="0.9"/>
-                <circle cx="40" cy="35" r="6" fill="url(#logoGrad)"/>
-                <path d="M20 52 Q30 58 40 52 Q50 46 60 52" stroke="white" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8"/>
-                <path d="M25 58 Q35 64 45 58 Q55 52 65 58" stroke="white" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.5"/>
+                <circle cx="40" cy="40" r="38" stroke="url(#logoGrad)" stroke-width="3" fill="rgba(255,255,255,0.1)" />
+                <ellipse cx="40" cy="35" rx="18" ry="12" fill="white" opacity="0.9" />
+                <circle cx="40" cy="35" r="6" fill="url(#logoGrad)" />
+                <path d="M20 52 Q30 58 40 52 Q50 46 60 52" stroke="white" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8" />
+                <path d="M25 58 Q35 64 45 58 Q55 52 65 58" stroke="white" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.5" />
                 <defs>
                   <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#60a5fa"/>
-                    <stop offset="100%" stop-color="#a78bfa"/>
+                    <stop offset="0%" stop-color="#60a5fa" />
+                    <stop offset="100%" stop-color="#a78bfa" />
                   </linearGradient>
                 </defs>
               </svg>
@@ -41,8 +41,8 @@
             <div class="feature-item">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M3 3v18h18"/>
-                  <path d="M7 14l4-4 4 4 5-5"/>
+                  <path d="M3 3v18h18" />
+                  <path d="M7 14l4-4 4 4 5-5" />
                 </svg>
               </div>
               <span>情感-热度双维度分析</span>
@@ -50,9 +50,9 @@
             <div class="feature-item">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M12 1v4m0 14v4M1 12h4m14 0h4"/>
-                  <path d="M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83"/>
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 1v4m0 14v4M1 12h4m14 0h4" />
+                  <path d="M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83" />
                 </svg>
               </div>
               <span>实时舆情监控预警</span>
@@ -60,9 +60,9 @@
             <div class="feature-item">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="4" y="4" width="16" height="16" rx="2"/>
-                  <path d="M9 9h6v6H9z"/>
-                  <path d="M9 1v3m6-3v3M9 20v3m6-3v3M1 9h3m0 6H1m19-6h3m-3 6h3"/>
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                  <path d="M9 9h6v6H9z" />
+                  <path d="M9 1v3m6-3v3M9 20v3m6-3v3M1 9h3m0 6H1m19-6h3m-3 6h3" />
                 </svg>
               </div>
               <span>Spark 分布式处理</span>
@@ -70,9 +70,9 @@
             <div class="feature-item">
               <div class="feature-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                  <path d="M2 17l10 5 10-5"/>
-                  <path d="M2 12l10 5 10-5"/>
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
                 </svg>
               </div>
               <span>ChineseBERT 深度学习</span>
@@ -99,8 +99,8 @@
             ref="loginFormRef" 
             :model="loginForm" 
             :rules="loginRules" 
-            @submit.prevent="handleLogin"
             class="login-form"
+            @submit.prevent="handleLogin"
           >
             <el-form-item prop="username">
               <el-input 

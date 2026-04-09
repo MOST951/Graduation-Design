@@ -89,7 +89,7 @@
                         />
                         <span class="stat-value">{{ topic.heat }}%</span>
                       </div>
-                      <div class="mini-pie" :id="`mini-pie-${topic.id}`"></div>
+                      <div :id="`mini-pie-${topic.id}`" class="mini-pie"></div>
                     </div>
                   </div>
                 </el-scrollbar>

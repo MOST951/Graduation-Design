@@ -9,12 +9,12 @@ import os
 import sys
 import json
 from typing import Dict, List
-import logging
+from utils.logger import get_logger, log_api_call, log_sentiment_analysis
 
-# 添加路径
+# 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# 导入BERT模块
+# 
 try:
     from spark.chinese_bert_sentiment import (
         ChineseBertSentimentAnalyzer,
@@ -26,23 +26,23 @@ try:
     BERT_AVAILABLE = True
 except ImportError as e:
     BERT_AVAILABLE = False
-    logging.warning(f"BERT模块导入失败: {e}")
+    get_logger(__name__).warning(f"BERT module import failed: {e}")
 
-# 导入词典方法
+# 
 try:
     from spark.sentiment_analyzer import SentimentLexicon
     LEXICON_AVAILABLE = True
 except ImportError:
     LEXICON_AVAILABLE = False
 
-# 导入数据库服务
+# 
 try:
     from services.database_service import get_db_service
     DB_AVAILABLE = True
 except ImportError:
     DB_AVAILABLE = False
 
-# 导入流水线情感分析阶段
+# 
 try:
     from services.pipeline_service import get_pipeline_service
     PIPELINE_AVAILABLE = True
@@ -52,9 +52,8 @@ except ImportError:
 # 创建蓝图
 sentiment_bp = Blueprint('sentiment', __name__, url_prefix='/api/sentiment')
 
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# 
+logger = get_logger(__name__)
 
 # 全局分析器实例（延迟初始化）
 _bert_analyzer = None
@@ -865,12 +864,39 @@ def run_sentiment_on_db():
 # 健康检查
 @sentiment_bp.route('/health', methods=['GET'])
 def health_check():
-    """健康检查"""
+    """检查情感分析服务和模型状态"""
+    model_loaded = False
+    gpu_available = False
+    model_info = {}
+
+    try:
+        from services.model_singleton import is_bert_available, get_model_info
+        model_loaded = is_bert_available()
+        model_info = get_model_info()
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
+    try:
+        import torch
+        gpu_available = torch.cuda.is_available()
+    except ImportError:
+        pass
+
+    status = 'ok' if model_loaded else 'loading'
+
     return jsonify({
         'code': 200,
-        'message': 'Sentiment analysis service is running',
-        'bert_available': BERT_AVAILABLE,
-        'lexicon_available': LEXICON_AVAILABLE,
-        'db_available': DB_AVAILABLE,
-        'timestamp': datetime.now().isoformat(),
+        'message': 'success',
+        'data': {
+            'status': status,
+            'model_loaded': model_loaded,
+            'gpu_available': gpu_available,
+            'bert_available': BERT_AVAILABLE,
+            'lexicon_available': LEXICON_AVAILABLE,
+            'db_available': DB_AVAILABLE,
+            'model_info': model_info,
+            'timestamp': datetime.now().isoformat(),
+        },
     })

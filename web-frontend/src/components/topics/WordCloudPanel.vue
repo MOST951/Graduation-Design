@@ -1,7 +1,7 @@
 <template>
   <div class="word-cloud-panel">
     <!-- 配置面板 -->
-    <div class="config-panel" v-show="showConfig">
+    <div v-show="showConfig" class="config-panel">
       <div class="config-header">
         <span>词云配置</span>
         <el-button text size="small" @click="resetConfig">重置</el-button>
@@ -200,7 +200,7 @@
     </div>
 
     <!-- 相关微博弹窗 -->
-    <el-dialog v-model="relatedWeiboVisible" :title="`"${selectedWord}" 相关微博`" width="700px">
+    <el-dialog v-model="relatedWeiboVisible" :title="selectedWord + ' 相关微博'" width="700px">
       <el-table :data="relatedWeibos" max-height="400">
         <el-table-column prop="content" label="内容" min-width="300">
           <template #default="{ row }">

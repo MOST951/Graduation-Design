@@ -5,10 +5,10 @@
         v-for="(tag, index) in tags"
         :key="tag"
         closable
-        @close="removeTag(index)"
         class="tag-item"
         :type="getTagType(tag)"
         size="default"
+        @close="removeTag(index)"
       >
         {{ tag }}
       </el-tag>
@@ -18,12 +18,12 @@
       <el-input
         v-model="inputValue"
         :placeholder="placeholder"
-        @keyup.enter="addTag"
-        @blur="addTag"
         :disabled="disabled"
         clearable
         class="tag-input"
         :aria-label="placeholder"
+        @keyup.enter="addTag"
+        @blur="addTag"
       >
         <template #prefix>
           <el-icon><Plus /></el-icon>

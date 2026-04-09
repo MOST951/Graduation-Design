@@ -61,7 +61,10 @@ yarn-error.log*
 # ====== Node.js ======
 node_modules/
 .npm
+.npm-cache/
 .yarn-integrity
+eslint-output.txt
+eslint-report.json
 
 # ====== Maven/Java ======
 target/
@@ -111,6 +114,7 @@ models/*.bin
 models/*.pt
 models/*.onnx
 *.weights
+model_cache/
 backend-python/model_cache/
 
 # ====== Docker ======

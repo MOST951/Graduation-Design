@@ -542,7 +542,8 @@ class ChineseBertSentimentModel:
         logger.info(f"使用设备: {self.device}")
         
         # 加载分词器
-        self.tokenizer = BertTokenizer.from_pretrained(self.model_config.model_name)
+        cache_dir = os.environ.get("TRANSFORMERS_CACHE", "./model_cache")
+        self.tokenizer = BertTokenizer.from_pretrained(self.model_config.model_name, cache_dir=cache_dir)
         
         # 模型（延迟初始化）
         self.model = None

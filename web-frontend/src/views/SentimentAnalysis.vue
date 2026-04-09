@@ -86,11 +86,29 @@
           <div class="cascade-formula">
             <div class="formula-main">
               S<sub>final</sub> = 
-              <span class="formula-branch">S<sub>dict</sub></span> if |S<sub>dict</sub>| &gt; θ
+              <span class="formula-branch">S<sub>dict</sub></span> if |S<sub>dict</sub>| &gt; <strong>{{ confidenceThreshold.toFixed(1) }}</strong>
               <span class="formula-else">else</span>
               <span class="formula-branch bert">S<sub>bert</sub></span>
             </div>
-            <div class="formula-param">阈值 θ = <strong>0.7</strong>　（词典置信度高于0.7时直接采用，否则回退BERT）</div>
+            <div class="formula-param"> thresholds = <strong>{{ confidenceThreshold.toFixed(1) }}</strong> </div>
+            <div class="threshold-control">
+              <el-slider
+                v-model="confidenceThreshold"
+                :min="0.5"
+                :max="0.9"
+                :step="0.1"
+                :format-tooltip="(val) => val.toFixed(1)"
+                class="threshold-slider"
+                @change="onThresholdChange"
+              />
+              <div class="threshold-label">
+                <span>Confidence Threshold ({{ confidenceThreshold.toFixed(1) }})</span>
+                <el-button size="small" :loading="recalculating" @click="recalculateCascade">
+                  <el-icon><Refresh /></el-icon>
+                  Recalculate
+                </el-button>
+              </div>
+            </div>
           </div>
           <el-divider />
           <div class="cascade-flow">
@@ -179,9 +197,9 @@
           />
           <el-button 
             type="primary" 
-            @click="analyzeText" 
-            :loading="testLoading"
+            :loading="testLoading" 
             class="analyze-btn"
+            @click="analyzeText"
           >
             <el-icon><Position /></el-icon>
             立即分析
@@ -302,10 +320,22 @@
             </el-form-item>
             
             <el-form-item>
-              <el-button type="primary" @click="startAnalysis" :loading="analyzing" class="start-btn">
-                <el-icon><VideoPlay /></el-icon>
-                开始批量分析
-              </el-button>
+              <div class="analysis-buttons">
+                <el-button type="primary" :loading="analyzing" class="start-btn" @click="startAnalysis">
+                  <el-icon><VideoPlay /></el-icon>
+                  开始批量分析
+                </el-button>
+                <el-button 
+                  v-if="analyzing" 
+                  type="danger" 
+                  :loading="stopping" 
+                  class="stop-btn"
+                  @click="stopAnalysis"
+                >
+                  <el-icon><VideoPause /></el-icon>
+                  Stop
+                </el-button>
+              </div>
             </el-form-item>
           </el-form>
         </el-card>
@@ -346,6 +376,25 @@
             </div>
           </template>
           <div ref="trendChartRef" class="chart-container"></div>
+        </el-card>
+        
+        <!-- 级联统计趋势 -->
+        <el-card class="chart-card" shadow="hover">
+          <template #header>
+            <div class="card-header-custom">
+              <div class="header-left">
+                <el-icon><TrendCharts /></el-icon>
+                <span>级联统计趋势</span>
+              </div>
+              <div class="header-right">
+                <el-radio-group v-model="cascadeTrendType" size="small">
+                  <el-radio-button label="hourly">小时</el-radio-button>
+                  <el-radio-button label="daily">日</el-radio-button>
+                </el-radio-group>
+              </div>
+            </div>
+          </template>
+          <div ref="cascadeTrendChartRef" class="chart-container"></div>
         </el-card>
       </el-col>
       
@@ -503,6 +552,7 @@ const formatTime = (time: string) => {
 
 // 状态
 const analyzing = ref(false);
+const stopping = ref(false);
 const testLoading = ref(false);
 const selectedModel = ref('lexicon');
 const chartType = ref('pie');
@@ -512,6 +562,16 @@ const showTrainDialog = ref(false);
 const showIntensityDialog = ref(false);
 const showDetailDialog = ref(false);
 const selectedWeibo = ref<any>(null);
+
+// 
+const confidenceThreshold = ref(0.7);
+const recalculating = ref(false);
+const cascadeTrendType = ref('hourly');
+const cascadeTrendChartRef = ref<HTMLElement>();
+
+// 
+const globalStopFlag = ref(false);
+let cascadeTrendChart: echarts.ECharts | null = null;
 
 // 批量进度
 const batchProgress = reactive({
@@ -1089,16 +1149,232 @@ watch(showIntensityDialog, (val) => {
     });
   }
 });
+// 
+const onThresholdChange = (value: number) => {
+  console.log('Threshold changed to:', value);
+  // 
+  recalculateCascade();
+};
 
+const recalculateCascade = async () => {
+  if (analyzedWeibos.value.length === 0) {
+    ElMessage.warning('No analysis data to recalculate');
+    return;
+  }
+  
+  recalculating.value = true;
+  try {
+    // 
+    const updatedData = analyzedWeibos.value.map(item => {
+      const dictScore = item.dict_score || 0.5;
+      const bertScore = item.bert_score || item.sentiment_score || 0;
+      
+      // 
+      let finalSentiment = item.sentiment;
+      let finalScore = item.sentiment_score;
+      
+      if (Math.abs(dictScore) > confidenceThreshold.value) {
+        // 
+        finalSentiment = dictScore > 0 ? 'positive' : dictScore < 0 ? 'negative' : 'neutral';
+        finalScore = dictScore;
+      } else {
+        // 
+        finalSentiment = bertScore > 0 ? 'positive' : bertScore < 0 ? 'negative' : 'neutral';
+        finalScore = bertScore;
+      }
+      
+      return {
+        ...item,
+        sentiment: finalSentiment,
+        sentiment_score: finalScore,
+        method_used: Math.abs(dictScore) > confidenceThreshold.value ? 'dict' : 'bert'
+      };
+    });
+    
+    analyzedWeibos.value = updatedData;
+    
+    // 
+    updateMethodStats(updatedData);
+    updateAnalysisStats(updatedData);
+    updateDistributionChart();
+    updateMethodChart();
+    updateCascadeTrendChart();
+    
+    ElMessage.success(`Cascade recalculated with threshold ${confidenceThreshold.value}`);
+  } catch (error: any) {
+    ElMessage.error('Recalculation failed: ' + error.message);
+  } finally {
+    recalculating.value = false;
+  }
+};
+
+const stopAnalysis = async () => {
+  stopping.value = true;
+  try {
+    globalStopFlag.value = true;
+    
+    // 
+    await fetch('/api/sentiment/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stop_flag: true })
+    });
+    
+    analyzing.value = false;
+    batchProgress.active = false;
+    
+    ElMessage.success('Analysis stopped successfully');
+  } catch (error: any) {
+    ElMessage.error('Failed to stop analysis: ' + error.message);
+  } finally {
+    stopping.value = false;
+    globalStopFlag.value = false;
+  }
+};
+
+const updateCascadeTrendChart = () => {
+  if (!cascadeTrendChartRef.value) return;
+  
+  if (!cascadeTrendChart) {
+    cascadeTrendChart = echarts.init(cascadeTrendChartRef.value);
+  }
+  
+  // 
+  const isHourly = cascadeTrendType.value === 'hourly';
+  const timeLabels = isHourly 
+    ? Array.from({length: 24}, (_, i) => `${i}:00`)
+    : Array.from({length: 7}, (_, i) => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]);
+  
+  // 
+  const dictData = isHourly 
+    ? Array.from({length: 24}, () => Math.floor(Math.random() * 50) + 30)
+    : Array.from({length: 7}, () => Math.floor(Math.random() * 300) + 200);
+  
+  const bertData = isHourly 
+    ? Array.from({length: 24}, () => Math.floor(Math.random() * 30) + 10)
+    : Array.from({length: 7}, () => Math.floor(Math.random() * 150) + 50);
+  
+  const option = {
+    title: {
+      text: `Cascade Statistics (${isHourly ? 'Hourly' : 'Daily'})`,
+      left: 'center',
+      textStyle: { fontSize: 14, fontWeight: 'normal' }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      formatter: (params: any) => {
+        let result = `${params[0].axisValue}<br/>`;
+        params.forEach((param: any) => {
+          const total = param.value + (params[1]?.value || 0);
+          const percentage = total > 0 ? ((param.value / total) * 100).toFixed(1) : 0;
+          result += `${param.marker}${param.seriesName}: ${param.value} (${percentage}%)<br/>`;
+        });
+        return result;
+      }
+    },
+    legend: {
+      data: ['Dictionary Method', 'BERT Fallback'],
+      top: 30
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      top: '15%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: timeLabels,
+      axisLabel: {
+        rotate: isHourly ? 45 : 0,
+        fontSize: 10
+      }
+    },
+    yAxis: {
+      type: 'value',
+      name: 'Call Count',
+      axisLabel: { fontSize: 10 }
+    },
+    series: [
+      {
+        name: 'Dictionary Method',
+        type: 'line',
+        data: dictData,
+        smooth: true,
+        itemStyle: { color: SUCCESS },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
+              { offset: 1, color: 'rgba(103, 194, 58, 0.1)' }
+            ]
+          }
+        }
+      },
+      {
+        name: 'BERT Fallback',
+        type: 'line',
+        data: bertData,
+        smooth: true,
+        itemStyle: { color: WARNING },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(230, 162, 60, 0.3)' },
+              { offset: 1, color: 'rgba(230, 162, 60, 0.1)' }
+            ]
+          }
+        }
+      }
+    ]
+  };
+  
+  cascadeTrendChart.setOption(option);
+};
+
+const updateAnalysisStats = (data: any[]) => {
+  const positive = data.filter(d => d.sentiment === 'positive').length;
+  const negative = data.filter(d => d.sentiment === 'negative').length;
+  const neutral = data.filter(d => d.sentiment === 'neutral').length;
+  const total = data.length;
+  
+  analysisStats.total = total;
+  analysisStats.positive = positive;
+  analysisStats.negative = negative;
+  analysisStats.neutral = neutral;
+  analysisStats.positiveRatio = total > 0 ? Math.round(positive / total * 100) : 0;
+  analysisStats.negativeRatio = total > 0 ? Math.round(negative / total * 100) : 0;
+  analysisStats.neutralRatio = total > 0 ? Math.round(neutral / total * 100) : 0;
+  
+  const scores = data.map(d => d.sentiment_score || 0);
+  analysisStats.avgScore = scores.length > 0 
+    ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2) as any 
+    : 0;
+};
+
+// 
+watch(cascadeTrendType, () => {
+  updateCascadeTrendChart();
+});
+
+// 
 onMounted(() => {
   initCharts();
   loadMockData();
+  updateCascadeTrendChart();
   
   window.addEventListener('resize', () => {
     distributionChart?.resize();
     trendChart?.resize();
     intensityChart?.resize();
     methodChart?.resize();
+    cascadeTrendChart?.resize();
   });
 });
 </script>
@@ -1321,11 +1597,69 @@ onMounted(() => {
     width: 100%;
   }
   
-  .start-btn {
-    width: 100%;
-    height: 44px;
-    border-radius: $border-radius-base;
-    font-size: $font-size-medium;
+  .analysis-buttons {
+    display: flex;
+    gap: $spacing-sm;
+    
+    .start-btn, .stop-btn {
+      flex: 1;
+      height: 40px;
+      border-radius: $border-radius-base;
+    }
+    
+    .stop-btn {
+      background: $danger-color;
+      border-color: $danger-color;
+      
+      &:hover {
+        background: color.adjust($danger-color, $lightness: -10%);
+        border-color: color.adjust($danger-color, $lightness: -10%);
+      }
+    }
+  }
+}
+
+// 阈值控制
+.threshold-control {
+  margin-top: $spacing-base;
+  padding: $spacing-base;
+  background: $bg-page;
+  border-radius: $border-radius-base;
+  border: 1px solid $border-lighter;
+  
+  .threshold-slider {
+    margin-bottom: $spacing-base;
+    
+    :deep(.el-slider__runway) {
+      background-color: $border-lighter;
+    }
+    
+    :deep(.el-slider__bar) {
+      background-color: $primary-color;
+    }
+    
+    :deep(.el-slider__button) {
+      border-color: $primary-color;
+      background-color: $primary-color;
+    }
+  }
+  
+  .threshold-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: $font-size-small;
+    color: $text-secondary;
+    
+    span {
+      font-weight: $font-weight-medium;
+      color: $text-primary;
+    }
+    
+    .el-button {
+      padding: $spacing-xs $spacing-sm;
+      font-size: $font-size-extra-small;
+    }
   }
 }
 

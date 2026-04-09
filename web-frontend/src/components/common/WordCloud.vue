@@ -16,9 +16,9 @@
         <el-button
           text
           size="small"
-          @click="refreshCloud"
           :loading="isLoading"
           :aria-label="'Refresh word cloud'"
+          @click="refreshCloud"
         >
           <el-icon><Refresh /></el-icon>
         </el-button>
@@ -38,10 +38,10 @@
           class="word-item"
           :class="{ highlighted: word.highlighted }"
           :style="getWordStyle(word, index)"
+          :aria-label="`Word: ${word.text}, frequency: ${word.frequency}`"
           @click="handleWordClick(word)"
           @mouseenter="handleWordHover(word)"
           @mouseleave="handleWordLeave(word)"
-          :aria-label="`Word: ${word.text}, frequency: ${word.frequency}`"
         >
           {{ word.text }}
         </div>
@@ -57,7 +57,7 @@
           Top: <strong>{{ topCount }}</strong> displayed
         </span>
       </div>
-      <div class="selected-word" v-if="selectedWord">
+      <div v-if="selectedWord" class="selected-word">
         <span class="selected-label">Selected:</span>
         <el-tag type="primary" size="small">
           {{ selectedWord.text }} ({{ selectedWord.frequency }})

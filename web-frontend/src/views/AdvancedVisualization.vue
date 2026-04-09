@@ -23,7 +23,7 @@
           <el-option label="10秒" :value="10000" />
           <el-option label="30秒" :value="30000" />
         </el-select>
-        <el-button type="primary" :icon="Refresh" @click="refreshData" :loading="loading" style="margin-left: 10px">
+        <el-button type="primary" :icon="Refresh" :loading="loading" style="margin-left: 10px" @click="refreshData">
           刷新数据
         </el-button>
       </div>
@@ -33,7 +33,7 @@
     <div v-show="viewMode === 'dashboard'" class="dashboard-view">
       <el-row :gutter="16">
         <!-- 核心指标卡片 -->
-        <el-col :span="6" v-for="metric in coreMetrics" :key="metric.key">
+        <el-col v-for="metric in coreMetrics" :key="metric.key" :span="6">
           <el-card shadow="hover" class="metric-card" :class="metric.status">
             <div class="metric-content">
               <div class="metric-icon" :style="{ background: metric.color }">
@@ -51,7 +51,7 @@
                 </div>
               </div>
             </div>
-            <div class="metric-sparkline" ref="sparklineRefs"></div>
+            <div ref="sparklineRefs" class="metric-sparkline"></div>
           </el-card>
         </el-col>
       </el-row>
@@ -139,7 +139,7 @@
                 <el-input-number v-model="thresholds.dataVolume" :min="100" :max="100000" :step="100" />
                 <div class="threshold-hint">当单位时间数据量超过 {{ thresholds.dataVolume }} 条时触发预警</div>
               </el-form-item>
-              <el-button type="primary" @click="saveThresholds" style="width: 100%">保存设置</el-button>
+              <el-button type="primary" style="width: 100%" @click="saveThresholds">保存设置</el-button>
             </el-form>
           </el-card>
         </el-col>
@@ -229,7 +229,7 @@
                 <el-form-item label="启用">
                   <el-switch v-model="config.timeDecayEnabled" />
                 </el-form-item>
-                <el-form-item label="半衰期" v-if="config.timeDecayEnabled">
+                <el-form-item v-if="config.timeDecayEnabled" label="半衰期">
                   <el-select v-model="config.decayHalfLife" style="width: 100%">
                     <el-option label="6小时" :value="6" />
                     <el-option label="12小时" :value="12" />
@@ -241,7 +241,7 @@
               </el-form>
               
               <!-- 衰减曲线预览 -->
-              <div ref="decayCurveRef" style="height: 100px; margin-top: 10px" v-if="config.timeDecayEnabled"></div>
+              <div v-if="config.timeDecayEnabled" ref="decayCurveRef" style="height: 100px; margin-top: 10px"></div>
             </div>
 
             <el-divider />
@@ -258,10 +258,10 @@
               </el-form>
             </div>
 
-            <el-button type="primary" @click="applyConfig" style="width: 100%; margin-top: 16px">
+            <el-button type="primary" style="width: 100%; margin-top: 16px" @click="applyConfig">
               应用配置
             </el-button>
-            <el-button @click="resetConfig" style="width: 100%; margin-top: 8px">
+            <el-button style="width: 100%; margin-top: 8px" @click="resetConfig">
               重置默认
             </el-button>
           </el-card>
@@ -321,7 +321,7 @@
           </el-card>
 
           <!-- 选中项详情 -->
-          <el-card shadow="hover" style="margin-top: 16px" v-if="selectedPoint">
+          <el-card v-if="selectedPoint" shadow="hover" style="margin-top: 16px">
             <template #header>
               <span><el-icon><Document /></el-icon> 详情</span>
             </template>

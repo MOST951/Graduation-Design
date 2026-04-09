@@ -148,7 +148,7 @@
             </el-button>
           </div>
 
-          <el-table :data="previewData" style="width: 100%" @row-click="handleRowClick" highlight-current-row>
+          <el-table :data="previewData" style="width: 100%" highlight-current-row @row-click="handleRowClick">
             <el-table-column prop="content" label="内容" min-width="300">
               <template #default="{ row }">
                 <div class="content-cell">{{ truncateText(row.content, 80) }}</div>

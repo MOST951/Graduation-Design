@@ -25,7 +25,7 @@
           <template #header>
             <div class="card-header">
               <span>数据源</span>
-              <el-button size="small" :icon="Refresh" circle @click="refreshData" :loading="isLoading" />
+              <el-button size="small" :icon="Refresh" circle :loading="isLoading" @click="refreshData" />
             </div>
           </template>
           
@@ -63,7 +63,7 @@
                   </el-option>
                 </el-select>
                 <div class="task-actions">
-                  <el-button text size="small" :icon="Refresh" @click="loadCrawlTasks" :loading="loadingTasks">
+                  <el-button text size="small" :icon="Refresh" :loading="loadingTasks" @click="loadCrawlTasks">
                     刷新任务列表
                   </el-button>
                   <el-text v-if="crawlTasks.length > 0" type="info" size="small">
@@ -114,16 +114,30 @@
 
         <!-- 清洗规则 -->
         <el-card class="panel-card">
-          <template #header><span>数据清洗</span></template>
-          <el-checkbox-group v-model="cleanRules">
-            <div class="rule-item"><el-checkbox label="removeDuplicates">去重</el-checkbox><el-tag size="small" type="info">{{ duplicateCount }}条</el-tag></div>
-            <div class="rule-item"><el-checkbox label="removeSpecial">去特殊符号</el-checkbox></div>
-            <div class="rule-item"><el-checkbox label="removeStopwords">过滤停用词</el-checkbox></div>
-            <div class="rule-item"><el-checkbox label="removeEmoji">去除表情</el-checkbox></div>
-            <div class="rule-item"><el-checkbox label="removeUrl">去除URL</el-checkbox></div>
-            <div class="rule-item"><el-checkbox label="removeAt">去除@用户</el-checkbox></div>
-            <div class="rule-item"><el-checkbox label="removeHashtag">去除话题标签</el-checkbox></div>
-            <div class="rule-item"><el-checkbox label="normalizeWhitespace">规范空白字符</el-checkbox></div>
+          <template #header><span>Data Cleaning Rules</span></template>
+          <el-checkbox-group v-model="cleanRules" class="cleaning-rules">
+            <div class="rule-category">
+              <h4>Basic Cleaning</h4>
+              <div class="rule-item"><el-checkbox label="removeDuplicates">Deduplication</el-checkbox><el-tag size="small" type="info">{{ duplicateCount }} items</el-tag></div>
+              <div class="rule-item"><el-checkbox label="removeNoise">Remove noise</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="normalizeWhitespace">Normalize whitespace</el-checkbox></div>
+            </div>
+            
+            <div class="rule-category">
+              <h4>Text Processing</h4>
+              <div class="rule-item"><el-checkbox label="traditional2simplified">Traditional to Simplified</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="fullwidth2halfwidth">Full-width to Half-width</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="segmentation">Word Segmentation</el-checkbox></div>
+            </div>
+            
+            <div class="rule-category">
+              <h4>Content Filtering</h4>
+              <div class="rule-item"><el-checkbox label="removeStopwords">Filter stopwords</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="removeEmoji">Remove emojis</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="removeUrl">Remove URLs</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="removeAt">Remove @mentions</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="removeHashtag">Remove hashtags</el-checkbox></div>
+            </div>
           </el-checkbox-group>
         </el-card>
 
@@ -158,8 +172,11 @@
         <el-card class="panel-card">
           <template #header>
             <div class="card-header">
-              <span>停用词统计</span>
-              <el-tag size="small">{{ stopwordList.length }} 个</el-tag>
+              <span>Stop Word Statistics</span>
+              <div class="header-actions">
+                <el-tag size="small">{{ stopwordList.length }} items</el-tag>
+                <el-button size="small" :icon="Setting" @click="showStopWordDialog = true">Manage</el-button>
+              </div>
             </div>
           </template>
           <div class="stopword-cloud">
@@ -175,7 +192,7 @@
             </el-tag>
           </div>
           <div class="stopword-summary">
-            文本中停用词占比: <strong>{{ stopwordRatio }}%</strong>
+            Stop word ratio in text: <strong>{{ stopwordRatio }}%</strong>
           </div>
         </el-card>
 
@@ -221,7 +238,7 @@
         </el-card>
 
         <!-- 执行按钮 -->
-        <el-button type="primary" size="large" :loading="processing" @click="handleProcess" style="width: 100%; margin-top: 16px">
+        <el-button type="primary" size="large" :loading="processing" style="width: 100%; margin-top: 16px" @click="handleProcess">
           <el-icon><Operation /></el-icon>
           开始处理
         </el-button>
@@ -243,7 +260,7 @@
               </el-select>
               <span class="data-count">显示 {{ filteredData.length }} / {{ rawData.length }} 条</span>
             </div>
-            <el-table :data="paginatedData" v-loading="isLoading" max-height="500" stripe>
+            <el-table v-loading="isLoading" :data="paginatedData" max-height="500" stripe>
               <el-table-column type="index" width="50" />
               <el-table-column label="内容" min-width="300">
                 <template #default="{ row }">
@@ -462,6 +479,62 @@
         </el-tabs>
       </div>
     </div>
+
+    <!-- Stop Word Management Dialog -->
+    <el-dialog v-model="showStopWordDialog" title="Stop Word Management" width="600px">
+      <div class="stopword-management">
+        <div class="stopword-actions">
+          <el-input
+            v-model="newStopWord"
+            placeholder="Enter stop word to add"
+            style="width: 200px"
+            @keyup.enter="addStopWord"
+          >
+            <template #append>
+              <el-button @click="addStopWord">Add</el-button>
+            </template>
+          </el-input>
+          <el-upload
+            action="#"
+            :auto-upload="false"
+            :on-change="handleStopWordFileUpload"
+            :show-file-list="false"
+            accept=".txt"
+          >
+            <el-button :icon="Upload">Import File</el-button>
+          </el-upload>
+          <el-button :icon="Download" @click="exportStopWords">Export</el-button>
+        </div>
+        
+        <el-divider />
+        
+        <div class="stopword-list">
+          <el-table :data="stopWords" max-height="300" size="small">
+            <el-table-column label="Stop Word" prop="word" />
+            <el-table-column label="Frequency" prop="count" width="100" />
+            <el-table-column label="Actions" width="100">
+              <template #default="{ $index }">
+                <el-button size="small" type="danger" @click="removeStopWord($index)">Delete</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+      
+      <template #footer>
+        <el-button @click="showStopWordDialog = false">Cancel</el-button>
+        <el-button type="primary" @click="saveStopWords">Save Changes</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Diff Highlighting Toggle -->
+    <div v-if="activePreview === 'compare'" class="diff-controls">
+      <el-switch
+        v-model="showDiffHighlight"
+        active-text="Highlight Differences"
+        inactive-text="Normal View"
+      />
+    </div>
   </div>
 </template>
 
@@ -471,7 +544,7 @@ import * as echarts from 'echarts';
 import { SUCCESS, PRIMARY, WARNING, DANGER, INFO } from '@/styles/colors';
 import { ElMessage } from 'element-plus';
 import {
-  Upload, Operation, Refresh, Search, ChatDotRound, Star,
+  Upload, Operation, Refresh, Search, ChatDotRound, Star, Setting, Download,
 } from '@element-plus/icons-vue';
 import { 
   getHotSearch, 
@@ -557,6 +630,12 @@ const sentimentFilter = ref('');
 const currentPage = ref(1);
 const pageSize = ref(10);
 const compareIndex = ref(0);
+
+// 
+const showStopWordDialog = ref(false);
+const newStopWord = ref('');
+const stopWords = ref<{word: string, count: number}[]>([]);
+const showDiffHighlight = ref(false);
 
 // 图表引用
 const wordFreqChartRef = ref<HTMLElement>();
@@ -958,64 +1037,168 @@ const handleFileUpload = (file: any) => {
   reader.readAsText(file.raw);
 };
 
-const handleDictUpload = (file: any) => {
-  customDictName.value = file.name;
-  ElMessage.success(`词典 ${file.name} 已加载`);
+const handleDictUpload = async (file: any) => {
+  try {
+    const formData = new FormData();
+    formData.append('dictionary', file.raw);
+    
+    const response = await fetch('/api/preprocess/upload-dictionary', {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (response.ok) {
+      customDictName.value = file.name;
+      ElMessage.success(`Dictionary ${file.name} uploaded and loaded successfully`);
+    } else {
+      throw new Error('Upload failed');
+    }
+  } catch (error) {
+    ElMessage.error('Failed to upload dictionary');
+    console.error('Dictionary upload error:', error);
+  }
 };
 
-// ==================== 数据处理 ====================
+// ==================== 
 const handleProcess = async () => {
   if (rawData.value.length === 0) {
-    ElMessage.warning('请先加载数据');
+    ElMessage.warning('Please load data first');
     return;
   }
   
-  processing.value = true;
-  progress.value = 0;
-  const startTime = Date.now();
-  
-  // 模拟处理过程
-  const steps = ['数据加载', '去重处理', '文本清洗', '分词处理', '特征提取'];
-  
-  for (let i = 0; i < steps.length; i++) {
-    await new Promise(r => setTimeout(r, 500));
-    progress.value = (i + 1) * 20;
-    processSteps.value[i].time = `${(Date.now() - startTime)}ms`;
-    processSteps.value[i].count = Math.floor(Math.random() * 100);
+  try {
+    processing.value = true;
+    progress.value = 0;
+    const startTime = Date.now();
+    
+    // 
+    const response = await fetch('/api/preprocess/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        data: rawData.value,
+        rules: cleanRules.value,
+        config: normalizeConfig,
+        segment_tool: segmentTool.value,
+        custom_dict: customDictName.value,
+        stopwords: stopWords.value.map(sw => sw.word)
+      })
+    });
+    
+    const result = await response.json();
+    const jobId = result.job_id;
+    
+    // 
+    const pollProgress = async () => {
+      try {
+        const statusResponse = await fetch(`/api/preprocess/status/${jobId}`);
+        const status = await statusResponse.json();
+        
+        progress.value = status.progress || 0;
+        
+        if (status.status === 'completed') {
+          processedCount.value = status.processed_count || rawData.value.length;
+          processTime.value = Date.now() - startTime;
+          processing.value = false;
+          
+          // 
+          if (status.processed_data) {
+            // 
+            processSteps.value = status.steps || processSteps.value;
+          }
+          
+          ElMessage.success('Data processing completed');
+          initCharts();
+        } else if (status.status === 'failed') {
+          processing.value = false;
+          ElMessage.error(`Processing failed: ${status.error || 'Unknown error'}`);
+        } else {
+          // 
+          setTimeout(pollProgress, 1000);
+        }
+      } catch (error) {
+        console.error('Error polling progress:', error);
+        setTimeout(pollProgress, 2000);
+      }
+    };
+    
+    // 
+    pollProgress();
+    
+  } catch (error) {
+    processing.value = false;
+    ElMessage.error('Failed to start processing');
+    console.error('Processing error:', error);
   }
-  
-  processTime.value = Date.now() - startTime;
-  processedCount.value = rawData.value.length;
-  processing.value = false;
-  
-  ElMessage.success('数据处理完成');
-  initCharts();
 };
 
-const updateQualityMetrics = () => {
-  const total = rawData.value.length;
-  if (total === 0) return;
-  
-  // 计算重复数
-  const texts = rawData.value.map(d => d.text);
-  const duplicates = texts.length - new Set(texts).size;
-  
-  // 计算空值
-  const emptyCount = rawData.value.filter(d => !d.text || d.text.trim() === '').length;
-  
-  qualityIssues.value[0].count = duplicates;
-  qualityIssues.value[1].count = emptyCount;
-  qualityIssues.value[2].count = Math.floor(Math.random() * 10);
-  
-  // 更新质量分数
-  qualityScore.value = Math.max(0, Math.min(100, 100 - duplicates * 2 - emptyCount * 5));
-  completeness.value = Math.round((total - emptyCount) / total * 100);
+const addStopWord = () => {
+  if (newStopWord.value.trim() && !stopWords.value.find(sw => sw.word === newStopWord.value.trim())) {
+    stopWords.value.push({ word: newStopWord.value.trim(), count: 0 });
+    newStopWord.value = '';
+    ElMessage.success('Stop word added');
+  }
+};
+
+const removeStopWord = (index: number) => {
+  stopWords.value.splice(index, 1);
+  ElMessage.success('Stop word removed');
+};
+
+const handleStopWordFileUpload = (file: any) => {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const content = e.target?.result as string;
+      const words = content.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(word => ({ word, count: 0 }));
+      
+      // 
+      const existingWords = stopWords.value.map(sw => sw.word);
+      const newWords = words.filter(w => !existingWords.includes(w.word));
+      stopWords.value.push(...newWords);
+      
+      ElMessage.success(`Imported ${newWords.length} stop words`);
+    } catch (err) {
+      ElMessage.error('File parsing failed');
+    }
+  };
+  reader.readAsText(file.raw);
+};
+
+const exportStopWords = () => {
+  const content = stopWords.value.map(sw => sw.word).join('\n');
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'stopwords.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success('Stop words exported');
+};
+
+const saveStopWords = async () => {
+  try {
+    // 
+    await fetch('/api/preprocess/stopwords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stopwords: stopWords.value.map(sw => sw.word) })
+    });
+    ElMessage.success('Stop words saved successfully');
+    showStopWordDialog.value = false;
+  } catch (error) {
+    ElMessage.error('Failed to save stop words');
+  }
 };
 
 const applyRecommendation = (rec: any) => {
   if (rec.action && !cleanRules.value.includes(rec.action)) {
     cleanRules.value.push(rec.action);
-    ElMessage.success(`已启用: ${rec.title}`);
+    ElMessage.success(`: ${rec.title}`);
   }
 };
 
@@ -1342,5 +1525,54 @@ onMounted(async () => {
     color: $warning-color;
     font-size: $font-size-base;
   }
+}
+
+// 
+.cleaning-rules {
+  .rule-category {
+    margin-bottom: 16px;
+    
+    h4 {
+      margin: 0 0 8px 0;
+      font-size: $font-size-base;
+      color: $text-primary;
+      border-bottom: 1px solid $border-lighter;
+      padding-bottom: 4px;
+    }
+  }
+}
+
+// 
+.stopword-management {
+  .stopword-actions {
+    display: flex;
+    gap: $spacing-sm;
+    align-items: center;
+    margin-bottom: $spacing-base;
+  }
+  
+  .stopword-list {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+}
+
+// 
+.diff-controls {
+  position: sticky;
+  top: 0;
+  background: $bg-white;
+  padding: $spacing-base;
+  border-bottom: 1px solid $border-base;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+}
+
+// 
+.header-actions {
+  display: flex;
+  gap: $spacing-xs;
+  align-items: center;
 }
 </style>

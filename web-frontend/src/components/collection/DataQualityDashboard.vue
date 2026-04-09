@@ -12,10 +12,10 @@
         <h3>数据质量状态</h3>
         <span class="status-text">{{ statusText }}</span>
       </div>
-      <div class="status-time" v-if="summary.generated_at">
+      <div v-if="summary.generated_at" class="status-time">
         更新于: {{ formatTime(summary.generated_at) }}
       </div>
-      <el-button type="primary" :icon="Refresh" @click="loadData" :loading="loading" circle />
+      <el-button type="primary" :icon="Refresh" :loading="loading" circle @click="loadData" />
     </div>
 
     <!-- 核心指标卡片 -->
@@ -98,7 +98,7 @@
     </el-card>
 
     <!-- 字段完整率 -->
-    <el-card class="completeness-card" shadow="hover" v-if="latestReport">
+    <el-card v-if="latestReport" class="completeness-card" shadow="hover">
       <template #header>
         <span><el-icon><Document /></el-icon> 字段完整率</span>
       </template>

@@ -6,7 +6,7 @@
     </div>
     
     <div class="filter-content">
-      <el-radio-group v-model="selectedRange" @change="handleRangeChange" class="range-options">
+      <el-radio-group v-model="selectedRange" class="range-options" @change="handleRangeChange">
         <el-radio-button label="7d">Last 7 Days</el-radio-button>
         <el-radio-button label="30d">Last 30 Days</el-radio-button>
         <el-radio-button label="custom">Custom</el-radio-button>
@@ -20,8 +20,8 @@
           start-placeholder="Start date"
           end-placeholder="End date"
           :shortcuts="dateShortcuts"
-          @change="handleCustomRangeChange"
           :aria-label="'Custom date range selector'"
+          @change="handleCustomRangeChange"
         />
       </div>
       

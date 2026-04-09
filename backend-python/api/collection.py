@@ -10,33 +10,34 @@ import random
 import os
 import sys
 from typing import Dict, List, Optional
-import logging
 
-# 添加路径以导入爬虫模块
+# 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# 导入微博爬虫
+# 
 try:
     from crawler.weibo_crawler import WeiboCrawler
     CRAWLER_AVAILABLE = True
 except ImportError as e:
     CRAWLER_AVAILABLE = False
-    logging.warning(f"爬虫模块导入失败: {e}")
+    from utils.logger import get_logger
+    get_logger(__name__).warning(f"crawl module import failed: {e}")
 
-# 导入数据库服务
+# 
 try:
     from services.database_service import get_db_service
     DB_AVAILABLE = True
 except ImportError as e:
     DB_AVAILABLE = False
-    logging.warning(f"数据库服务导入失败: {e}")
+    from utils.logger import get_logger
+    get_logger(__name__).warning(f"database service import failed: {e}")
 
-# 创建蓝图
+# 
+from utils.logger import get_logger, log_operation, log_api_call, log_data_collection
+from services.task_queue import task_queue, QueueTask, TaskStatus
+from services.cookie_pool import cookie_pool
 collection_bp = Blueprint('collection', __name__, url_prefix='/api/collection')
-
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 全局任务存储（实际应用中应使用数据库）
 tasks: Dict[str, Dict] = {}
@@ -271,10 +272,12 @@ class CrawlerTask:
 # ==================== API路由 ====================
 
 @collection_bp.route('/tasks', methods=['GET'])
+@log_api_call('/api/collection/tasks', 'GET')
 def get_tasks():
     """获取任务列表"""
     try:
         task_list = list(tasks.values())
+        logger.info(f"Retrieved {len(task_list)} tasks")
         return jsonify({
             'code': 200,
             'message': 'success',
@@ -625,7 +628,102 @@ def get_statistics():
         }), 500
 
 
+@collection_bp.route('/update-cookie', methods=['POST'])
+@log_api_call('/api/collection/update-cookie', 'POST')
+def update_cookies():
+    """Update cookie pool"""
+    try:
+        data = request.json
+        cookies = data.get('cookies', [])
+        
+        if not cookies:
+            return jsonify({
+                'code': 400,
+                'message': 'No cookies provided',
+            }), 400
+        
+        # Update cookie pool
+        results = cookie_pool.update_cookies(cookies)
+        
+        logger.info(f"Cookie pool updated: {results}")
+        
+        return jsonify({
+            'code': 200,
+            'message': 'Cookie pool updated successfully',
+            'data': results,
+        })
+    except Exception as e:
+        logger.error(f'Update cookies failed: {e}', exc_info=True)
+        return jsonify({
+            'code': 500,
+            'message': str(e),
+        }), 500
+
+
+@collection_bp.route('/cookie-stats', methods=['GET'])
+@log_api_call('/api/collection/cookie-stats', 'GET')
+def get_cookie_stats():
+    """Get cookie pool statistics"""
+    try:
+        stats = cookie_pool.get_stats()
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': stats,
+        })
+    except Exception as e:
+        logger.error(f'Get cookie stats failed: {e}', exc_info=True)
+        return jsonify({
+            'code': 500,
+            'message': str(e),
+        }), 500
+
+
 # 健康检查
+@collection_bp.route('/status', methods=['GET'])
+def get_collection_status():
+    """获取当前采集任务状态"""
+    try:
+        with task_lock:
+            running_tasks = [
+                {
+                    'task_id': tid,
+                    'status': t.get('status', 'unknown'),
+                    'keyword': t.get('config', {}).get('keyword', ''),
+                    'progress': t.get('progress', 0),
+                }
+                for tid, t in tasks.items()
+                if isinstance(t, dict) and t.get('status') == 'running'
+            ]
+            # Also check CrawlerTask instances stored as objects
+            for tid, t in tasks.items():
+                if isinstance(t, CrawlerTask) and t.status == 'running':
+                    running_tasks.append({
+                        'task_id': tid,
+                        'status': 'running',
+                        'keyword': t.config.get('keyword', ''),
+                        'progress': t.progress,
+                    })
+
+        status = 'running' if running_tasks else 'idle'
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'status': status,
+                'active_tasks': running_tasks,
+                'active_count': len(running_tasks),
+            },
+        })
+    except Exception as e:
+        logger.error(f"collection/status 异常: {e}", exc_info=True)
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {'status': 'idle', 'active_tasks': [], 'active_count': 0},
+        })
+
+
 @collection_bp.route('/health', methods=['GET'])
 def health_check():
     """健康检查"""

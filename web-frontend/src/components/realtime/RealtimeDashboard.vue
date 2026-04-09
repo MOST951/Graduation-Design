@@ -173,7 +173,7 @@
         </div>
       </template>
 
-      <div class="weibo-stream" ref="streamRef">
+      <div ref="streamRef" class="weibo-stream">
         <transition-group name="weibo-list">
           <div
             v-for="weibo in filteredWeibos"

@@ -11,6 +11,8 @@ import sys
 import json
 import logging
 import requests
+import pymysql
+from config import config
 
 # 添加路径
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -86,103 +88,168 @@ def _fetch_real_data():
 
 @dashboard_bp.route('/overview', methods=['GET'])
 def get_overview():
-    """获取概览数据 - 基于真实微博数据"""
-    cache = _fetch_real_data()
-    
-    hot_search = cache.get('hot_search', [])
-    weibo_data = cache.get('weibo_data', [])
-    
-    # 计算真实统计数据
-    total_heat = sum(item.get('num', 0) for item in hot_search)
-    active_topics = len(hot_search)
-    
-    # 简单情感分析（基于关键词）
-    positive_keywords = ['好', '赞', '棒', '喜欢', '开心', '成功', '突破', '创新']
-    negative_keywords = ['差', '坏', '失败', '问题', '危机', '事故', '死亡', '禁止']
-    
-    positive_count = 0
-    negative_count = 0
-    for item in hot_search:
-        word = item.get('word', '')
-        if any(kw in word for kw in positive_keywords):
-            positive_count += 1
-        elif any(kw in word for kw in negative_keywords):
-            negative_count += 1
-    
-    total = len(hot_search) if hot_search else 1
-    positive_rate = round((positive_count / total) * 100, 1) if total > 0 else 45.0
-    negative_rate = round((negative_count / total) * 100, 1) if total > 0 else 20.0
-    
+    """获取概览数据 - 基于数据库统计"""
+    data = {
+        'total_weibos': 0,
+        'today_weibos': 0,
+        'total_tasks': 0,
+        'running_tasks': 0,
+    }
+    source = 'database'
+
+    connection = None
+    try:
+        connection = pymysql.connect(
+            host=config.database.host,
+            port=config.database.port,
+            user=config.database.username,
+            password=config.database.password,
+            database=config.database.database,
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor,
+        )
+        with connection.cursor() as cursor:
+            # 总微博数
+            try:
+                cursor.execute("SELECT COUNT(*) AS cnt FROM weibo_core_data")
+                row = cursor.fetchone()
+                data['total_weibos'] = row['cnt'] if row else 0
+            except Exception:
+                pass
+
+            # 今日新增微博（created_at >= 今天零点）
+            try:
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM weibo_core_data "
+                    "WHERE created_at >= CURDATE()"
+                )
+                row = cursor.fetchone()
+                data['today_weibos'] = row['cnt'] if row else 0
+            except Exception:
+                pass
+
+            # 总任务数
+            try:
+                cursor.execute("SELECT COUNT(*) AS cnt FROM collection_task")
+                row = cursor.fetchone()
+                data['total_tasks'] = row['cnt'] if row else 0
+            except Exception:
+                pass
+
+            # 正在运行的任务数
+            try:
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM collection_task "
+                    "WHERE status = 'running'"
+                )
+                row = cursor.fetchone()
+                data['running_tasks'] = row['cnt'] if row else 0
+            except Exception:
+                pass
+
+    except Exception as e:
+        logger.error(f"dashboard/overview 查询异常: {e}", exc_info=True)
+        source = 'error'
+    finally:
+        if connection:
+            connection.close()
+
     return jsonify({
         'code': 200,
         'message': 'success',
-        'data': {
-            'totalData': total_heat if total_heat > 0 else 2543128,
-            'todayData': len(weibo_data) * 1000 if weibo_data else 8500,
-            'positiveRate': positive_rate if positive_rate > 0 else 45.5,
-            'negativeRate': negative_rate if negative_rate > 0 else 18.3,
-            'activeTopics': active_topics if active_topics > 0 else 50,
-            'alertCount': negative_count if negative_count > 0 else 3,
-        },
-        'source': 'weibo_realtime' if hot_search else 'simulated'
+        'data': data,
+        'source': source,
     })
 
 @dashboard_bp.route('/sentiment-distribution', methods=['GET'])
 def get_sentiment_distribution():
-    """获取情感分布 - 基于真实微博数据"""
+    """获取情感分布 - 基于数据库 sentiment_analysis_results 表"""
     period = request.args.get('period', 'today')
-    cache = _fetch_real_data()
-    
-    hot_search = cache.get('hot_search', [])
-    weibo_data = cache.get('weibo_data', [])
-    
-    # 基于热搜和微博内容进行情感分析
-    positive_keywords = ['好', '赞', '棒', '喜欢', '开心', '成功', '突破', '创新', '美', '帅', '甜']
-    negative_keywords = ['差', '坏', '失败', '问题', '危机', '事故', '死亡', '禁止', '曝光', '罪犯']
-    
-    positive_count = 0
-    negative_count = 0
-    neutral_count = 0
-    
-    # 分析热搜
-    for item in hot_search:
-        word = item.get('word', '')
-        if any(kw in word for kw in positive_keywords):
-            positive_count += 1
-        elif any(kw in word for kw in negative_keywords):
-            negative_count += 1
-        else:
-            neutral_count += 1
-    
-    # 分析微博内容
-    for weibo in weibo_data:
-        text = weibo.get('text', '')
-        if any(kw in text for kw in positive_keywords):
-            positive_count += 1
-        elif any(kw in text for kw in negative_keywords):
-            negative_count += 1
-        else:
-            neutral_count += 1
-    
-    total = positive_count + negative_count + neutral_count
-    if total > 0:
-        positive = round((positive_count / total) * 100)
-        negative = round((negative_count / total) * 100)
-        neutral = 100 - positive - negative
-    else:
-        positive, neutral, negative = 45, 35, 20
-    
-    return jsonify({
-        'code': 200,
-        'message': 'success',
-        'data': {
-            'positive': positive,
-            'neutral': neutral,
-            'negative': negative,
-            'period': period,
-        },
-        'source': 'weibo_realtime' if hot_search else 'simulated'
-    })
+    empty_data = {
+        'positive': 0, 'neutral': 0, 'negative': 0,
+        'period': period, 'total_records': 0, 'raw_counts': {'positive': 0, 'neutral': 0, 'negative': 0}
+    }
+
+    # 构造时间过滤条件
+    time_filter = ""
+    if period == 'today':
+        time_filter = "WHERE DATE(analysis_time) = CURDATE()"
+    elif period == 'week':
+        time_filter = "WHERE analysis_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
+    elif period == 'month':
+        time_filter = "WHERE analysis_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
+    # else: 全部数据，无过滤
+
+    connection = None
+    try:
+        connection = pymysql.connect(
+            host=config.database.host,
+            port=config.database.port,
+            user=config.database.username,
+            password=config.database.password,
+            database=config.database.database,
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
+        )
+
+        with connection.cursor() as cursor:
+            sql = f"""
+                SELECT sentiment_class, COUNT(*) AS count
+                FROM sentiment_analysis_results
+                {time_filter}
+                GROUP BY sentiment_class
+            """
+            cursor.execute(sql)
+            results = cursor.fetchall()
+
+            # 表为空时返回全零
+            if not results:
+                return jsonify({
+                    'code': 200, 'message': 'success',
+                    'data': empty_data, 'source': 'database(sentiment_analysis_results.sentiment_class)'
+                })
+
+            # 汇总计数
+            sentiment_counts = {'positive': 0, 'neutral': 0, 'negative': 0}
+            total_count = 0
+            for row in results:
+                label = (row.get('sentiment_class') or 'neutral').lower()
+                cnt = row.get('count', 0)
+                if label in sentiment_counts:
+                    sentiment_counts[label] = cnt
+                    total_count += cnt
+
+            # 计算百分比
+            if total_count > 0:
+                positive_pct = round(sentiment_counts['positive'] / total_count * 100)
+                neutral_pct  = round(sentiment_counts['neutral']  / total_count * 100)
+                negative_pct = round(sentiment_counts['negative'] / total_count * 100)
+            else:
+                positive_pct, neutral_pct, negative_pct = 0, 0, 0
+
+            return jsonify({
+                'code': 200,
+                'message': 'success',
+                'data': {
+                    'positive': positive_pct,
+                    'neutral': neutral_pct,
+                    'negative': negative_pct,
+                    'period': period,
+                    'total_records': total_count,
+                    'raw_counts': sentiment_counts
+                },
+                'source': 'database(sentiment_analysis_results.sentiment_class)'
+            })
+
+    except Exception as e:
+        logger.error(f"sentiment-distribution 查询异常: {e}", exc_info=True)
+        return jsonify({
+            'code': 500, 'message': f'database error: {e}',
+            'data': empty_data, 'source': 'error'
+        })
+    finally:
+        if connection:
+            connection.close()
 
 @dashboard_bp.route('/trend', methods=['GET'])
 def get_trend():

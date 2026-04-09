@@ -3,119 +3,142 @@
  * 论文8个核心功能模块的路由定义
  */
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
+import { defineAsyncComponent } from 'vue';
 import { useAuthStore } from '@/store/auth';
 
+// ====================  ====================
+
+// 
+const Login = defineAsyncComponent(() => import('@/views/Login.vue'));
+const Register = defineAsyncComponent(() => import('@/views/Register.vue'));
+const ForgotPassword = defineAsyncComponent(() => import('@/views/ForgotPassword.vue'));
+const MainLayout = defineAsyncComponent(() => import('@/layouts/MainLayout.vue'));
+
+// 
+const Dashboard = defineAsyncComponent(() => import('@/views/Dashboard.vue'));
+const DataCollection = defineAsyncComponent(() => import('@/views/DataCollection.vue'));
+const DataPreprocessEnhanced = defineAsyncComponent(() => import('@/views/DataPreprocessEnhanced.vue'));
+const SentimentAnalysis = defineAsyncComponent(() => import('@/views/SentimentAnalysis.vue'));
+const DualDimensionAnalysis = defineAsyncComponent(() => import('@/views/DualDimensionAnalysis.vue'));
+const RealTimeMonitor = defineAsyncComponent(() => import('@/views/RealTimeMonitor.vue'));
+const PipelineManager = defineAsyncComponent(() => import('@/views/PipelineManager.vue'));
+const VisualizationDashboard = defineAsyncComponent(() => import('@/views/VisualizationDashboard.vue'));
+const SystemAdmin = defineAsyncComponent(() => import('@/views/SystemAdmin.vue'));
+
+// 
+const NotFound = defineAsyncComponent(() => import('@/pages/NotFound.vue'));
+
 const routes: RouteRecordRaw[] = [
-  // 登录页
+  // 
   {
     path: '/login',
     name: 'Login',
-    component: () => import('@/views/Login.vue'),
-    meta: { title: '登录', requiresAuth: false }
+    component: Login,
+    meta: { title: 'login', requiresAuth: false }
   },
   
-  // 注册页
+  // 
   {
     path: '/register',
     name: 'Register',
-    component: () => import('@/views/Register.vue'),
-    meta: { title: '注册', requiresAuth: false }
+    component: Register,
+    meta: { title: 'register', requiresAuth: false }
   },
   
-  // 忘记密码页
+  // 
   {
     path: '/forgot-password',
     name: 'ForgotPassword',
-    component: () => import('@/views/ForgotPassword.vue'),
-    meta: { title: '找回密码', requiresAuth: false }
+    component: ForgotPassword,
+    meta: { title: 'forgot password', requiresAuth: false }
   },
   
-  // 主应用
+  // 
   {
     path: '/',
-    component: () => import('@/layouts/MainLayout.vue'),
+    component: MainLayout,
     redirect: '/dashboard',
     children: [
-      // 仪表板（首页）
+      // 
       {
         path: 'dashboard',
         name: 'Dashboard',
-        component: () => import('@/views/Dashboard.vue'),
-        meta: { title: '仪表板', icon: 'Odometer' }
+        component: Dashboard,
+        meta: { title: 'dashboard', icon: 'Odometer' }
       },
       
-      // 1. 数据采集模块
+      // 1. 
       {
         path: 'collection',
         name: 'Collection',
-        component: () => import('@/views/DataCollection.vue'),
-        meta: { title: '数据采集', icon: 'Download' }
+        component: DataCollection,
+        meta: { title: 'data collection', icon: 'Download' }
       },
       
-      // 2. 数据预处理模块
+      // 2. 
       {
         path: 'preprocess',
         name: 'DataPreprocess',
-        component: () => import('@/views/DataPreprocessEnhanced.vue'),
-        meta: { title: '数据预处理', icon: 'Operation' }
+        component: DataPreprocessEnhanced,
+        meta: { title: 'data preprocessing', icon: 'Operation' }
       },
       
-      // 3. 情感分析模块
+      // 3. 
       {
         path: 'sentiment',
         name: 'SentimentAnalysis',
-        component: () => import('@/views/SentimentAnalysis.vue'),
-        meta: { title: '情感分析', icon: 'DataAnalysis' }
+        component: SentimentAnalysis,
+        meta: { title: 'sentiment analysis', icon: 'DataAnalysis' }
       },
       
-      // 4. 双维度排序模块（创新点）
+      // 4. 
       {
         path: 'dual-dimension',
         name: 'DualDimensionAnalysis',
-        component: () => import('@/views/DualDimensionAnalysis.vue'),
-        meta: { title: '双维度排序', icon: 'Histogram' }
+        component: DualDimensionAnalysis,
+        meta: { title: 'dual dimension ranking', icon: 'Histogram' }
       },
       
-      // 5. 实时舆情监控模块
+      // 5. 
       {
         path: 'realtime',
         name: 'RealTimeMonitor',
-        component: () => import('@/views/RealTimeMonitor.vue'),
-        meta: { title: '实时舆情监控', icon: 'Monitor' }
+        component: RealTimeMonitor,
+        meta: { title: 'realtime monitoring', icon: 'Monitor' }
       },
       
-      // 6. 数据流水线管理模块
+      // 6. 
       {
         path: 'pipeline',
         name: 'PipelineManager',
-        component: () => import('@/views/PipelineManager.vue'),
-        meta: { title: '流水线管理', icon: 'Connection' }
+        component: PipelineManager,
+        meta: { title: 'pipeline management', icon: 'Connection' }
       },
       
-      // 7. 可视化展示模块
+      // 7. 
       {
         path: 'visualization',
         name: 'Visualization',
-        component: () => import('@/views/VisualizationDashboard.vue'),
-        meta: { title: '可视化展示', icon: 'DataLine' }
+        component: VisualizationDashboard,
+        meta: { title: 'visualization dashboard', icon: 'DataLine' }
       },
       
-      // 8. 系统管理模块
+      // 8. 
       {
         path: 'admin',
         name: 'SystemAdmin',
-        component: () => import('@/views/SystemAdmin.vue'),
-        meta: { title: '系统管理', icon: 'Setting', requiresAdmin: true }
+        component: SystemAdmin,
+        meta: { title: 'system management', icon: 'Setting', requiresAdmin: true }
       },
     ],
   },
   
-  // 404页面
+  // 404
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
-    component: () => import('@/pages/NotFound.vue'),
-    meta: { title: '页面不存在' }
+    component: NotFound,
+    meta: { title: 'page not found' }
   }
 ];
 

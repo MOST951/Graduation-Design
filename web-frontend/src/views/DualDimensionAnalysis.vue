@@ -96,9 +96,13 @@
             <el-form-item label="启用衰减">
               <el-switch v-model="config.time_decay_enabled" />
             </el-form-item>
-            <el-form-item label="半衰期 H" v-if="config.time_decay_enabled">
-              <el-input-number v-model="config.decay_half_life_hours" :min="1" :max="168" />
-              <span style="margin-left:6px;color:#86909C;font-size:12px">小时</span>
+            <el-form-item label="H" v-if="config.time_decay_enabled">
+              <el-select v-model="config.decay_half_life_hours" @change="onHalfLifeChange" style="width: 100%">
+                <el-option label="6h" :value="6" />
+                <el-option label="12h" :value="12" />
+                <el-option label="24h" :value="24" />
+                <el-option label="48h" :value="48" />
+              </el-select>
             </el-form-item>
             <div v-if="config.time_decay_enabled" class="decay-preview">
               <div class="decay-label">衰减预览 (γ值)</div>
@@ -241,12 +245,39 @@
           </el-descriptions-item>
         </el-descriptions>
         
-        <el-divider>微博内容</el-divider>
+        <el-divider> </el-divider>
         <div class="weibo-text">{{ selectedItem.text }}</div>
+        
+        <el-divider> </el-divider>
+        <div style="text-align: center;">
+          <el-button type="primary" @click="showHistoricalRanking" :icon="TrendCharts">
+             7 
+          </el-button>
+        </div>
       </div>
     </el-dialog>
     
-    <!-- 配置面板抽屉 -->
+    <!--  -->
+    <el-dialog v-model="showHistoricalDialog" :title="`  - ${selectedItem?.text?.slice(0, 30)}...`" width="800px">
+      <div v-if="selectedItem" class="historical-content">
+        <div ref="historicalChartRef" style="height: 400px;"></div>
+        <div class="historical-stats">
+          <el-row :gutter="16">
+            <el-col :span="8">
+              <el-statistic title=" " :value="historicalStats.bestRank" />
+            </el-col>
+            <el-col :span="8">
+              <el-statistic title=" " :value="historicalStats.worstRank" />
+            </el-col>
+            <el-col :span="8">
+              <el-statistic title=" " :value="historicalStats.avgRank" :precision="1" />
+            </el-col>
+          </el-row>
+        </div>
+      </div>
+    </el-dialog>
+    
+    <!--  -->配置面板抽屉 -->
     <el-drawer v-model="showConfigPanel" title="详细配置" size="400px">
       <el-form label-position="top">
         <el-form-item label="配置名称">
@@ -291,7 +322,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import * as echarts from 'echarts';
-import { DataAnalysis, Setting, Download } from '@element-plus/icons-vue';
+import { DataAnalysis, Setting, Download, TrendCharts } from '@element-plus/icons-vue';
 import { SUCCESS, PRIMARY, DANGER, INFO, WARNING } from '@/styles/colors';
 
 import { 
@@ -300,19 +331,29 @@ import {
   type HotSearchItem 
 } from '@/api/weibo';
 
-// 状态
+// 
 const analyzing = ref(false);
 const showConfigPanel = ref(false);
 const showDetailDialog = ref(false);
+const showHistoricalDialog = ref(false);
 const selectedConfig = ref('default');
 const chartMode = ref('scatter');
 const rankFilter = ref('all');
 const configName = ref('');
 const selectedItem = ref<any>(null);
 
-// 图表引用
+// 
 const scatterChartRef = ref<HTMLElement>();
+const historicalChartRef = ref<HTMLElement>();
 let scatterChart: echarts.ECharts | null = null;
+let historicalChart: echarts.ECharts | null = null;
+
+// 
+const historicalStats = ref({
+  bestRank: 0,
+  worstRank: 0,
+  avgRank: 0
+});
 
 // 配置 (论文 ω₁=0.4, ω₂=0.4, ω₃=0.2)
 const config = reactive({
@@ -375,36 +416,50 @@ const weightSum = computed(() => {
 
 const onTriWeightChange = (changed: string) => {
   const total = 1;
+  const currentSum = config.sentiment_weight + config.heat_weight + config.timeliness_weight;
+  
+  if (currentSum === total) return; // Already balanced
+  
   if (changed === 'sentiment') {
     const remaining = Math.max(0, total - config.sentiment_weight);
-    const ratio = config.heat_weight + config.timeliness_weight;
-    if (ratio > 0) {
-      config.heat_weight = Number((remaining * (config.heat_weight / ratio)).toFixed(2));
-      config.timeliness_weight = Number((remaining - config.heat_weight).toFixed(2));
+    const otherSum = config.heat_weight + config.timeliness_weight;
+    if (otherSum > 0) {
+      const scale = remaining / otherSum;
+      config.heat_weight = Number((config.heat_weight * scale).toFixed(2));
+      config.timeliness_weight = Number((config.timeliness_weight * scale).toFixed(2));
     } else {
       config.heat_weight = Number((remaining / 2).toFixed(2));
       config.timeliness_weight = Number((remaining / 2).toFixed(2));
     }
   } else if (changed === 'heat') {
     const remaining = Math.max(0, total - config.heat_weight);
-    const ratio = config.sentiment_weight + config.timeliness_weight;
-    if (ratio > 0) {
-      config.sentiment_weight = Number((remaining * (config.sentiment_weight / ratio)).toFixed(2));
-      config.timeliness_weight = Number((remaining - config.sentiment_weight).toFixed(2));
+    const otherSum = config.sentiment_weight + config.timeliness_weight;
+    if (otherSum > 0) {
+      const scale = remaining / otherSum;
+      config.sentiment_weight = Number((config.sentiment_weight * scale).toFixed(2));
+      config.timeliness_weight = Number((config.timeliness_weight * scale).toFixed(2));
     } else {
       config.sentiment_weight = Number((remaining / 2).toFixed(2));
       config.timeliness_weight = Number((remaining / 2).toFixed(2));
     }
-  } else {
+  } else if (changed === 'timeliness') {
     const remaining = Math.max(0, total - config.timeliness_weight);
-    const ratio = config.sentiment_weight + config.heat_weight;
-    if (ratio > 0) {
-      config.sentiment_weight = Number((remaining * (config.sentiment_weight / ratio)).toFixed(2));
-      config.heat_weight = Number((remaining - config.sentiment_weight).toFixed(2));
+    const otherSum = config.sentiment_weight + config.heat_weight;
+    if (otherSum > 0) {
+      const scale = remaining / otherSum;
+      config.sentiment_weight = Number((config.sentiment_weight * scale).toFixed(2));
+      config.heat_weight = Number((config.heat_weight * scale).toFixed(2));
     } else {
       config.sentiment_weight = Number((remaining / 2).toFixed(2));
       config.heat_weight = Number((remaining / 2).toFixed(2));
     }
+  }
+  
+  // Ensure sum equals exactly 1 (handle floating point precision)
+  const finalSum = config.sentiment_weight + config.heat_weight + config.timeliness_weight;
+  if (Math.abs(finalSum - total) > 0.001) {
+    const diff = total - finalSum;
+    config.timeliness_weight = Number((config.timeliness_weight + diff).toFixed(2));
   }
 };
 
@@ -831,21 +886,161 @@ const updateHeatmapChart = () => {
   });
 };
 
-// 初始化图表
-const initChart = () => {
-  if (scatterChartRef.value) {
-    scatterChart = echarts.init(scatterChartRef.value);
-    
-    scatterChart.on('click', (params: any) => {
-      if (params.data) {
-        const id = params.data[4];
-        const item = rankList.value.find(r => r.id === id);
-        if (item) {
-          selectItem(item);
+// 
+const onHalfLifeChange = (value: number) => {
+  // 
+  recalculateTimeDecay();
+  ElMessage.info(`  H = ${value}h`);
+};
+
+// 
+const recalculateTimeDecay = () => {
+  if (!config.time_decay_enabled || rankList.value.length === 0) return;
+  
+  rankList.value.forEach(item => {
+    if (item.heat) {
+      const now = new Date().getTime();
+      const createdAt = new Date(item.created_at).getTime();
+      const deltaHours = (now - createdAt) / (1000 * 60 * 60);
+      
+      // 
+      item.heat.time_decay = Math.pow(2, -deltaHours / config.decay_half_life_hours);
+      
+      // 
+      const sentimentNormalized = (Math.abs(parseFloat(item.sentiment?.score || 0)) + 1) / 2;
+      const heatNormalized = parseFloat(item.heat?.score || 0);
+      const timeDecay = item.heat.time_decay;
+      
+      item.dual_score = (
+        config.sentiment_weight * sentimentNormalized +
+        config.heat_weight * heatNormalized +
+        config.timeliness_weight * timeDecay
+      ).toFixed(4);
+    }
+  });
+  
+  // 
+  rankList.value.sort((a, b) => parseFloat(b.dual_score) - parseFloat(a.dual_score));
+  rankList.value.forEach((item, index) => {
+    item.rank = index + 1;
+  });
+  
+  // 
+  calculateQuadrantStats();
+  updateScatterChart();
+};
+
+// 
+const showHistoricalRanking = () => {
+  if (!selectedItem.value) return;
+  
+  showHistoricalDialog.value = true;
+  
+  // 
+  setTimeout(() => {
+    updateHistoricalChart();
+  }, 100);
+};
+
+// 
+const updateHistoricalChart = () => {
+  if (!historicalChartRef.value || !selectedItem.value) return;
+  
+  if (!historicalChart) {
+    historicalChart = echarts.init(historicalChartRef.value);
+  }
+  
+  // 
+  const historicalData = generateHistoricalData(selectedItem.value);
+  
+  // 
+  historicalStats.value = {
+    bestRank: Math.min(...historicalData.map(d => d.rank)),
+    worstRank: Math.max(...historicalData.map(d => d.rank)),
+    avgRank: historicalData.reduce((sum, d) => sum + d.rank, 0) / historicalData.length
+  };
+  
+  // 
+  const option = {
+    title: {
+      text: ' 7 ',
+      left: 'center'
+    },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any) => {
+        const data = params[0];
+        return `
+          <div style="padding: 8px">
+            <div> : ${data.data[0]}</div>
+            <div> : ${data.data[1]}</div>
+            <div> : ${data.data[2]}</div>
+          </div>
+        `;
+      }
+    },
+    grid: {
+      left: '10%',
+      right: '10%',
+      top: '15%',
+      bottom: '15%'
+    },
+    xAxis: {
+      type: 'category',
+      data: historicalData.map(d => d.date),
+      axisLabel: {
+        rotate: 45
+      }
+    },
+    yAxis: {
+      type: 'value',
+      name: ' ',
+      inverse: true, // 
+      min: 1,
+      max: Math.max(...historicalData.map(d => d.rank)) + 5
+    },
+    series: [{
+      name: ' ',
+      type: 'line',
+      data: historicalData.map(d => d.rank),
+      smooth: true,
+      lineStyle: {
+        width: 3,
+        color: '#0ea5e9'
+      },
+      itemStyle: {
+        color: '#0ea5e9',
+        borderWidth: 2,
+        borderColor: '#fff'
+      },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 0,
+          y2: 1,
+          colorStops: [{
+            offset: 0, color: 'rgba(14, 165, 233, 0.3)'
+          }, {
+            offset: 1, color: 'rgba(14, 165, 233, 0.05)'
+          }]
         }
       }
-    });
-  }
+    }]
+  };
+
+  historicalChart.setOption(option);
+
+  historicalChart.on('click', (params: any) => {
+    if (params.data) {
+      const id = params.data[4];
+      const item = rankList.value.find((r: any) => r.id === id);
+      if (item) {
+        selectItem(item);
+      }
+    }
+  });
 };
 
 // 选择项目
@@ -867,15 +1062,80 @@ const saveConfig = () => {
 
 // 导出数据
 const exportData = () => {
-  const dataStr = JSON.stringify(rankList.value, null, 2);
-  const blob = new Blob([dataStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
+  try {
+    // 
+    import('xlsx').then((XLSX) => {
+      const wb = XLSX.utils.book_new();
+      
+      // 
+      const exportData = rankList.value.map(item => ({
+        '排名': item.rank,
+        '内容': item.text,
+        '情感': getSentimentLabel(item.sentiment?.polarity),
+        '情感得分': item.sentiment?.score,
+        '热度得分': item.heat?.score,
+        '综合得分': item.dual_score,
+        '象限': quadrantInfo[item.quadrant]?.label,
+        '转发': item.interactions?.reposts,
+        '评论': item.interactions?.comments,
+        '点赞': item.interactions?.likes,
+        '时间': item.created_at
+      }));
+      
+      // 
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      XLSX.utils.book_append_sheet(wb, ws, ' ');
+      
+      // 
+      const fileName = `_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      ElMessage.success(` ${fileName}`);
+    }).catch(error => {
+      console.error('Excel export failed:', error);
+      ElMessage.error('Excel , CSV');
+      exportCSV();
+    });
+  } catch (error) {
+    console.error('Export failed:', error);
+    ElMessage.error(' , CSV');
+    exportCSV();
+  }
+};
+
+// 
+const exportCSV = () => {
+  const headers = [
+    '排名', '内容', '情感', '情感得分', '热度得分', '综合得分', 
+    '象限', '转发', '评论', '点赞', '时间'
+  ];
+  
+  const rows = rankList.value.map(item => [
+    item.rank,
+    item.text,
+    getSentimentLabel(item.sentiment?.polarity),
+    item.sentiment?.score,
+    item.heat?.score,
+    item.dual_score,
+    quadrantInfo[item.quadrant]?.label,
+    item.interactions?.reposts,
+    item.interactions?.comments,
+    item.interactions?.likes,
+    item.created_at
+  ]);
+  
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+  ].join('\n');
+  
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
-  link.href = url;
-  link.download = `dual_dimension_analysis_${Date.now()}.json`;
+  link.href = URL.createObjectURL(blob);
+  link.download = `_${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
-  URL.revokeObjectURL(url);
-  ElMessage.success('数据已导出');
+  
+  ElMessage.success('CSV ');
 };
 
 // 工具函数

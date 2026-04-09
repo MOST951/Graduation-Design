@@ -77,9 +77,9 @@
                 type="primary"
                 :disabled="countdown > 0 || sendingCode"
                 :loading="sendingCode"
-                @click="sendCode"
                 class="send-code-btn"
                 size="large"
+                @click="sendCode"
               >
                 {{ countdown > 0 ? `${countdown}s后重发` : '获取验证码' }}
               </el-button>
@@ -142,10 +142,10 @@
 
           <el-button
             type="primary"
-            @click="handleRegister"
             :loading="loading"
             class="register-button"
             size="large"
+            @click="handleRegister"
           >
             <span v-if="!loading">注 册</span>
             <span v-else>注册中...</span>

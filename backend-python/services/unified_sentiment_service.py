@@ -152,7 +152,7 @@ class LexiconAnalyzer(BaseSentimentAnalyzer):
 
 
 class BertAnalyzer(BaseSentimentAnalyzer):
-    """BERT情感分析器"""
+    """BERT情感分析器（委托全局单例加载模型，避免重复下载）"""
     
     def __init__(self, model_name: str = "bert-base-chinese"):
         self.model_name = model_name
@@ -162,18 +162,34 @@ class BertAnalyzer(BaseSentimentAnalyzer):
         self._initialized = False
     
     def initialize(self):
-        """初始化模型（延迟加载）"""
+        """初始化模型（优先使用全局单例，避免重复加载）"""
         if self._initialized:
             return
         
+        # 优先从全局单例获取
+        try:
+            from services.model_singleton import get_bert_tokenizer_and_model
+            tokenizer, model, device = get_bert_tokenizer_and_model()
+            if tokenizer is not None and model is not None:
+                self.tokenizer = tokenizer
+                self.model = model
+                self.device = device
+                self._initialized = True
+                logger.info("[BertAnalyzer] 已从全局单例获取模型")
+                return
+        except ImportError:
+            pass
+        
+        # 兜底：本地加载
         try:
             import torch
             from transformers import BertTokenizer, BertForSequenceClassification
             
+            cache_dir = os.environ.get("TRANSFORMERS_CACHE", "./model_cache")
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            self.tokenizer = BertTokenizer.from_pretrained(self.model_name)
+            self.tokenizer = BertTokenizer.from_pretrained(self.model_name, cache_dir=cache_dir)
             self.model = BertForSequenceClassification.from_pretrained(
-                self.model_name, num_labels=3
+                self.model_name, num_labels=3, cache_dir=cache_dir
             )
             self.model.to(self.device)
             self.model.eval()

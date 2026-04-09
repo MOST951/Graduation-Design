@@ -70,15 +70,15 @@
     
     <div class="formula-actions">
       <el-button-group size="small">
-        <el-button @click="resetWeights" :aria-label="'Reset weights to default'">
+        <el-button :aria-label="'Reset weights to default'" @click="resetWeights">
           <el-icon><RefreshRight /></el-icon>
           Reset
         </el-button>
-        <el-button @click="equalizeWeights" :aria-label="'Equalize all weights'">
+        <el-button :aria-label="'Equalize all weights'" @click="equalizeWeights">
           <el-icon><Balance /></el-icon>
           Equalize
         </el-button>
-        <el-button @click="optimizeWeights" :aria-label="'Optimize weights for best results'">
+        <el-button :aria-label="'Optimize weights for best results'" @click="optimizeWeights">
           <el-icon><MagicStick /></el-icon>
           Optimize
         </el-button>

@@ -6,7 +6,7 @@
         微博传播路径网络图
       </h3>
       <div class="header-actions">
-        <el-button type="primary" :icon="Refresh" @click="loadNetwork" :loading="loading">
+        <el-button type="primary" :icon="Refresh" :loading="loading" @click="loadNetwork">
           刷新数据
         </el-button>
         <el-select v-model="maxNodes" style="width: 120px" @change="loadNetwork">
@@ -18,7 +18,7 @@
     </div>
     
     <!-- 统计信息 -->
-    <div class="network-stats" v-if="stats">
+    <div v-if="stats" class="network-stats">
       <el-tag type="danger">原创博主: {{ stats.source_count }}</el-tag>
       <el-tag type="primary">总节点: {{ stats.total_nodes }}</el-tag>
       <el-tag type="success">传播链接: {{ stats.total_links }}</el-tag>
@@ -41,7 +41,7 @@
     </div>
     
     <!-- 网络图容器 -->
-    <div ref="chartRef" class="network-chart" v-loading="loading"></div>
+    <div ref="chartRef" v-loading="loading" class="network-chart"></div>
     
     <!-- 节点详情弹窗 -->
     <el-dialog v-model="showNodeDetail" title="用户详情" width="400px">

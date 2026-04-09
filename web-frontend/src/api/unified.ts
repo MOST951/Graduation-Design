@@ -11,41 +11,8 @@
  * 5. 系统监控接口
  */
 
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
-
-// API基础配置
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
-// 创建axios实例
-const apiClient: AxiosInstance = axios.create({
-  baseURL: `${API_BASE_URL}/api/v2`,
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// 请求拦截器
-apiClient.interceptors.request.use(
-  (config) => {
-    // 可以在这里添加认证token等
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// 响应拦截器
-apiClient.interceptors.response.use(
-  (response: AxiosResponse) => {
-    return response;
-  },
-  (error) => {
-    console.error('API Error:', error);
-    return Promise.reject(error);
-  }
-);
+import apiClient from '@/api';
+import type { AxiosResponse } from 'axios';
 
 // ==================== 类型定义 ====================
 
@@ -202,7 +169,7 @@ export interface HotSearchItem {
  * 获取系统状态
  */
 export async function getSystemStatus(): Promise<SystemStatus> {
-  const response = await apiClient.get('/status');
+  const response = await apiClient.get('/v2/status');
   return response.data.data;
 }
 
@@ -210,7 +177,7 @@ export async function getSystemStatus(): Promise<SystemStatus> {
  * 健康检查
  */
 export async function healthCheck(): Promise<{ version: string; timestamp: string }> {
-  const response = await apiClient.get('/health');
+  const response = await apiClient.get('/v2/health');
   return response.data;
 }
 
@@ -220,7 +187,7 @@ export async function healthCheck(): Promise<{ version: string; timestamp: strin
  * 启动数据采集
  */
 export async function startCrawl(params: CrawlParams = {}): Promise<CrawlResult> {
-  const response = await apiClient.post('/crawl/start', params);
+  const response = await apiClient.post('/v2/crawl/start', params);
   return response.data.data;
 }
 
@@ -228,7 +195,7 @@ export async function startCrawl(params: CrawlParams = {}): Promise<CrawlResult>
  * 获取热搜榜
  */
 export async function getHotSearch(): Promise<HotSearchItem[]> {
-  const response = await apiClient.get('/crawl/hot-search');
+  const response = await apiClient.get('/v2/crawl/hot-search');
   return response.data.data;
 }
 
@@ -244,7 +211,7 @@ export async function analyzeSentiment(
     context?: Record<string, any>;
   } = {}
 ): Promise<SentimentAnalysisResult> {
-  const response = await apiClient.post('/sentiment/analyze', {
+  const response = await apiClient.post('/v2/sentiment/analyze', {
     text,
     method: options.method || 'hybrid',
     context: options.context,
@@ -259,7 +226,7 @@ export async function analyzeSentimentBatch(
   texts: string[],
   method: 'lexicon' | 'bert' | 'hybrid' = 'hybrid'
 ): Promise<BatchSentimentResult> {
-  const response = await apiClient.post('/sentiment/analyze', {
+  const response = await apiClient.post('/v2/sentiment/analyze', {
     texts,
     method,
   });
@@ -270,7 +237,7 @@ export async function analyzeSentimentBatch(
  * 获取情感分布
  */
 export async function getSentimentDistribution(): Promise<SentimentDistribution> {
-  const response = await apiClient.get('/sentiment/distribution');
+  const response = await apiClient.get('/v2/sentiment/distribution');
   return response.data.data;
 }
 
@@ -282,7 +249,7 @@ export async function getSentimentDistribution(): Promise<SentimentDistribution>
 export async function rankDualDimension(
   params: DualDimensionParams = {}
 ): Promise<DualDimensionResult> {
-  const response = await apiClient.post('/ranking/dual-dimension', params);
+  const response = await apiClient.post('/v2/ranking/dual-dimension', params);
   return response.data.data;
 }
 
@@ -290,7 +257,7 @@ export async function rankDualDimension(
  * 获取四象限分析
  */
 export async function getQuadrantAnalysis(): Promise<QuadrantAnalysis> {
-  const response = await apiClient.get('/ranking/quadrant-analysis');
+  const response = await apiClient.get('/v2/ranking/quadrant-analysis');
   return response.data.data;
 }
 
@@ -300,7 +267,7 @@ export async function getQuadrantAnalysis(): Promise<QuadrantAnalysis> {
  * 获取数据概览统计
  */
 export async function getOverviewStats(): Promise<OverviewStats> {
-  const response = await apiClient.get('/stats/overview');
+  const response = await apiClient.get('/v2/stats/overview');
   return response.data.data;
 }
 
@@ -308,7 +275,7 @@ export async function getOverviewStats(): Promise<OverviewStats> {
  * 获取情感趋势
  */
 export async function getSentimentTrend(days: number = 7): Promise<TrendData[]> {
-  const response = await apiClient.get('/stats/trend', {
+  const response = await apiClient.get('/v2/stats/trend', {
     params: { days },
   });
   return response.data.data;

@@ -1,6 +1,7 @@
 <template>
   <el-dialog
-    v-model="visible"
+    :model-value="visible"
+    @update:model-value="emit('update:visible', $event)"
     title="Pipeline Configuration"
     width="600px"
     :close-on-click-modal="false"
@@ -8,7 +9,7 @@
     :show-close="false"
     :aria-label="'Pipeline configuration dialog'"
   >
-    <el-form :model="config" :rules="rules" ref="formRef" label-position="top">
+    <el-form ref="formRef" :model="config" :rules="rules" label-position="top">
       <!-- Keywords Preset -->
       <el-form-item label="Keywords Preset" prop="keywords">
         <div class="keywords-config">
@@ -125,10 +126,10 @@
     
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleCancel" :aria-label="'Cancel pipeline configuration'">
+        <el-button :aria-label="'Cancel pipeline configuration'" @click="handleCancel">
           Cancel
         </el-button>
-        <el-button type="primary" @click="handleConfirm" :loading="isSubmitting" :aria-label="'Start pipeline with configuration'">
+        <el-button type="primary" :loading="isSubmitting" :aria-label="'Start pipeline with configuration'" @click="handleConfirm">
           {{ isSubmitting ? 'Starting...' : 'Start Pipeline' }}
         </el-button>
       </div>

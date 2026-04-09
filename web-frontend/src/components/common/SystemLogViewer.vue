@@ -12,9 +12,9 @@
           type="primary"
           size="small"
           :icon="Download"
-          @click="exportLogs"
           :disabled="filteredLogs.length === 0"
           :aria-label="'Export filtered logs'"
+          @click="exportLogs"
         >
           Export Logs
         </el-button>
@@ -55,8 +55,8 @@
           <el-button
             type="default"
             size="small"
-            @click="clearFilters"
             :aria-label="'Clear all filters'"
+            @click="clearFilters"
           >
             Clear
           </el-button>
@@ -66,13 +66,13 @@
     
     <div class="log-content">
       <el-table
+        ref="logTableRef"
         :data="paginatedLogs"
         height="400"
         size="small"
         :show-header="true"
-        @scroll="handleScroll"
-        ref="logTableRef"
         :aria-label="'System logs table'"
+        @scroll="handleScroll"
       >
         <el-table-column prop="timestamp" label="Time" width="180">
           <template #default="{ row }">
@@ -106,8 +106,8 @@
                 v-if="row.details"
                 text
                 size="small"
-                @click="showLogDetails(row)"
                 :aria-label="'View log details'"
+                @click="showLogDetails(row)"
               >
                 <el-icon><View /></el-icon>
               </el-button>
@@ -151,7 +151,7 @@
           <el-descriptions-item label="Message">
             {{ selectedLog.message }}
           </el-descriptions-item>
-          <el-descriptions-item label="Details" v-if="selectedLog.details">
+          <el-descriptions-item v-if="selectedLog.details" label="Details">
             <pre class="details-content">{{ selectedLog.details }}</pre>
           </el-descriptions-item>
         </el-descriptions>

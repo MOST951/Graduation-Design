@@ -133,7 +133,7 @@
             </div>
           </template>
 
-          <el-table :data="predictedTopics" v-loading="isPredicting" max-height="400">
+          <el-table v-loading="isPredicting" :data="predictedTopics" max-height="400">
             <el-table-column label="排名" width="70">
               <template #default="{ $index }">
                 <span :class="['rank-badge', `rank-${$index + 1}`]">{{ $index + 1 }}</span>
@@ -355,7 +355,7 @@
           </el-checkbox-group>
         </el-form-item>
 
-        <el-form-item label="Webhook URL" v-if="alertConfig.pushMethods.includes('webhook')">
+        <el-form-item v-if="alertConfig.pushMethods.includes('webhook')" label="Webhook URL">
           <el-input v-model="alertConfig.webhookUrl" placeholder="https://your-webhook-url.com" />
         </el-form-item>
 

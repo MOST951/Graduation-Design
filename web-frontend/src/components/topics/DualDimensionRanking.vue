@@ -7,10 +7,10 @@
         情感-热度双维度排序
       </h3>
       <div class="header-actions">
-        <el-button :icon="Refresh" @click="loadRankedTopics" :loading="loading" size="small">
+        <el-button :icon="Refresh" :loading="loading" size="small" @click="loadRankedTopics">
           刷新
         </el-button>
-        <el-button :icon="Setting" @click="showConfigDialog = true" size="small">
+        <el-button :icon="Setting" size="small" @click="showConfigDialog = true">
           配置
         </el-button>
       </div>
@@ -30,8 +30,8 @@
 
     <!-- 排序结果表格 -->
     <el-table 
-      :data="rankedTopics" 
-      v-loading="loading"
+      v-loading="loading" 
+      :data="rankedTopics"
       stripe
       highlight-current-row
       @row-click="handleRowClick"
@@ -158,7 +158,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showConfigDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveConfig" :loading="saving">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="saveConfig">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -375,14 +375,14 @@ const updateCharts = () => {
           name: '情感贡献',
           type: 'bar',
           stack: 'total',
-          data: top5.map(t => (Math.abs(t.sentiment_avg) * config.sentiment_weight).toFixed(4)),
+          data: top5.map(t => (Math.abs(t.sentiment_avg) * config.value.sentiment_weight).toFixed(4)),
           itemStyle: { color: '#409EFF' }
         },
         {
           name: '热度贡献',
           type: 'bar',
           stack: 'total',
-          data: top5.map(t => (t.popularity_score * config.popularity_weight).toFixed(4)),
+          data: top5.map(t => (t.popularity_score * config.value.popularity_weight).toFixed(4)),
           itemStyle: { color: '#67C23A' }
         }
       ]

@@ -2,46 +2,14 @@
  * 情感分析模块 API
  */
 import apiClient from './index';
-
-// ==================== 类型定义 ====================
-
-/** 情感类型 */
-export type SentimentType = 'positive' | 'neutral' | 'negative';
-
-/** 细粒度情感类型 */
-export type FineGrainedEmotion = 'joy' | 'trust' | 'anticipation' | 'surprise' | 'sadness' | 'fear' | 'disgust' | 'anger';
-
-/** 分析粒度 */
-export type AnalysisGranularity = 'binary' | 'ternary' | 'fine';
-
-/** 分析请求参数 */
-export interface AnalysisRequest {
-  dataSource: 'all' | 'task' | 'custom';
-  taskIds?: number[];
-  dateRange?: [string, string];
-  keywords?: string[];
-  model: string;
-  granularity: AnalysisGranularity;
-  confidenceThreshold: number;
-  batchSize?: number;
-  useGpu?: boolean;
-}
-
-/** 单条分析结果 */
-export interface SentimentResult {
-  id: number;
-  content: string;
-  sentiment: SentimentType;
-  sentimentLabel: string;
-  confidence: number;
-  score: number;
-  intensity: number;
-  emotions?: Record<FineGrainedEmotion, number>;
-  keywords: string[];
-  source: string;
-  time: string;
-  taskId?: number;
-}
+import type {
+  SentimentType,
+  FineGrainedEmotion,
+  AnalysisGranularity,
+  SentimentAnalysisRequest,
+  SentimentResult,
+  ApiResponse
+} from './types';
 
 /** 分析结果统计 */
 export interface AnalysisStats {
@@ -189,9 +157,9 @@ export interface PageResponse<T> {
 // ==================== 1. 分析功能 API ====================
 
 /**
- * 执行情感分析
+ * 
  */
-export async function analyzeSentiment(data: AnalysisRequest): Promise<AnalysisTask> {
+export async function analyzeSentiment(data: SentimentAnalysisRequest): Promise<AnalysisTask> {
   const response = await apiClient.post('/sentiment/analyze', data);
   return response.data.data;
 }

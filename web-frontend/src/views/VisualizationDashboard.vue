@@ -25,13 +25,17 @@
           :shortcuts="dateShortcuts"
           @change="handleDateChange"
         />
-        <el-button :icon="Refresh" size="small" @click="refreshData" :loading="isLoading">刷新</el-button>
+        <el-button :icon="Refresh" size="small" :loading="isLoading" @click="refreshData">刷新</el-button>
+        <el-button :icon="FullScreen" size="small" :type="isFullscreen ? 'primary' : 'default'" @click="toggleFullscreen">
+          {{ isFullscreen ? '退出全屏' : '全屏' }}
+        </el-button>
         <el-dropdown @command="handleExport">
           <el-button size="small">
             导出 <el-icon class="el-icon--right"><ArrowDown /></el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item command="dashboard">导出仪表盘</el-dropdown-item>
               <el-dropdown-item command="png">导出为图片</el-dropdown-item>
               <el-dropdown-item command="pdf">导出为PDF</el-dropdown-item>
               <el-dropdown-item command="excel">导出数据</el-dropdown-item>
@@ -421,7 +425,7 @@ import * as echarts from 'echarts';
 import { ElMessage } from 'element-plus';
 import {
   Refresh, ArrowDown, Document, CircleCheck, CircleClose, Warning,
-  CaretTop, CaretBottom, Connection, Timer, DataAnalysis, Bell,
+  CaretTop, CaretBottom, Connection, Timer, DataAnalysis, Bell, FullScreen,
 } from '@element-plus/icons-vue';
 import { SUCCESS, PRIMARY, PRIMARY_LIGHT, DANGER, INFO, WARNING } from '@/styles/colors';
 
@@ -432,6 +436,14 @@ const isLoading = ref(false);
 const trendTimeRange = ref('7d');
 const sentimentTypes = ref(['positive', 'negative', 'neutral']);
 const isStreaming = ref(true);
+const isFullscreen = ref(false);
+const selectedSentiment = ref<string | null>(null);
+const propagationLoading = ref(false);
+const hotWeiboList = ref([
+  { id: 1, title: ' ', content: '...', reposts: 5000, likes: 12000 },
+  { id: 2, title: ' ', content: '...', reposts: 3200, likes: 8900 },
+  { id: 3, title: ' ', content: '...', reposts: 2800, likes: 7600 },
+]);
 
 // 传播路径
 const propagationGraphRef = ref<HTMLElement>();
@@ -1006,16 +1018,6 @@ const refreshData = async () => {
   ElMessage.success('数据已刷新');
 };
 
-const handleExport = (type: string) => {
-  if (type === 'png') {
-    exportAllChartsPNG();
-  } else if (type === 'pdf') {
-    exportAllChartsPDF();
-  } else {
-    ElMessage.info('正在导出数据...');
-  }
-};
-
 const exportAllChartsPNG = () => {
   if (charts.length === 0) { ElMessage.warning('暂无图表可导出'); return; }
   charts.forEach((chart, idx) => {
@@ -1055,6 +1057,171 @@ const exportChart = (chartName: string, format: string) => {
   ElMessage.success(`已导出 ${chartName} 图表`);
 };
 
+// ==================== 新增功能 ====================
+const toggleFullscreen = () => {
+  isFullscreen.value = !isFullscreen.value;
+  
+  if (isFullscreen.value) {
+    document.documentElement.requestFullscreen?.();
+    document.body.classList.add('fullscreen-dashboard');
+  } else {
+    document.exitFullscreen?.();
+    document.body.classList.remove('fullscreen-dashboard');
+  }
+  
+  nextTick(() => {
+    charts.forEach(c => c.resize());
+  });
+};
+
+const setupChartLinkage = () => {
+  if (sentimentPieRef.value) {
+    const chart = echarts.getInstanceByDom(sentimentPieRef.value);
+    if (chart) {
+      chart.on('click', (params: any) => {
+        selectedSentiment.value = params.name;
+        filterChartsBySentiment(params.name);
+        ElMessage.info(`已选中 ${params.name} 情感`);
+      });
+    }
+  }
+};
+
+const filterChartsBySentiment = (sentiment: string) => {
+  const trendChart = echarts.getInstanceByDom(trendChartRef.value);
+  if (trendChart && sentiment === '正面') {
+    const option = trendChart.getOption();
+    if (option.series) {
+      option.series.forEach((series: any) => {
+        if (series.name === '正面') {
+          series.emphasis = { focus: 'series' };
+          series.lineStyle = { width: 4 };
+        } else {
+          series.lineStyle = { opacity: 0.3, type: 'dashed' };
+        }
+      });
+      trendChart.setOption(option);
+    }
+  }
+  
+  const wordCloudChart = echarts.getInstanceByDom(sentimentWordCloudRef.value);
+  if (wordCloudChart) {
+    const sentimentWords = {
+      '正面': ['好', '棒', '赞', '喜欢', '支持'],
+      '中性': ['一般', '还行', '不错', '可以', '还好'],
+      '负面': ['不好', '差', '不满', '反对', '不喜欢']
+    };
+    
+    const words = sentimentWords[sentiment as keyof typeof sentimentWords] || [];
+    const option = {
+      series: [{
+        type: 'wordCloud',
+        shape: 'circle',
+        data: words.map((word, idx) => ({
+          name: word,
+          value: Math.floor(Math.random() * 100) + 50,
+          textStyle: {
+            color: sentiment === '正面' ? SUCCESS : sentiment === '负面' ? DANGER : INFO
+          }
+        }))
+      }]
+    };
+    wordCloudChart.setOption(option);
+  }
+};
+
+const loadPropagationNetwork = async (weiboId: number) => {
+  propagationLoading.value = true;
+  
+  try {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const { nodes, links, categories } = generatePropagationData();
+    
+    if (propagationGraphRef.value) {
+      const existing = echarts.getInstanceByDom(propagationGraphRef.value);
+      if (existing) existing.dispose();
+      
+      const chart = echarts.init(propagationGraphRef.value);
+      chart.setOption({
+        tooltip: { 
+          formatter: (params: any) => params.dataType === 'node' 
+            ? `${params.data.name}<br/>影响力: ${params.data.symbolSize}<br/>转发数: ${params.data.reposts || 0}<br/>粉丝数: ${params.data.followers || 0}`
+            : `${params.data.source} → ${params.data.target}` 
+        },
+        legend: [{ data: categories.map((c: any) => c.name), orient: 'vertical', right: 10, top: 20 }],
+        series: [{
+          type: 'graph',
+          layout: 'force',
+          data: nodes,
+          links: links,
+          categories: categories,
+          roam: true,
+          label: { show: true, position: 'right', fontSize: 10 },
+          force: { repulsion: 300, gravity: 0.1, edgeLength: [80, 200], layoutAnimation: true },
+          lineStyle: { color: 'source', curveness: 0.3, opacity: 0.7, width: 2 },
+          emphasis: { 
+            focus: 'adjacency', 
+            lineStyle: { width: 4 },
+            itemStyle: { shadowBlur: 20, shadowColor: 'rgba(0, 0, 0, 0.3)' }
+          },
+          animationDuration: 1500,
+          animationEasing: 'elasticOut'
+        }],
+      });
+      
+      charts.push(chart);
+    }
+    
+    ElMessage.success('已加载传播网络');
+  } catch (error) {
+    ElMessage.error('加载传播网络失败');
+  } finally {
+    propagationLoading.value = false;
+  }
+};
+
+const exportDashboardAsImage = async () => {
+  try {
+    const { default: html2canvas } = await import('html2canvas');
+    
+    const dashboard = document.querySelector('.visualization-dashboard') as HTMLElement;
+    if (!dashboard) {
+      ElMessage.error('无法找到仪表板元素');
+      return;
+    }
+    
+    const canvas = await html2canvas(dashboard, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+      allowTaint: true
+    });
+    
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = `dashboard_${currentDashboard.value}_${Date.now()}.png`;
+    link.click();
+    
+    ElMessage.success('已导出仪表板图片');
+  } catch (error) {
+    ElMessage.error('导出仪表板图片失败');
+    exportAllChartsPNG();
+  }
+};
+
+const handleExport = (type: string) => {
+  if (type === 'dashboard') {
+    exportDashboardAsImage();
+  } else if (type === 'png') {
+    exportAllChartsPNG();
+  } else if (type === 'pdf') {
+    exportAllChartsPDF();
+  } else {
+    ElMessage.info('正在导出数据...');
+  }
+};
+
 // ==================== 生命周期 ====================
 let resizeHandler: () => void;
 let realtimeTimer: number;
@@ -1065,7 +1232,10 @@ onMounted(() => {
   resizeHandler = () => charts.forEach(c => c.resize());
   window.addEventListener('resize', resizeHandler);
   
-  // 实时数据更新
+  // 
+  setupChartLinkage();
+  
+  // 
   realtimeTimer = window.setInterval(() => {
     if (currentDashboard.value === 'realtime' && isStreaming.value) {
       realtimeData.value.currentRate = Math.floor(Math.random() * 50 + 130);
@@ -1273,6 +1443,194 @@ watch(trendTimeRange, () => {
     height: 2px;
     background: $text-placeholder;
     display: inline-block;
+  }
+}
+
+// 
+:global(.fullscreen-dashboard) {
+  .visualization-dashboard {
+    padding: 0;
+    background: #000;
+    min-height: 100vh;
+    
+    .dashboard-header {
+      display: none;
+    }
+    
+    .dashboard-content {
+      height: 100vh;
+      overflow: hidden;
+      
+      .chart-card {
+        height: 50vh;
+        margin-bottom: 0;
+        
+        .chart-container {
+          height: 100% !important;
+        }
+      }
+      
+      .metric-row {
+        .el-col {
+          margin-bottom: 0;
+        }
+      }
+    }
+  }
+  
+  // 
+  .el-header,
+  .el-aside,
+  .el-footer {
+    display: none !important;
+  }
+  
+  .el-main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
+
+// 
+@media (max-width: 768px) {
+  .visualization-dashboard {
+    padding: $spacing-sm;
+    
+    .dashboard-header {
+      flex-direction: column;
+      gap: $spacing-sm;
+      
+      .header-left {
+        flex-direction: column;
+        gap: $spacing-sm;
+        width: 100%;
+        
+        h2 {
+          font-size: $font-size-large;
+        }
+        
+        .el-radio-group {
+          width: 100%;
+          overflow-x: auto;
+          flex-wrap: nowrap;
+        }
+      }
+      
+      .header-right {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: $spacing-xs;
+        
+        .el-button,
+        .el-dropdown {
+          flex: 1;
+          min-width: 0;
+        }
+      }
+    }
+    
+    .dashboard-content {
+      .metric-row {
+        .el-col {
+          margin-bottom: $spacing-sm;
+        }
+      }
+      
+      .chart-card {
+        margin-bottom: $spacing-sm;
+        
+        .card-header {
+          flex-direction: column;
+          gap: $spacing-sm;
+          align-items: flex-start;
+        }
+      }
+    }
+  }
+  
+  .metric-card {
+    flex-direction: column;
+    text-align: center;
+    gap: $spacing-sm;
+    
+    .metric-icon {
+      width: 48px;
+      height: 48px;
+      font-size: $font-size-large;
+    }
+    
+    .metric-info {
+      .metric-value {
+        font-size: $font-size-large;
+      }
+      
+      .metric-label {
+        font-size: $font-size-small;
+      }
+    }
+  }
+  
+  .chart-container {
+    height: 250px !important;
+  }
+  
+  .prop-stats {
+    grid-template-columns: 1fr;
+  }
+  
+  .key-nodes {
+    .key-node-item {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: $spacing-xs;
+    }
+  }
+}
+
+// 
+@media (max-width: 480px) {
+  .visualization-dashboard {
+    padding: $spacing-xs;
+    
+    .dashboard-header {
+      .header-left {
+        h2 {
+          font-size: $font-size-medium;
+        }
+      }
+      
+      .header-right {
+        .el-button {
+          font-size: $font-size-tiny;
+          padding: 6px 12px;
+        }
+      }
+    }
+  }
+  
+  .metric-card {
+    padding: $spacing-sm;
+    
+    .metric-icon {
+      width: 40px;
+      height: 40px;
+      font-size: $font-size-medium;
+    }
+    
+    .metric-info {
+      .metric-value {
+        font-size: $font-size-medium;
+      }
+      
+      .metric-label {
+        font-size: $font-size-tiny;
+      }
+    }
+  }
+  
+  .chart-container {
+    height: 200px !important;
+    padding: $spacing-xs;
   }
 }
 </style>

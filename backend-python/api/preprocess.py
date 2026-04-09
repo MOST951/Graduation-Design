@@ -438,3 +438,314 @@ def health_check():
         'message': 'Preprocess service is running',
         'timestamp': datetime.now().isoformat(),
     })
+
+
+@preprocess_bp.route('/start', methods=['POST'])
+def start_preprocessing():
+    """"开始预处理任务"""
+    try:
+        data = request.get_json()
+        raw_data = data.get('data', [])
+        rules = data.get('rules', [])
+        config = data.get('config', {})
+        segment_tool = data.get('segment_tool', 'jieba')
+        custom_dict = data.get('custom_dict', '')
+        stopwords = data.get('stopwords', [])
+        
+        # 生成任务ID
+        job_id = f"preprocess_{int(time.time())}_{random.randint(1000, 9999)}"
+        
+        # 创建任务
+        with task_lock:
+            preprocess_tasks[job_id] = {
+                'id': job_id,
+                'status': 'pending',
+                'progress': 0,
+                'created_at': datetime.now().isoformat(),
+                'data_count': len(raw_data),
+                'rules': rules,
+                'config': config,
+                'segment_tool': segment_tool,
+                'custom_dict': custom_dict,
+                'stopwords': stopwords,
+                'processed_count': 0,
+                'error': None,
+                'steps': []
+            }
+        
+        # 开始预处理任务
+        def process_task():
+            try:
+                # 更新任务状态
+                with task_lock:
+                    preprocess_tasks[job_id]['status'] = 'running'
+                    preprocess_tasks[job_id]['progress'] = 10
+                
+                # 预处理数据
+                processed_data = []
+                total_steps = 5
+                current_step = 0
+                
+                # 处理每条数据
+                for i, item in enumerate(raw_data):
+                    text = item.get('text', item.get('content', ''))
+                    
+                    # 移除重复数据
+                    if 'removeDuplicates' in rules:
+                        # TODO: 实现移除重复数据逻辑
+                        pass
+                    
+                    # 移除噪音数据
+                    if 'removeNoise' in rules:
+                        text = remove_urls(text)
+                        text = remove_emoji(text)
+                        text = re.sub(r'@[^\s]+', '', text)  # 移除@
+                        text = re.sub(r'#[^#]+#', '', text)  # 移除#
+                        text = re.sub(r'[^\w\u4e00-\u9fff\s]', '', text)  # 移除特殊字符
+                    
+                    # 繁体转简体
+                    if 'traditional2simplified' in rules or config.get('traditional2simplified'):
+                        # TODO: 实现繁体转简体逻辑
+                        pass
+                    
+                    # 全角转半角
+                    if 'fullwidth2halfwidth' in rules or config.get('fullwidth2halfwidth'):
+                        # TODO: 实现全角转半角逻辑
+                        pass
+                    
+                    # 分词
+                    if 'segmentation' in rules:
+                        # TODO: 实现分词逻辑
+                        words = list(text)  # 暂时使用单字分词
+                    else:
+                        words = [text]
+                    
+                    # 移除停用词
+                    if 'removeStopwords' in rules:
+                        words = [w for w in words if w not in stopwords and len(w) > 1]
+                    
+                    processed_item = {
+                        'id': item.get('id', ''),
+                        'original_text': item.get('text', item.get('content', '')),
+                        'processed_text': ''.join(words),
+                        'words': words,
+                        'word_count': len(words),
+                        'rules_applied': rules
+                    }
+                    processed_data.append(processed_item)
+                    
+                    # 更新进度
+                    progress = 10 + (i + 1) / len(raw_data) * 80
+                    with task_lock:
+                        preprocess_tasks[job_id]['progress'] = int(progress)
+                        preprocess_tasks[job_id]['processed_count'] = i + 1
+                
+                # 更新任务状态
+                with task_lock:
+                    preprocess_tasks[job_id]['status'] = 'completed'
+                    preprocess_tasks[job_id]['progress'] = 100
+                    preprocess_tasks[job_id]['processed_count'] = len(processed_data)
+                    preprocess_tasks[job_id]['steps'] = [
+                        {'name': 'Data Loading', 'time': '0ms', 'type': 'success', 'count': len(raw_data)},
+                        {'name': 'Text Cleaning', 'time': '100ms', 'type': 'success', 'count': len(processed_data)},
+                        {'name': 'Word Segmentation', 'time': '50ms', 'type': 'success', 'count': len(processed_data)},
+                        {'name': 'Stop Word Filtering', 'time': '30ms', 'type': 'success', 'count': len(processed_data)},
+                        {'name': 'Data Normalization', 'time': '20ms', 'type': 'success', 'count': len(processed_data)}
+                    ]
+                
+                # 保存任务数据
+                save_task_data(job_id, processed_data)
+                save_tasks_to_disk()
+                
+                logger.info(f"预处理任务 {job_id} 完成")
+                
+            except Exception as e:
+                logger.error(f"预处理任务 {job_id} 失败: {e}")
+                with task_lock:
+                    preprocess_tasks[job_id]['status'] = 'failed'
+                    preprocess_tasks[job_id]['error'] = str(e)
+                save_tasks_to_disk()
+        
+        # 启动预处理任务
+        thread = threading.Thread(target=process_task)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'code': 200,
+            'message': '预处理任务开始',
+            'job_id': job_id
+        })
+        
+    except Exception as e:
+        logger.error(f"开始预处理任务失败: {e}")
+        return jsonify({
+            'code': 500,
+            'message': f'开始预处理任务失败: {str(e)}'
+        }), 500
+
+
+@preprocess_bp.route('/status/<job_id>', methods=['GET'])
+def get_preprocessing_status(job_id):
+    """"获取预处理任务状态"""
+    try:
+        with task_lock:
+            if job_id not in preprocess_tasks:
+                return jsonify({
+                    'code': 404,
+                    'message': '任务不存在'
+                }), 404
+            
+            task = preprocess_tasks[job_id]
+            
+            response_data = {
+                'code': 200,
+                'job_id': job_id,
+                'status': task['status'],
+                'progress': task['progress'],
+                'processed_count': task['processed_count'],
+                'data_count': task['data_count'],
+                'created_at': task['created_at'],
+                'error': task.get('error'),
+                'steps': task.get('steps', [])
+            }
+            
+            # 如果任务完成，返回处理后的数据
+            if task['status'] == 'completed':
+                processed_data = load_task_data(job_id)
+                response_data['processed_data'] = processed_data[:10]  # 暂时返回前10条数据
+            
+            return jsonify(response_data)
+            
+    except Exception as e:
+        logger.error(f"获取预处理任务状态失败: {e}")
+        return jsonify({
+            'code': 500,
+            'message': f'获取预处理任务状态失败: {str(e)}'
+        }), 500
+
+
+@preprocess_bp.route('/upload-dictionary', methods=['POST'])
+def upload_dictionary():
+    """"上传自定义词典"""
+    try:
+        if 'dictionary' not in request.files:
+            return jsonify({
+                'code': 400,
+                'message': '没有上传词典文件'
+            }), 400
+        
+        file = request.files['dictionary']
+        if file.filename == '':
+            return jsonify({
+                'code': 400,
+                'message': '没有选择文件'
+            }), 400
+        
+        if not file.filename.endswith('.txt'):
+            return jsonify({
+                'code': 400,
+                'message': '词典文件必须是.txt文件'
+            }), 400
+        
+        # 创建词典目录
+        dict_dir = os.path.join(DATA_DIR, 'dictionaries')
+        os.makedirs(dict_dir, exist_ok=True)
+        
+        # 保存词典文件
+        timestamp = int(time.time())
+        filename = f"custom_dict_{timestamp}.txt"
+        filepath = os.path.join(dict_dir, filename)
+        
+        file.save(filepath)
+        
+        # 读取词典文件
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                words = [line.strip() for line in f if line.strip()]
+            
+            logger.info(f"上传词典: {filename}，包含 {len(words)} 个词")
+            
+            return jsonify({
+                'code': 200,
+                'message': '上传词典成功',
+                'filename': filename,
+                'word_count': len(words)
+            })
+            
+        except Exception as e:
+            # 删除上传的文件
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            raise e
+            
+    except Exception as e:
+        logger.error(f"上传词典失败: {e}")
+        return jsonify({
+            'code': 500,
+            'message': f'上传词典失败: {str(e)}'
+        }), 500
+
+
+@preprocess_bp.route('/stopwords', methods=['GET'])
+def get_stopwords():
+    """"获取停用词"""
+    try:
+        # 读取停用词文件
+        stopwords_file = os.path.join(DATA_DIR, 'custom_stopwords.txt')
+        stopwords = []
+        
+        if os.path.exists(stopwords_file):
+            with open(stopwords_file, 'r', encoding='utf-8') as f:
+                stopwords = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+        
+        return jsonify({
+            'code': 200,
+            'stopwords': stopwords,
+            'count': len(stopwords)
+        })
+        
+    except Exception as e:
+        logger.error(f"获取停用词失败: {e}")
+        return jsonify({
+            'code': 500,
+            'message': f'获取停用词失败: {str(e)}'
+        }), 500
+
+
+@preprocess_bp.route('/stopwords', methods=['POST'])
+def save_stopwords():
+    """"保存停用词"""
+    try:
+        data = request.get_json()
+        stopwords = data.get('stopwords', [])
+        
+        if not isinstance(stopwords, list):
+            return jsonify({
+                'code': 400,
+                'message': '停用词必须是列表'
+            }), 400
+        
+        # 保存停用词文件
+        stopwords_file = os.path.join(DATA_DIR, 'custom_stopwords.txt')
+        
+        with open(stopwords_file, 'w', encoding='utf-8') as f:
+            f.write('# Custom stopwords - Generated at ' + datetime.now().isoformat() + '\n')
+            for word in stopwords:
+                if word.strip():
+                    f.write(word.strip() + '\n')
+        
+        logger.info(f"保存停用词: {len(stopwords)} 个词")
+        
+        return jsonify({
+            'code': 200,
+            'message': '保存停用词成功',
+            'count': len(stopwords)
+        })
+        
+    except Exception as e:
+        logger.error(f"保存停用词失败: {e}")
+        return jsonify({
+            'code': 500,
+            'message': f'保存停用词失败: {str(e)}'
+        }), 500

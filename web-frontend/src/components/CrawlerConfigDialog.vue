@@ -46,7 +46,7 @@
               <el-input v-model="newKeyword.word" placeholder="关键词" style="margin-bottom: 8px;" />
               <el-slider v-model="newKeyword.weight" :min="1" :max="5" :step="1" show-stops :marks="weightMarks" />
               <div class="weight-label">权重: {{ newKeyword.weight }}</div>
-              <el-button type="primary" size="small" @click="addKeyword" style="margin-top: 10px;">确认添加</el-button>
+              <el-button type="primary" size="small" style="margin-top: 10px;" @click="addKeyword">确认添加</el-button>
             </div>
           </el-popover>
         </div>
@@ -219,8 +219,8 @@
     <template #footer>
       <div class="drawer-footer">
         <el-button @click="handleClose">取消</el-button>
-        <el-button type="primary" @click="handleSave(false)" :loading="saving">保存</el-button>
-        <el-button type="success" @click="handleSave(true)" :loading="saving">保存并启动</el-button>
+        <el-button type="primary" :loading="saving" @click="handleSave(false)">保存</el-button>
+        <el-button type="success" :loading="saving" @click="handleSave(true)">保存并启动</el-button>
       </div>
     </template>
   </el-drawer>

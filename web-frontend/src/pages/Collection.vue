@@ -4,7 +4,7 @@
     <div class="collection-layout">
       <!-- 左侧任务列表 -->
       <aside class="left-panel">
-        <el-button type="primary" size="large" @click="handleCreate" class="create-btn" block>
+        <el-button type="primary" size="large" class="create-btn" block @click="handleCreate">
           <el-icon><Plus /></el-icon>
           新建采集任务
         </el-button>
@@ -264,13 +264,17 @@
             type="warning" 
             size="small" 
             @click="handlePause(row)"
-          >暂停</el-button>
+          >
+            暂停
+          </el-button>
           <el-button 
             v-else-if="row.status !== 'completed'" 
             type="success" 
             size="small" 
             @click="handleStart(row)"
-          >启动</el-button>
+          >
+            启动
+          </el-button>
           <el-button type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
           <el-button type="danger" size="small" @click="handleDelete(row)">删除</el-button>
           <el-button size="small" @click="handleViewLog(row)">日志</el-button>

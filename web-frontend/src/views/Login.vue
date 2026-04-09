@@ -59,8 +59,8 @@
           ref="loginFormRef"
           :model="loginForm"
           :rules="loginRules"
-          @keyup.enter="handleLogin"
           class="login-form"
+          @keyup.enter="handleLogin"
         >
           <el-form-item prop="username">
             <label class="glass-label">账号 <span class="label-hint">(学号/手机/邮箱)</span></label>
@@ -133,8 +133,8 @@
           ref="emailFormRef"
           :model="emailForm"
           :rules="emailRules"
-          @keyup.enter="handleEmailLogin"
           class="login-form"
+          @keyup.enter="handleEmailLogin"
         >
           <el-form-item prop="email">
             <label class="glass-label">邮箱</label>

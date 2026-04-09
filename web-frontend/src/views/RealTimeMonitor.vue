@@ -6,14 +6,19 @@
         <el-card class="dataflow-card">
           <template #header>
             <div class="card-header">
-              <span>
+              <div class="connection-status">
                 <el-icon><DataLine /></el-icon>
-                实时微博数据流
-                <el-tag type="success" size="small" effect="plain" style="margin-left: 8px">
-                  <el-icon class="rotating-icon"><Refresh /></el-icon>
-                  实时更新
-                </el-tag>
-              </span>
+                <span> </span>
+                <div class="status-indicator">
+                  <el-tooltip :content="connectionStatus.tooltip" placement="top">
+                    <div class="status-dot" :class="connectionStatus.class"></div>
+                  </el-tooltip>
+                  <el-tag :type="connectionStatus.tagType" size="small" effect="plain" style="margin-left: 8px">
+                    <el-icon v-if="connectionStatus.connected" class="rotating-icon"><Refresh /></el-icon>
+                    {{ connectionStatus.text }}
+                  </el-tag>
+                </div>
+              </div>
               <el-tag v-if="dataSource" type="info" size="small">来源: {{ dataSource }}</el-tag>
             </div>
           </template>
@@ -30,48 +35,144 @@
                 负面 ({{ negativeCount }})
               </el-button>
             </el-button-group>
-            <el-button :icon="Refresh" @click="refreshData" :loading="loading">刷新</el-button>
+            <el-button :icon="Refresh" :loading="loading" @click="refreshData">刷新</el-button>
           </div>
           
-          <el-scrollbar height="600px" ref="scrollbarRef">
-            <el-timeline class="data-timeline">
-              <el-timeline-item
-                v-for="item in filteredDataStream"
-                :key="item.id"
-                :timestamp="item.time"
-                :type="getSentimentType(item.sentiment)"
-                size="large"
-              >
-                <el-card class="data-card" :class="`sentiment-${item.sentiment}`">
-                  <div class="data-header">
-                    <div class="user-info">
-                      <el-avatar :size="32" :src="item.avatar" />
-                      <span class="username">{{ item.username }}</span>
-                      <el-tag :type="getSentimentType(item.sentiment)" size="small">
-                        {{ getSentimentLabel(item.sentiment) }}
-                        <span v-if="item.sentimentScore" style="margin-left: 4px">
-                          {{ (item.sentimentScore * 100).toFixed(0) }}%
-                        </span>
-                      </el-tag>
-                    </div>
-                    <div class="data-meta">
-                      <el-tag v-if="item.keyword" type="warning" size="small" effect="plain">
-                        #{{ item.keyword }}
-                      </el-tag>
-                      <span v-if="item.source">{{ item.source }}</span>
-                      <span v-if="item.location">{{ item.location }}</span>
-                    </div>
-                  </div>
-                  <div class="data-content">{{ item.content }}</div>
-                  <div class="data-stats">
-                    <span><el-icon><View /></el-icon> {{ item.views }}</span>
-                    <span><el-icon><ChatDotRound /></el-icon> {{ item.comments }}</span>
-                    <span><el-icon><Star /></el-icon> {{ item.likes }}</span>
-                  </div>
-                </el-card>
-              </el-timeline-item>
-            </el-timeline>
-          </el-scrollbar>
+          <el-tabs v-model="activeKeywordTab" type="card" class="keyword-tabs">
+            <el-tab-pane label=" " name="all">
+              <template #label>
+                <span> </span>
+                <el-badge :value="dataStream.length" class="tab-badge" />
+              </template>
+              
+              <el-scrollbar ref="scrollbarRef" height="550px">
+                <el-timeline class="data-timeline">
+                  <el-timeline-item
+                    v-for="item in filteredDataStream"
+                    :key="item.id"
+                    :timestamp="item.time"
+                    :type="getSentimentType(item.sentiment)"
+                    size="large"
+                  >
+                    <el-card class="data-card" :class="`sentiment-${item.sentiment}`">
+                      <div class="data-header">
+                        <div class="user-info">
+                          <el-avatar :size="32" :src="item.avatar" />
+                          <span class="username">{{ item.username }}</span>
+                          <el-tag :type="getSentimentType(item.sentiment)" size="small">
+                            {{ getSentimentLabel(item.sentiment) }}
+                            <span v-if="item.sentimentScore" style="margin-left: 4px">
+                              {{ (item.sentimentScore * 100).toFixed(0) }}%
+                            </span>
+                          </el-tag>
+                        </div>
+                        <div class="data-meta">
+                          <el-tag v-if="item.keyword" type="warning" size="small" effect="plain">
+                            #{{ item.keyword }}
+                          </el-tag>
+                          <span v-if="item.source">{{ item.source }}</span>
+                          <span v-if="item.location">{{ item.location }}</span>
+                        </div>
+                      </div>
+                      <div class="data-content">{{ item.content }}</div>
+                      <div class="data-stats">
+                        <span><el-icon><View /></el-icon> {{ item.views }}</span>
+                        <span><el-icon><ChatDotRound /></el-icon> {{ item.comments }}</span>
+                        <span><el-icon><Star /></el-icon> {{ item.likes }}</span>
+                      </div>
+                    </el-card>
+                  </el-timeline-item>
+                </el-timeline>
+              </el-scrollbar>
+            </el-tab-pane>
+            
+            <el-tab-pane 
+              v-for="keyword in monitorKeywords" 
+              :key="keyword"
+              :label="keyword"
+              :name="keyword"
+            >
+              <template #label>
+                <span>#{{ keyword }}</span>
+                <el-badge :value="getKeywordDataCount(keyword)" class="tab-badge" />
+              </template>
+              
+              <!--  -->
+              <div class="keyword-stats">
+                <el-row :gutter="16">
+                  <el-col :span="8">
+                    <el-statistic title=" " :value="getKeywordSentimentCount(keyword, 'positive')" />
+                  </el-col>
+                  <el-col :span="8">
+                    <el-statistic title=" " :value="getKeywordSentimentCount(keyword, 'negative')" />
+                  </el-col>
+                  <el-col :span="8">
+                    <el-statistic title=" " :value="getKeywordSentimentCount(keyword, 'neutral')" />
+                  </el-col>
+                </el-row>
+                
+                <el-progress 
+                  :percentage="getKeywordSentimentRatio(keyword, 'positive')" 
+                  status="success" 
+                  :show-text="false"
+                  style="margin: 8px 0"
+                />
+                <el-progress 
+                  :percentage="getKeywordSentimentRatio(keyword, 'negative')" 
+                  status="danger" 
+                  :show-text="false"
+                  style="margin: 8px 0"
+                />
+                <el-progress 
+                  :percentage="getKeywordSentimentRatio(keyword, 'neutral')" 
+                  status="warning" 
+                  :show-text="false"
+                  style="margin: 8px 0"
+                />
+              </div>
+              
+              <!--  -->
+              <el-scrollbar height="400px">
+                <el-timeline class="data-timeline">
+                  <el-timeline-item
+                    v-for="item in getKeywordDataStream(keyword)"
+                    :key="item.id"
+                    :timestamp="item.time"
+                    :type="getSentimentType(item.sentiment)"
+                    size="large"
+                  >
+                    <el-card class="data-card" :class="`sentiment-${item.sentiment}`">
+                      <div class="data-header">
+                        <div class="user-info">
+                          <el-avatar :size="32" :src="item.avatar" />
+                          <span class="username">{{ item.username }}</span>
+                          <el-tag :type="getSentimentType(item.sentiment)" size="small">
+                            {{ getSentimentLabel(item.sentiment) }}
+                            <span v-if="item.sentimentScore" style="margin-left: 4px">
+                              {{ (item.sentimentScore * 100).toFixed(0) }}%
+                            </span>
+                          </el-tag>
+                        </div>
+                        <div class="data-meta">
+                          <el-tag type="warning" size="small" effect="plain">
+                            #{{ keyword }}
+                          </el-tag>
+                          <span v-if="item.source">{{ item.source }}</span>
+                          <span v-if="item.location">{{ item.location }}</span>
+                        </div>
+                      </div>
+                      <div class="data-content">{{ item.content }}</div>
+                      <div class="data-stats">
+                        <span><el-icon><View /></el-icon> {{ item.views }}</span>
+                        <span><el-icon><ChatDotRound /></el-icon> {{ item.comments }}</span>
+                        <span><el-icon><Star /></el-icon> {{ item.likes }}</span>
+                      </div>
+                    </el-card>
+                  </el-timeline-item>
+                </el-timeline>
+              </el-scrollbar>
+            </el-tab-pane>
+          </el-tabs>
         </el-card>
         
         <!-- 实时指标卡片 -->
@@ -122,7 +223,7 @@
           <template #header>
             <div class="card-header">
               <span><el-icon><Search /></el-icon> 监控关键词</span>
-              <el-button size="small" :icon="Refresh" circle @click="loadKeywords" :loading="loadingKeywords" />
+              <el-button size="small" :icon="Refresh" circle :loading="loadingKeywords" @click="loadKeywords" />
             </div>
           </template>
           <div class="keyword-tags">
@@ -130,9 +231,9 @@
               v-for="kw in monitorKeywords"
               :key="kw"
               closable
-              @close="removeKeyword(kw)"
               size="default"
               class="keyword-tag"
+              @close="removeKeyword(kw)"
             >
               {{ kw }}
             </el-tag>
@@ -169,12 +270,54 @@
             <el-form-item label="检查间隔(秒)">
               <el-input-number v-model="alertConfig.check_interval_seconds" :min="10" :max="600" :step="10" style="width: 100%" />
             </el-form-item>
-            <el-button type="primary" size="small" @click="saveAlertConfig" :loading="savingConfig" style="width: 100%">
+            
+            <!-- 组合预警规则 -->
+            <el-divider> 组合预警规则 </el-divider>
+            
+            <div v-for="rule in alertConfig.composite_rules" :key="rule.id" class="composite-rule">
+              <el-form-item :label="`${rule.name}`">
+                <el-switch v-model="rule.enabled" size="small" style="margin-right: 8px" />
+              </el-form-item>
+              
+              <el-form-item label="负面情感比例阈值">
+                <el-slider 
+                  v-model="rule.negative_ratio_threshold" 
+                  :min="0" :max="1" :step="0.05" 
+                  :format-tooltip="(v: number) => (v * 100).toFixed(0) + '%'"
+                  :disabled="!rule.enabled"
+                />
+              </el-form-item>
+              
+              <el-form-item label="转发量阈值">
+                <el-input-number 
+                  v-model="rule.reposts_threshold" 
+                  :min="100" :max="10000" :step="100"
+                  style="width: 100%"
+                  :disabled="!rule.enabled"
+                />
+              </el-form-item>
+              
+              <el-form-item label="逻辑运算符">
+                <el-radio-group v-model="rule.operator" :disabled="!rule.enabled">
+                  <el-radio label="AND"> 并且 </el-radio>
+                  <el-radio label="OR"> 或者 </el-radio>
+                </el-radio-group>
+              </el-form-item>
+              
+              <el-form-item>
+                <el-text type="info" size="small">
+                  {{ rule.negative_ratio_threshold * 100 }}% {{ rule.operator === 'AND' ? ' 并且 ' : ' 或者 ' }} {{ rule.reposts_threshold }} 
+                </el-text>
+              </el-form-item>
+            </div>
+            
+            <el-button type="primary" size="small" :loading="savingConfig" style="width: 100%" @click="saveAlertConfig">
               保存配置
             </el-button>
           </el-form>
         </el-card>
 
+        <!-- 预警系统 -->
         <el-card header="预警系统" class="alert-card">
           <div class="alert-rules">
             <div
@@ -296,6 +439,24 @@ const autoScroll = ref(true);
 const filterType = ref('all');
 const scrollbarRef = ref();
 const loading = ref(false);
+const activeKeywordTab = ref('all');
+
+// SSE 
+const connectionStatus = reactive({
+  connected: false,
+  reconnecting: false,
+  retryCount: 0,
+  maxRetries: 5,
+  text: ' ',
+  tooltip: ' ',
+  class: 'status-disconnected',
+  tagType: 'danger'
+});
+
+// SSE 
+let eventSource: EventSource | null = null;
+let reconnectTimer: NodeJS.Timeout | null = null;
+let reconnectDelay = 1000; // 1
 
 // 关键词订阅
 const monitorKeywords = ref<string[]>([]);
@@ -308,6 +469,24 @@ const alertConfig = reactive({
   intensity_threshold: 0.80,
   alert_enabled: true,
   check_interval_seconds: 60,
+  composite_rules: [
+    {
+      id: 'composite_1',
+      name: '负面情感激增',
+      enabled: true,
+      negative_ratio_threshold: 0.40,
+      reposts_threshold: 1000,
+      operator: 'AND'
+    },
+    {
+      id: 'composite_2', 
+      name: '负面情感激增',
+      enabled: false,
+      negative_ratio_threshold: 0.50,
+      reposts_threshold: 5000,
+      operator: 'AND'
+    }
+  ]
 });
 const savingConfig = ref(false);
 
@@ -546,6 +725,29 @@ const saveAlertConfig = async () => {
   }
 };
 
+// 关键词相关函数
+const getKeywordDataCount = (keyword: string) => {
+  return dataStream.value.filter(item => item.keyword === keyword).length;
+};
+
+const getKeywordDataStream = (keyword: string) => {
+  return dataStream.value.filter(item => item.keyword === keyword);
+};
+
+const getKeywordSentimentCount = (keyword: string, sentiment: string) => {
+  return dataStream.value.filter(item => 
+    item.keyword === keyword && item.sentiment === sentiment
+  ).length;
+};
+
+const getKeywordSentimentRatio = (keyword: string, sentiment: string) => {
+  const keywordData = dataStream.value.filter(item => item.keyword === keyword);
+  if (keywordData.length === 0) return 0;
+  
+  const sentimentCount = keywordData.filter(item => item.sentiment === sentiment).length;
+  return Math.round((sentimentCount / keywordData.length) * 100);
+};
+
 // 加载预警记录
 const loadAlertRecords = async () => {
   try {
@@ -562,13 +764,16 @@ const loadAlertRecords = async () => {
 let scrollInterval: any = null;
 
 onMounted(() => {
-  // 初始加载真实数据
+  // 
   fetchRealtimeData();
   loadKeywords();
   loadAlertConfig();
   loadAlertRecords();
   
-  // 定时刷新实时数据（30秒一次）
+  // 
+  connectSSE();
+  
+  // 
   scrollInterval = setInterval(() => {
     if (autoScroll.value) {
       fetchRealtimeData();
@@ -578,14 +783,18 @@ onMounted(() => {
         }
       });
     }
-  }, 30000);  // 30秒刷新一次，避免过于频繁请求
+  }, 30000);  // 30
 });
 
 onUnmounted(() => {
   if (scrollInterval) {
     clearInterval(scrollInterval);
   }
+  
+  // 
+  disconnectSSE();
 });
+
 </script>
 
 <style scoped lang="scss">
@@ -600,11 +809,62 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   
+  .connection-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+        
+        &.status-connected {
+          background-color: #67c23a;
+          box-shadow: 0 0 0 2px rgba(103, 194, 58, 0.2);
+        }
+        
+        &.status-reconnecting {
+          background-color: #e6a23c;
+          box-shadow: 0 0 0 2px rgba(230, 162, 60, 0.2);
+          animation: pulse 1s infinite;
+        }
+        
+        &.status-disconnected {
+          background-color: #f56c6c;
+          box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.2);
+          animation: none;
+        }
+      }
+    }
+  }
+  
   span {
     display: flex;
     align-items: center;
     gap: 8px;
     font-weight: 500;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 

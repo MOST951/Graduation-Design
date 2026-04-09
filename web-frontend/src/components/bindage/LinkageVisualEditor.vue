@@ -8,7 +8,7 @@
       </div>
     </div>
     
-    <div class="editor-content" ref="editorRef">
+    <div ref="editorRef" class="editor-content">
       <!-- 组件节点 -->
       <div
         v-for="node in nodes"

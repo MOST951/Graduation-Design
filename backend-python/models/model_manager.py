@@ -28,6 +28,18 @@ from enum import Enum
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# 全局单例模型加载器
+_SINGLETON_AVAILABLE = False
+try:
+    from services.model_singleton import (
+        get_bert_tokenizer_and_model as _singleton_load,
+        is_bert_available as _singleton_bert_available,
+        get_model_info as _singleton_info,
+    )
+    _SINGLETON_AVAILABLE = True
+except ImportError:
+    pass
+
 
 class ModelStatus(Enum):
     """模型状态"""
@@ -334,7 +346,16 @@ class ModelManager:
         }
     
     def _load_chinese_bert(self):
-        """加载ChineseBERT模型"""
+        """加载ChineseBERT模型，优先委托全局单例"""
+        # 优先使用全局单例（实际会复用 ChineseBertSentimentAnalyzer 内部的单例）
+        if _SINGLETON_AVAILABLE:
+            try:
+                tokenizer, model, device = _singleton_load()
+                if tokenizer is not None and model is not None:
+                    logger.info("[ModelManager] ChineseBERT已从全局单例获取")
+            except Exception as e:
+                logger.warning(f"[ModelManager] 全局单例加载失败: {e}")
+        
         try:
             from spark.chinese_bert_sentiment import ChineseBertSentimentAnalyzer
             analyzer = ChineseBertSentimentAnalyzer()
@@ -348,15 +369,20 @@ class ModelManager:
             return MockBertAnalyzer()
     
     def _load_hybrid_analyzer(self):
-        """加载混合分析器"""
+        """加载混合分析器，内部会自动复用全局单例"""
         try:
-            from spark.chinese_bert_sentiment import HybridSentimentAnalyzer
+            from services.hybrid_analyzer import HybridSentimentAnalyzer
             analyzer = HybridSentimentAnalyzer()
-            analyzer.initialize()
             return analyzer
         except ImportError:
-            logger.warning("混合分析器模块未安装")
-            return None
+            try:
+                from spark.chinese_bert_sentiment import HybridSentimentAnalyzer
+                analyzer = HybridSentimentAnalyzer()
+                analyzer.initialize()
+                return analyzer
+            except ImportError:
+                logger.warning("混合分析器模块未安装")
+                return None
         except Exception as e:
             logger.warning(f"混合分析器加载失败: {e}")
             return None
@@ -481,10 +507,25 @@ def preload_models_on_startup():
     
     在app.py中调用此函数
     """
+    # 设置 TRANSFORMERS_CACHE 环境变量，避免重复下载
+    if not os.environ.get("TRANSFORMERS_CACHE"):
+        cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "model_cache")
+        os.environ["TRANSFORMERS_CACHE"] = cache_dir
+        os.makedirs(cache_dir, exist_ok=True)
+
     manager = ModelManager()
     
     # 异步预加载核心模型
     def _preload():
+        # 先通过全局单例加载 BERT（只加载一次）
+        try:
+            from services.model_singleton import preload as singleton_preload
+            singleton_preload()
+        except ImportError:
+            logger.warning("model_singleton 不可用，跳过 BERT 单例预加载")
+        except Exception as e:
+            logger.warning(f"BERT 单例预加载失败: {e}")
+
         manager.preload_essential()
         manager.warmup_all()
     

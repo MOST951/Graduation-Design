@@ -10,7 +10,7 @@
         <p class="header-desc">基于情感-热度双维度排序模型的智能舆情报告生成</p>
       </div>
       <div class="header-actions">
-        <el-button type="primary" :icon="Plus" @click="handleQuickGenerate" :loading="generating">
+        <el-button type="primary" :icon="Plus" :loading="generating" @click="handleQuickGenerate">
           一键生成报告
         </el-button>
       </div>
@@ -188,7 +188,7 @@
 
             <!-- 生成按钮 -->
             <el-form-item>
-              <el-button type="primary" size="large" @click="handleGenerate" :loading="generating">
+              <el-button type="primary" size="large" :loading="generating" @click="handleGenerate">
                 <el-icon><DocumentAdd /></el-icon>
                 生成舆情报告
               </el-button>
@@ -211,7 +211,7 @@
             </div>
           </template>
 
-          <div class="history-list" v-if="historyReports.length > 0">
+          <div v-if="historyReports.length > 0" class="history-list">
             <div 
               v-for="report in historyReports" 
               :key="report.id" 
@@ -246,7 +246,7 @@
             <span><el-icon><Operation /></el-icon> 快速操作</span>
           </template>
           <div class="quick-actions">
-            <el-button @click="handleQuickGenerate" :loading="generating">
+            <el-button :loading="generating" @click="handleQuickGenerate">
               <el-icon><Refresh /></el-icon>
               生成今日报告
             </el-button>
@@ -267,7 +267,7 @@
       top="5vh"
       :close-on-click-modal="false"
     >
-      <div class="report-preview" v-loading="previewLoading">
+      <div v-loading="previewLoading" class="report-preview">
         <div class="preview-content" v-html="previewContent"></div>
       </div>
       <template #footer>

@@ -24,7 +24,7 @@
                 </el-form-item>
                 
                 <el-form-item>
-                  <el-button type="primary" @click="handleRecommend" block>
+                  <el-button type="primary" block @click="handleRecommend">
                     生成推荐
                   </el-button>
                 </el-form-item>
@@ -90,7 +90,7 @@
                 </el-form-item>
                 
                 <el-form-item>
-                  <el-button type="primary" @click="handlePredict" block>
+                  <el-button type="primary" block @click="handlePredict">
                     开始预测
                   </el-button>
                 </el-form-item>

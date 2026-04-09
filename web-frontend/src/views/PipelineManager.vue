@@ -7,13 +7,13 @@
         <p class="subtitle">全流程执行：采集 → 清洗 → 情感分析 → 双维度排序 → 入库</p>
       </div>
       <div class="header-right">
-        <el-button type="primary" :icon="VideoPlay" @click="runPipeline('sync')" :loading="running" :disabled="running">
+        <el-button type="primary" :icon="VideoPlay" :loading="running" :disabled="running" @click="runPipeline('sync')">
           同步执行
         </el-button>
-        <el-button type="success" :icon="VideoPlay" @click="runPipeline('async')" :loading="running" :disabled="running">
+        <el-button type="success" :icon="VideoPlay" :loading="running" :disabled="running" @click="runPipeline('async')">
           异步执行
         </el-button>
-        <el-button :icon="Refresh" @click="refreshStatus" :loading="refreshing">刷新状态</el-button>
+        <el-button :icon="Refresh" :loading="refreshing" @click="refreshStatus">刷新状态</el-button>
       </div>
     </div>
 
@@ -38,11 +38,11 @@
             <el-icon v-else :color="INFO" :size="28"><component :is="stage.icon" /></el-icon>
           </div>
           <div class="stage-label">{{ stage.name }}</div>
-          <div class="stage-detail" v-if="stage.count !== undefined && stage.count > 0">
+          <div v-if="stage.count !== undefined && stage.count > 0" class="stage-detail">
             {{ stage.count }} 条
           </div>
-          <div class="stage-detail" v-if="stage.time">{{ stage.time }}ms</div>
-          <div class="stage-arrow" v-if="idx < stages.length - 1">
+          <div v-if="stage.time" class="stage-detail">{{ stage.time }}ms</div>
+          <div v-if="idx < stages.length - 1" class="stage-arrow">
             <el-icon><ArrowRight /></el-icon>
           </div>
         </div>
@@ -69,13 +69,42 @@
               <el-switch v-model="pipelineConfig.resume" active-text="启用" inactive-text="禁用" />
               <div class="form-tip">某阶段失败后，从该阶段重试</div>
             </el-form-item>
+            <el-form-item label="定时调度">
+              <el-switch v-model="pipelineConfig.scheduling_enabled" active-text="启用" inactive-text="禁用" />
+            </el-form-item>
+            <el-form-item v-if="pipelineConfig.scheduling_enabled" label="Cron 表达式">
+              <el-input 
+                v-model="pipelineConfig.cron_expression" 
+                placeholder="0 2 * * *"
+                style="width: 100%"
+              >
+                <template #append>
+                  <el-button size="small" @click="showCronHelper = true">
+                    <el-icon><Setting /></el-icon>
+                  </el-button>
+                </template>
+              </el-input>
+              <div class="form-tip">例如：0 2 * * * 表示每天凌晨2点执行</div>
+            </el-form-item>
+            <el-form-item label="高级配置">
+              <el-switch v-model="pipelineConfig.advanced_mode" active-text="启用" inactive-text="禁用" />
+            </el-form-item>
+            <el-form-item v-if="pipelineConfig.advanced_mode" label="配置编辑器">
+              <el-select v-model="configEditorMode" size="small" style="width: 100px; margin-right: 8px">
+                <el-option label="JSON" value="json" />
+                <el-option label="YAML" value="yaml" />
+              </el-select>
+              <el-button size="small" @click="showAdvancedConfig = true">
+                <el-icon><Edit /></el-icon> 编辑
+              </el-button>
+            </el-form-item>
           </el-form>
         </el-card>
 
         <!-- 数据库统计 -->
         <el-card header="数据库统计" shadow="hover" class="config-card" style="margin-top: 16px">
-          <div class="db-stats" v-loading="loadingStats">
-            <div class="db-stat-row" v-for="item in dbStats" :key="item.table">
+          <div v-loading="loadingStats" class="db-stats">
+            <div v-for="item in dbStats" :key="item.table" class="db-stat-row">
               <span class="stat-table">{{ item.label }}</span>
               <el-tag :type="item.count > 0 ? 'success' : 'info'" size="small">{{ item.count }} 条</el-tag>
             </div>
@@ -122,10 +151,10 @@
           <template #header>
             <div class="card-header">
               <span><el-icon><Histogram /></el-icon> 最新双维度排序结果 TOP20</span>
-              <el-button size="small" :icon="Refresh" @click="loadRanking" :loading="loadingRanking">刷新</el-button>
+              <el-button size="small" :icon="Refresh" :loading="loadingRanking" @click="loadRanking">刷新</el-button>
             </div>
           </template>
-          <el-table :data="rankingData" v-loading="loadingRanking" stripe size="small" max-height="400">
+          <el-table v-loading="loadingRanking" :data="rankingData" stripe size="small" max-height="400">
             <el-table-column label="排名" width="60" align="center">
               <template #default="{ row }">
                 <el-tag v-if="row.ranking_position <= 3" type="danger" size="small" effect="dark">{{ row.ranking_position }}</el-tag>
@@ -192,16 +221,156 @@
         </el-card>
       </el-col>
     </el-row>
+    
+    <!-- Cron  -->
+    <el-dialog v-model="showCronHelper" title="Cron " width="600px">
+      <div class="cron-helper">
+        <el-tabs type="card">
+          <el-tab-pane label=" " name="presets">
+            <div class="cron-presets">
+              <el-button 
+                v-for="preset in cronPresets" 
+                :key="preset.name"
+                style="margin: 4px"
+                @click="pipelineConfig.cron_expression = preset.expression; showCronHelper = false"
+              >
+                {{ preset.name }}
+                <div style="font-size: 11px; color: #666; margin-top: 2px">{{ preset.expression }}</div>
+              </el-button>
+            </div>
+          </el-tab-pane>
+          <el-tab-pane label=" " name="builder">
+            <el-form label-position="top">
+              <el-form-item label=" ">
+                <el-radio-group v-model="cronBuilder.minute">
+                  <el-radio label="*"> </el-radio>
+                  <el-radio label="0">0</el-radio>
+                  <el-radio label="15">15</el-radio>
+                  <el-radio label="30">30</el-radio>
+                  <el-radio label="45">45</el-radio>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label=" ">
+                <el-radio-group v-model="cronBuilder.hour">
+                  <el-radio label="*"> </el-radio>
+                  <el-radio label="0">0</el-radio>
+                  <el-radio label="2">2</el-radio>
+                  <el-radio label="6">6</el-radio>
+                  <el-radio label="12">12</el-radio>
+                  <el-radio label="18">18</el-radio>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label=" ">
+                <el-radio-group v-model="cronBuilder.day">
+                  <el-radio label="*"> </el-radio>
+                  <el-radio label="1">1</el-radio>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label=" ">
+                <el-radio-group v-model="cronBuilder.month">
+                  <el-radio label="*"> </el-radio>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label=" ">
+                <el-radio-group v-model="cronBuilder.weekday">
+                  <el-radio label="*"> </el-radio>
+                  <el-radio label="1"> </el-radio>
+                  <el-radio label="2"> </el-radio>
+                  <el-radio label="3"> </el-radio>
+                  <el-radio label="4"> </el-radio>
+                  <el-radio label="5"> </el-radio>
+                </el-radio-group>
+              </el-form-item>
+            </el-form>
+            <div style="margin-top: 16px; padding: 12px; background: #f5f5f5; border-radius: 4px">
+              <strong> : </strong>{{ generatedCron }}
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+      <template #footer>
+        <el-button @click="showCronHelper = false"> </el-button>
+        <el-button type="primary" @click="pipelineConfig.cron_expression = generatedCron; showCronHelper = false">
+        </el-button>
+      </template>
+    </el-dialog>
+    
+    <!--  -->
+    <el-dialog v-model="showAdvancedConfig" :title="` `" width="800px">
+      <div class="advanced-config-editor">
+        <el-tabs v-model="configEditorTab">
+          <el-tab-pane label="Spark " name="spark">
+            <el-input 
+              v-model="advancedConfig.spark_config"
+              type="textarea"
+              :rows="12"
+              :placeholder="configEditorMode === 'json' ? jsonSparkPlaceholder : yamlSparkPlaceholder"
+              style="font-family: 'Courier New', monospace"
+            />
+          </el-tab-pane>
+          <el-tab-pane label=" " name="cleaning">
+            <el-input 
+              v-model="advancedConfig.cleaning_rules"
+              type="textarea"
+              :rows="12"
+              :placeholder="configEditorMode === 'json' ? jsonCleaningPlaceholder : yamlCleaningPlaceholder"
+              style="font-family: 'Courier New', monospace"
+            />
+          </el-tab-pane>
+          <el-tab-pane label=" " name="custom">
+            <el-input 
+              v-model="advancedConfig.custom_params"
+              type="textarea"
+              :rows="12"
+              placeholder=" "
+              style="font-family: 'Courier New', monospace"
+            />
+          </el-tab-pane>
+        </el-tabs>
+        
+        <div style="margin-top: 16px">
+          <el-button :loading="validatingConfig" @click="validateConfig">
+            <el-icon><Check /></el-icon> 
+          </el-button>
+          <el-button style="margin-left: 8px" @click="resetConfig">
+            <el-icon><RefreshLeft /></el-icon> 
+          </el-button>
+          <el-button style="margin-left: 8px" @click="loadDefaultConfig">
+            <el-icon><Download /></el-icon> 
+          </el-button>
+        </div>
+        
+        <div v-if="configValidationResult" style="margin-top: 12px">
+          <el-alert 
+            :type="configValidationResult.valid ? 'success' : 'error'" 
+            :title="configValidationResult.message"
+            :closable="false"
+            show-icon
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showAdvancedConfig = false"> </el-button>
+        <el-button type="primary" :loading="savingConfig" @click="saveAdvancedConfig">
+        </el-button>
+      </template>
+    </el-dialog>
+    
+    <!-- WebSocket  -->
+    <div v-if="wsStatus.connected" class="websocket-indicator">
+      <el-icon color="#67c23a"><Connection /></el-icon>
+      <span style="margin-left: 4px; font-size: 12px"> </span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import {
   Connection, VideoPlay, Refresh, Loading, CircleCheck, CircleClose,
   ArrowRight, Download, Operation, DataAnalysis, Histogram, DataLine,
-  Document, TrendCharts,
+  Document, TrendCharts, Setting, Edit, Check, RefreshLeft,
 } from '@element-plus/icons-vue';
 import apiClient from '@/api/index';
 import { SUCCESS, PRIMARY, DANGER, INFO } from '@/styles/colors';
@@ -246,6 +415,48 @@ const dbStats = ref([
 const rankingData = ref<any[]>([]);
 const historyRecords = ref<any[]>([]);
 
+// 
+const showCronHelper = ref(false);
+const showAdvancedConfig = ref(false);
+const configEditorMode = ref('json');
+const configEditorTab = ref('spark');
+const savingConfig = ref(false);
+const validatingConfig = ref(false);
+
+const cronBuilder = reactive({
+  minute: '0',
+  hour: '2',
+  day: '*',
+  month: '*',
+  weekday: '*'
+});
+
+const cronPresets = ref([
+  { name: ' ', expression: '0 2 * * *' },
+  { name: ' ', expression: '0 */6 * * *' },
+  { name: ' ', expression: '0 0 * * 1' },
+  { name: ' ', expression: '0 0 1 * *' },
+  { name: ' ', expression: '*/30 * * * *' },
+  { name: ' ', expression: '0 */2 * * 1-5' }
+]);
+
+const advancedConfig = reactive({
+  spark_config: '',
+  cleaning_rules: '',
+  custom_params: ''
+});
+
+const configValidationResult = ref<any>(null);
+
+// WebSocket 
+const wsStatus = reactive({
+  connected: false,
+  reconnecting: false,
+  retryCount: 0
+});
+
+let websocket: WebSocket | null = null;
+let wsReconnectTimer: number | null = null;
 let pollTimer: number | null = null;
 
 // 执行流水线
@@ -416,12 +627,239 @@ const stopPolling = () => {
   }
 };
 
+const generatedCron = computed(() => {
+  return `${cronBuilder.minute} ${cronBuilder.hour} ${cronBuilder.day} ${cronBuilder.month} ${cronBuilder.weekday}`;
+});
+
+// 
+const jsonSparkPlaceholder = `{
+  "spark.app.name": "weibo-sentiment-pipeline",
+  "spark.executor.memory": "2g",
+  "spark.executor.cores": "2",
+  "spark.sql.shuffle.partitions": "200",
+  "spark.default.parallelism": "100"
+}`;
+
+const yamlSparkPlaceholder = `spark:
+  app.name: "weibo-sentiment-pipeline"
+  executor.memory: "2g"
+  executor.cores: "2"
+  sql.shuffle.partitions: 200
+  default.parallelism: 100`;
+
+const jsonCleaningPlaceholder = `{
+  "remove_duplicates": true,
+  "min_content_length": 10,
+  "max_content_length": 500,
+  "filter_keywords": ["spam", "ad"],
+  "language_detection": true
+}`;
+
+const yamlCleaningPlaceholder = `remove_duplicates: true
+min_content_length: 10
+max_content_length: 500
+filter_keywords:
+  - "spam"
+  - "ad"
+language_detection: true`;
+
+// WebSocket 
+const connectWebSocket = () => {
+  if (websocket) {
+    websocket.close();
+  }
+
+  try {
+    const wsUrl = `ws://localhost:8000/ws/pipeline`;
+    websocket = new WebSocket(wsUrl);
+
+    websocket.onopen = () => {
+      console.log('WebSocket connected');
+      wsStatus.connected = true;
+      wsStatus.reconnecting = false;
+      wsStatus.retryCount = 0;
+      
+      // 
+      stopPolling();
+    };
+
+    websocket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handleWebSocketMessage(data);
+      } catch (error) {
+        console.error('Failed to parse WebSocket message:', error);
+      }
+    };
+
+    websocket.onclose = () => {
+      console.log('WebSocket disconnected');
+      wsStatus.connected = false;
+      
+      // 
+      if (wsStatus.retryCount < 5) {
+        wsStatus.reconnecting = true;
+        wsStatus.retryCount++;
+        
+        const delay = Math.min(1000 * Math.pow(2, wsStatus.retryCount - 1), 30000);
+        wsReconnectTimer = window.setTimeout(() => {
+          connectWebSocket();
+        }, delay);
+      } else {
+        // 
+        startPolling();
+      }
+    };
+
+    websocket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+  } catch (error) {
+    console.error('Failed to connect WebSocket:', error);
+    // 
+    startPolling();
+  }
+};
+
+const disconnectWebSocket = () => {
+  if (websocket) {
+    websocket.close();
+    websocket = null;
+  }
+  
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  
+  wsStatus.connected = false;
+  wsStatus.reconnecting = false;
+  wsStatus.retryCount = 0;
+};
+
+const handleWebSocketMessage = (data: any) => {
+  if (data.type === 'pipeline_status') {
+    Object.assign(pipelineStatus, data.status);
+    
+    if (data.status.current_stage) {
+      const stage = stages.value.find(s => s.key === data.status.current_stage);
+      if (stage) {
+        stage.status = 'running';
+      }
+    }
+    
+    if (data.status.status === 'completed') {
+      stages.value.forEach(s => s.status = 'completed');
+      running.value = false;
+      loadRanking();
+      loadDatabaseStats();
+    } else if (data.status.status === 'failed') {
+      running.value = false;
+      ElMessage.error(`Pipeline failed: ${data.status.error || 'Unknown error'}`);
+    }
+  } else if (data.type === 'stage_progress') {
+    const stage = stages.value.find(s => s.key === data.stage);
+    if (stage) {
+      stage.count = data.processed_count;
+      stage.status = 'running';
+    }
+  }
+};
+
+// 
+const validateConfig = async () => {
+  validatingConfig.value = true;
+  try {
+    const configData = {
+      spark_config: configEditorMode.value === 'json' ? 
+        JSON.parse(advancedConfig.spark_config || '{}') : 
+        advancedConfig.spark_config,
+      cleaning_rules: configEditorMode.value === 'json' ? 
+        JSON.parse(advancedConfig.cleaning_rules || '{}') : 
+        advancedConfig.cleaning_rules,
+      custom_params: configEditorMode.value === 'json' ? 
+        JSON.parse(advancedConfig.custom_params || '{}') : 
+        advancedConfig.custom_params
+    };
+
+    const response = await apiClient.post('/pipeline/validate-config', configData);
+    if (response.data.code === 200) {
+      configValidationResult.value = {
+        valid: true,
+        message: ' '
+      };
+    } else {
+      configValidationResult.value = {
+        valid: false,
+        message: response.data.message || ' '
+      };
+    }
+  } catch (error: any) {
+    configValidationResult.value = {
+      valid: false,
+      message: error.response?.data?.message || ' '
+    };
+  } finally {
+    validatingConfig.value = false;
+  }
+};
+
+const saveAdvancedConfig = async () => {
+  savingConfig.value = true;
+  try {
+    const configData = {
+      spark_config: advancedConfig.spark_config,
+      cleaning_rules: advancedConfig.cleaning_rules,
+      custom_params: advancedConfig.custom_params,
+      format: configEditorMode.value
+    };
+
+    const response = await apiClient.post('/pipeline/save-config', configData);
+    if (response.data.code === 200) {
+      ElMessage.success(' ');
+      showAdvancedConfig.value = false;
+    } else {
+      ElMessage.error(response.data.message || ' ');
+    }
+  } catch (error: any) {
+    ElMessage.error(error.response?.data?.message || ' ');
+  } finally {
+    savingConfig.value = false;
+  }
+};
+
+const resetConfig = () => {
+  advancedConfig.spark_config = '';
+  advancedConfig.cleaning_rules = '';
+  advancedConfig.custom_params = '';
+  configValidationResult.value = null;
+};
+
+const loadDefaultConfig = async () => {
+  try {
+    const response = await apiClient.get('/pipeline/default-config');
+    if (response.data.code === 200) {
+      const config = response.data.data;
+      advancedConfig.spark_config = JSON.stringify(config.spark_config || {}, null, 2);
+      advancedConfig.cleaning_rules = JSON.stringify(config.cleaning_rules || {}, null, 2);
+      advancedConfig.custom_params = JSON.stringify(config.custom_params || {}, null, 2);
+      ElMessage.success(' ');
+    }
+  } catch (error: any) {
+    ElMessage.error(' ');
+  }
+};
+
 onMounted(async () => {
   await Promise.all([refreshStatus(), loadDatabaseStats(), loadRanking()]);
+  // 
+  connectWebSocket();
 });
 
 onUnmounted(() => {
   stopPolling();
+  disconnectWebSocket();
 });
 </script>
 

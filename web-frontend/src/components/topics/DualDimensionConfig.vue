@@ -179,7 +179,7 @@
               size="small" 
               style="width: 150px;"
             />
-            <el-button type="primary" size="small" @click="savePreset" :disabled="!newPresetName">
+            <el-button type="primary" size="small" :disabled="!newPresetName" @click="savePreset">
               保存当前配置
             </el-button>
           </div>
@@ -188,17 +188,17 @@
     </el-collapse>
 
     <!-- 实时效果预览 -->
-    <el-card class="preview-card" shadow="hover" v-if="showPreview">
+    <el-card v-if="showPreview" class="preview-card" shadow="hover">
       <template #header>
         <div class="card-header">
           <span><el-icon><DataAnalysis /></el-icon> 排序效果预览</span>
-          <el-button text size="small" @click="refreshPreview" :loading="previewLoading">
+          <el-button text size="small" :loading="previewLoading" @click="refreshPreview">
             <el-icon><Refresh /></el-icon> 刷新
           </el-button>
         </div>
       </template>
       
-      <div class="preview-content" v-loading="previewLoading">
+      <div v-loading="previewLoading" class="preview-content">
         <div class="ranking-comparison">
           <div class="ranking-column">
             <div class="ranking-title">调整前</div>
@@ -267,10 +267,10 @@
       <el-button @click="resetConfig">
         <el-icon><RefreshLeft /></el-icon> 重置默认
       </el-button>
-      <el-button type="primary" @click="applyConfig" :loading="applying">
+      <el-button type="primary" :loading="applying" @click="applyConfig">
         <el-icon><Check /></el-icon> 应用配置
       </el-button>
-      <el-button type="success" @click="saveToBackend" :loading="saving">
+      <el-button type="success" :loading="saving" @click="saveToBackend">
         <el-icon><Upload /></el-icon> 保存到服务器
       </el-button>
     </div>

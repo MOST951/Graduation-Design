@@ -19,6 +19,11 @@ import time
 import threading
 import queue
 import logging
+import smtplib
+import requests
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.header import Header
 from typing import Dict, List, Optional
 
 # 添加路径
@@ -48,19 +53,200 @@ _keywords_lock = threading.Lock()
 
 # ==================== 预警规则引擎 ====================
 
+class NotificationManager:
+    """ """
+    
+    def __init__(self):
+        self.email_config = {
+            'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
+            'smtp_port': int(os.getenv('SMTP_PORT', '587')),
+            'email_user': os.getenv('EMAIL_USER', ''),
+            'email_password': os.getenv('EMAIL_PASSWORD', ''),
+            'email_from': os.getenv('EMAIL_FROM', ''),
+        }
+        
+        self.webhook_config = {
+            'dingtalk_webhook': os.getenv('DINGTALK_WEBHOOK', ''),
+            'wechat_webhook': os.getenv('WECHAT_WEBHOOK', ''),
+        }
+    
+    def send_email(self, to_emails: List[str], subject: str, content: str, 
+                   alert_level: str = 'warning') -> bool:
+        """ """
+        try:
+            if not all([self.email_config['email_user'], self.email_config['email_password']]):
+                logger.warning("Email configuration incomplete")
+                return False
+            
+            msg = MIMEMultipart()
+            msg['From'] = Header(self.email_config['email_from'], 'utf-8')
+            msg['To'] = Header(', '.join(to_emails), 'utf-8')
+            msg['Subject'] = Header(f"[{alert_level.upper()}] {subject}", 'utf-8')
+            
+            # 
+            body = f"""
+            <html>
+            <body>
+                <h2> </h2>
+                <p><strong> :</strong> {alert_level}</p>
+                <p><strong> :</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                <hr>
+                <div style="background-color: {'#ffebee' if alert_level == 'critical' else '#fff3e0'}; padding: 15px; border-radius: 5px;">
+                    {content.replace('\n', '<br>')}
+                </div>
+                <hr>
+                <p><small> </small></p>
+            </body>
+            </html>
+            """
+            
+            msg.attach(MIMEText(body, 'html', 'utf-8'))
+            
+            # 
+            with smtplib.SMTP(self.email_config['smtp_server'], self.email_config['smtp_port']) as server:
+                server.starttls()
+                server.login(self.email_config['email_user'], self.email_config['email_password'])
+                server.send_message(msg)
+            
+            logger.info(f"Email sent successfully to {to_emails}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send email: {e}")
+            return False
+    
+    def send_dingtalk_webhook(self, content: str, alert_level: str = 'warning') -> bool:
+        """ """
+        try:
+            webhook_url = self.webhook_config['dingtalk_webhook']
+            if not webhook_url:
+                logger.warning("DingTalk webhook URL not configured")
+                return False
+            
+            # 
+            color = 'FF5722' if alert_level == 'critical' else 'FF9800'
+            
+            payload = {
+                "msgtype": "markdown",
+                "markdown": {
+                    "title": f" - {alert_level.upper()}",
+                    "text": f"""
+### {alert_level.upper()} 
+
+** :** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+---
+
+{content}
+
+---
+
+> 
+                    """.strip()
+                }
+            }
+            
+            response = requests.post(webhook_url, json=payload, timeout=10)
+            response.raise_for_status()
+            
+            logger.info("DingTalk webhook sent successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send DingTalk webhook: {e}")
+            return False
+    
+    def send_wechat_webhook(self, content: str, alert_level: str = 'warning') -> bool:
+        """ """
+        try:
+            webhook_url = self.webhook_config['wechat_webhook']
+            if not webhook_url:
+                logger.warning("WeChat webhook URL not configured")
+                return False
+            
+            payload = {
+                "msgtype": "text",
+                "text": {
+                    "content": f"{alert_level.upper()} \n\n{content}\n\n : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                }
+            }
+            
+            response = requests.post(webhook_url, json=payload, timeout=10)
+            response.raise_for_status()
+            
+            logger.info("WeChat webhook sent successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send WeChat webhook: {e}")
+            return False
+    
+    def send_notifications(self, alert: Dict, notification_methods: List[str]) -> Dict[str, bool]:
+        """ """
+        results = {}
+        
+        # 
+        subject = f" : {alert['rule_name']}"
+        content = f"""
+** :** {alert['rule_name']}
+** :** {alert['message']}
+** :** {alert.get('value', 'N/A')}
+** :** {alert.get('threshold', 'N/A')}
+** :** {', '.join(alert.get('keywords', []))}
+** :** {alert['triggered_at']}
+        """.strip()
+        
+        # 
+        if 'email' in notification_methods:
+            # 
+            to_emails = os.getenv('ALERT_EMAILS', '').split(',')
+            to_emails = [email.strip() for email in to_emails if email.strip()]
+            
+            if to_emails:
+                results['email'] = self.send_email(to_emails, subject, content, alert['level'])
+            else:
+                results['email'] = False
+        
+        # 
+        if 'dingtalk' in notification_methods:
+            results['dingtalk'] = self.send_dingtalk_webhook(content, alert['level'])
+        
+        # 
+        if 'wechat' in notification_methods:
+            results['wechat'] = self.send_wechat_webhook(content, alert['level'])
+        
+        return results
+
+
+# 
+notification_manager = NotificationManager()
+
+# ==================== 
 class AlertRule:
-    """预警规则"""
+    """ """
     def __init__(self, rule_id: str, name: str, condition_type: str,
-                 threshold: float, enabled: bool = True):
+                 threshold: float, enabled: bool = True, notification_methods: List[str] = None):
         self.rule_id = rule_id
         self.name = name
-        self.condition_type = condition_type  # 'negative_ratio' | 'single_intensity'
+        self.condition_type = condition_type  # 'negative_ratio' | 'single_intensity' | 'composite'
         self.threshold = threshold
         self.enabled = enabled
+        self.notification_methods = notification_methods or ['email']
+        
+        # 
+        if condition_type == 'composite':
+            self.negative_ratio_threshold = threshold.get('negative_ratio_threshold', 0.3)
+            self.reposts_threshold = threshold.get('reposts_threshold', 1000)
+            self.operator = threshold.get('operator', 'AND')
 
 _alert_rules: List[AlertRule] = [
-    AlertRule('1', '负面情感激增', 'negative_ratio', 0.3),
-    AlertRule('2', '高强度负面单条', 'single_intensity', 0.8),
+    AlertRule('1', ' ', 'negative_ratio', 0.3, ['email', 'dingtalk']),
+    AlertRule('2', ' ', 'single_intensity', 0.8, ['email']),
+    AlertRule('3', ' ', 'composite', {
+        'negative_ratio_threshold': 0.4,
+        'reposts_threshold': 1000,
+        'operator': 'AND'
+    }, ['email', 'dingtalk', 'wechat']),
 ]
 
 # 预警历史记录
@@ -114,15 +300,86 @@ def _check_alerts(data_items: List[Dict]) -> List[Dict]:
                     triggered.append(alert)
                     break  # 每批只报一次
 
-    # 持久化预警记录
+        elif rule.condition_type == 'composite':
+            # 
+            total = len(data_items)
+            negative_count = sum(1 for d in data_items if d.get('sentiment') == 'negative')
+            negative_ratio = negative_count / total if total > 0 else 0
+            
+            # 
+            high_repost_items = [d for d in data_items if d.get('reposts', 0) >= rule.reposts_threshold]
+            high_repost_count = len(high_repost_items)
+            
+            # 
+            condition_met = False
+            if rule.operator == 'AND':
+                condition_met = negative_ratio > rule.negative_ratio_threshold and high_repost_count > 0
+            elif rule.operator == 'OR':
+                condition_met = negative_ratio > rule.negative_ratio_threshold or high_repost_count > 0
+            
+            if condition_met:
+                alert = {
+                    'id': f"alert_{int(time.time()*1000)}",
+                    'rule_id': rule.rule_id,
+                    'rule_name': rule.name,
+                    'level': 'critical' if negative_ratio > 0.6 else 'warning',
+                    'message': f'负面比例 {negative_ratio:.1%} 超过阈值 {rule.negative_ratio_threshold:.0%} {rule.operator} {high_repost_count} 条微博转发超过阈值 {rule.reposts_threshold}',
+                    'value': round(negative_ratio, 4),
+                    'threshold': rule.negative_ratio_threshold,
+                    'triggered_at': datetime.now().isoformat(),
+                    'keywords': list(_subscribed_keywords),
+                    'composite_data': {
+                        'negative_ratio': negative_ratio,
+                        'reposts_threshold': rule.reposts_threshold,
+                        'high_repost_count': high_repost_count,
+                        'operator': rule.operator
+                    }
+                }
+                triggered.append(alert)
+
+    # 
     if triggered:
+        # 
+        for alert in triggered:
+            # 
+            rule = next((r for r in _alert_rules if r.rule_id == alert['rule_id']), None)
+            if rule and rule.notification_methods:
+                # 
+                notification_thread = threading.Thread(
+                    target=_send_alert_notifications,
+                    args=(alert, rule.notification_methods)
+                )
+                notification_thread.daemon = True
+                notification_thread.start()
+        
+        # 
         with _alert_lock:
             _alert_history.extend(triggered)
-            # 保留最近500条
+            # 
             if len(_alert_history) > 500:
                 del _alert_history[:-500]
 
     return triggered
+
+
+def _send_alert_notifications(alert: Dict, notification_methods: List[str]):
+    """ """
+    try:
+        results = notification_manager.send_notifications(alert, notification_methods)
+        
+        # 
+        success_count = sum(1 for success in results.values() if success)
+        total_count = len(results)
+        
+        logger.info(f"Alert {alert['id']} notifications sent: {success_count}/{total_count} successful")
+        
+        # 
+        if success_count == 0:
+            logger.error(f"All notification methods failed for alert {alert['id']}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send notifications for alert {alert['id']}: {e}")
+
 
 # ==================== SSE 客户端管理 ====================
 

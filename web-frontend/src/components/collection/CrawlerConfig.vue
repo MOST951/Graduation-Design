@@ -6,7 +6,7 @@
     :close-on-click-modal="false"
     @close="handleClose"
   >
-    <el-form :model="form" :rules="rules" ref="formRef" label-width="120px">
+    <el-form ref="formRef" :model="form" :rules="rules" label-width="120px">
       <!-- 基本信息 -->
       <el-divider content-position="left">基本信息</el-divider>
       
@@ -19,8 +19,8 @@
           v-for="(keyword, index) in form.keywords"
           :key="index"
           closable
-          @close="handleRemoveKeyword(index)"
           style="margin-right: 8px"
+          @close="handleRemoveKeyword(index)"
         >
           {{ keyword.word }}
         </el-tag>
@@ -101,7 +101,7 @@
         </span>
       </el-form-item>
       
-      <el-form-item label="代理地址" v-if="form.useProxy">
+      <el-form-item v-if="form.useProxy" label="代理地址">
         <el-input
           v-model="form.proxyUrl"
           placeholder="http://proxy.example.com:8080"
@@ -115,7 +115,7 @@
         </span>
       </el-form-item>
       
-      <el-form-item label="User-Agent" v-if="form.fakeHeaders">
+      <el-form-item v-if="form.fakeHeaders" label="User-Agent">
         <el-select v-model="form.userAgent" style="width: 100%">
           <el-option
             label="Chrome (Windows)"

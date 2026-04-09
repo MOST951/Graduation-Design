@@ -35,7 +35,7 @@
           </el-select>
         </div>
         
-        <el-table :data="filteredTasks" v-loading="isLoading">
+        <el-table v-loading="isLoading" :data="filteredTasks">
           <el-table-column prop="name" label="任务名称" width="200" />
           
           <el-table-column prop="type" label="报告类型" width="100">
@@ -77,8 +77,8 @@
               <el-button
                 size="small"
                 :icon="VideoPlay"
-                @click="handleRunTask(row)"
                 :disabled="row.status === 'running'"
+                @click="handleRunTask(row)"
               >
                 立即执行
               </el-button>

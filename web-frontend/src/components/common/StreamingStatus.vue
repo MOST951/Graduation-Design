@@ -14,17 +14,17 @@
         <span class="info-label">Endpoint:</span>
         <span class="info-value">{{ endpoint }}</span>
       </div>
-      <div class="info-item" v-if="isConnected">
+      <div v-if="isConnected" class="info-item">
         <span class="info-label">Connected:</span>
         <span class="info-value">{{ formatTime(connectedAt) }}</span>
       </div>
-      <div class="info-item" v-if="lastMessage">
+      <div v-if="lastMessage" class="info-item">
         <span class="info-label">Last Message:</span>
         <span class="info-value">{{ formatTime(lastMessage) }}</span>
       </div>
     </div>
     
-    <div class="stream-stats" v-if="isConnected">
+    <div v-if="isConnected" class="stream-stats">
       <div class="stat-item">
         <span class="stat-value">{{ messageCount }}</span>
         <span class="stat-label">Messages</span>
@@ -44,9 +44,9 @@
         v-if="!isConnected"
         type="primary"
         size="small"
-        @click="connect"
         :loading="isConnecting"
         :aria-label="'Connect to streaming server'"
+        @click="connect"
       >
         <el-icon><Connection /></el-icon>
         Connect
@@ -56,8 +56,8 @@
         v-if="isConnected"
         type="danger"
         size="small"
-        @click="disconnect"
         :aria-label="'Disconnect from streaming server'"
+        @click="disconnect"
       >
         <el-icon><Close /></el-icon>
         Disconnect
@@ -66,9 +66,9 @@
       <el-button
         text
         size="small"
-        @click="toggleAutoReconnect"
         :type="autoReconnect ? 'success' : 'default'"
         :aria-label="'Toggle auto reconnect'"
+        @click="toggleAutoReconnect"
       >
         <el-icon><Refresh /></el-icon>
         Auto Reconnect

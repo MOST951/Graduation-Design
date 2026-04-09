@@ -104,7 +104,7 @@
           </div>
 
           <!-- 图例说明 -->
-          <div class="chart-legend" v-if="pieChartMode === 'fine'">
+          <div v-if="pieChartMode === 'fine'" class="chart-legend">
             <div v-for="emotion in fineEmotions" :key="emotion.name" class="legend-item" @click="filterByEmotion(emotion.name)">
               <span class="legend-color" :style="{ background: emotion.color }"></span>
               <span class="legend-name">{{ emotion.name }}</span>
@@ -239,7 +239,7 @@
 
     <!-- 极值详情弹窗 -->
     <el-dialog v-model="extremeDetailVisible" :title="extremeDetailTitle" width="500px">
-      <div class="extreme-detail" v-if="extremeDetailData">
+      <div v-if="extremeDetailData" class="extreme-detail">
         <div class="detail-content">{{ extremeDetailData.content }}</div>
         <el-descriptions :column="2" border>
           <el-descriptions-item label="情感得分">
@@ -250,8 +250,7 @@
           <el-descriptions-item label="情感类型">
             <el-tag :type="getSentimentType(extremeDetailData.sentiment)">{{ extremeDetailData.sentiment }}</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="来源">{{ extremeDetailData.source }}</el-tag>
-          </el-descriptions-item>
+          <el-descriptions-item label="来源">{{ extremeDetailData.source }}</el-descriptions-item>
           <el-descriptions-item label="时间">{{ extremeDetailData.time }}</el-descriptions-item>
           <el-descriptions-item label="关键词" :span="2">
             <el-tag v-for="kw in extremeDetailData.keywords" :key="kw" size="small" style="margin-right: 5px;">{{ kw }}</el-tag>

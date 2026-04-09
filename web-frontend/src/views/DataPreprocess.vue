@@ -43,17 +43,17 @@
             </el-select>
           </el-form-item>
           
-          <el-form-item label="向量维度" v-if="extractMethod !== 'tfidf'">
+          <el-form-item v-if="extractMethod !== 'tfidf'" label="向量维度">
             <el-input-number v-model="vectorSize" :min="50" :max="512" style="width: 100%" />
           </el-form-item>
           
-          <el-form-item label="最大特征数" v-if="extractMethod === 'tfidf'">
+          <el-form-item v-if="extractMethod === 'tfidf'" label="最大特征数">
             <el-input-number v-model="maxFeatures" :min="100" :max="10000" style="width: 100%" />
           </el-form-item>
           
           <el-divider />
           
-          <el-button type="primary" :loading="processing" @click="handleProcess" block>
+          <el-button type="primary" :loading="processing" block @click="handleProcess">
             <el-icon><Operation /></el-icon>
             开始处理
           </el-button>

@@ -77,7 +77,7 @@
         </div>
         
         <div v-if="chartItems.length === 0" class="empty-canvas">
-          <el-empty description="暂无图表，点击上方"添加图表"开始创建" />
+          <el-empty description="暂无图表，点击上方「添加图表」开始创建" />
         </div>
       </main>
       

@@ -1,9 +1,9 @@
 <template>
-  <div class="quadrant-scatter" ref="containerRef">
+  <div ref="containerRef" class="quadrant-scatter">
     <div ref="chartRef" :style="{ height: height + 'px' }"></div>
     
     <!-- 图例和统计 -->
-    <div class="chart-legend" v-if="showLegend">
+    <div v-if="showLegend" class="chart-legend">
       <div 
         v-for="(info, key) in quadrantConfig" 
         :key="key" 

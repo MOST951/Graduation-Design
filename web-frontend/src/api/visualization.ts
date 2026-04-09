@@ -1,13 +1,10 @@
 /**
  * 可视化模块 API
  */
-import axios from 'axios';
+import apiClient from '@/api';
 import { PRIMARY, SUCCESS, WARNING, DANGER } from '@/styles/colors';
 
-const api = axios.create({
-  baseURL: '/api/visualization',
-  timeout: 30000,
-});
+const api = apiClient;
 
 // ==================== 类型定义 ====================
 
@@ -737,7 +734,7 @@ export async function getChartData(params: {
   limit?: number;
 }): Promise<any> {
   try {
-    const response = await api.post('/data/chart', params);
+    const response = await api.post('/visualization/data/chart', params);
     return response.data;
   } catch (error) {
     // 模拟数据
@@ -801,7 +798,7 @@ export async function getDrillDownData(params: {
   parentValue?: any;
 }): Promise<any> {
   try {
-    const response = await api.post('/data/drilldown', params);
+    const response = await api.post('/visualization/data/drilldown', params);
     return response.data;
   } catch (error) {
     // 模拟下钻数据
@@ -840,7 +837,7 @@ export async function getLinkedData(params: {
   linkageType: 'filter' | 'highlight' | 'drill-down';
 }): Promise<Record<string, any>> {
   try {
-    const response = await api.post('/data/linked', params);
+    const response = await api.post('/visualization/data/linked', params);
     return response.data;
   } catch (error) {
     // 模拟联动数据
@@ -870,7 +867,7 @@ export async function getThemes(params?: {
   type?: 'builtin' | 'custom' | 'all';
 }): Promise<any[]> {
   try {
-    const response = await api.get('/themes', { params });
+    const response = await api.get('/visualization/themes', { params });
     return response.data;
   } catch (error) {
     // 返回模拟主题
@@ -913,7 +910,7 @@ export async function saveTheme(data: {
   spacing?: Record<string, number>;
 }): Promise<any> {
   try {
-    const response = await api.post('/themes', data);
+    const response = await api.post('/visualization/themes', data);
     return response.data;
   } catch (error) {
     // 模拟保存
@@ -1048,7 +1045,7 @@ export async function exportChart(params: {
   };
 }): Promise<Blob> {
   try {
-    const response = await api.post('/export/chart', params, {
+    const response = await api.post('/visualization/export/chart', params, {
       responseType: 'blob',
     });
     return response.data;
@@ -1088,7 +1085,7 @@ export async function exportDashboard(params: {
   };
 }): Promise<Blob> {
   try {
-    const response = await api.post('/export/dashboard', params, {
+    const response = await api.post('/visualization/export/dashboard', params, {
       responseType: 'blob',
     });
     return response.data;
@@ -1121,7 +1118,7 @@ export async function batchExport(params: {
   options?: any;
 }): Promise<Blob> {
   try {
-    const response = await api.post('/export/batch', params, {
+    const response = await api.post('/visualization/export/batch', params, {
       responseType: 'blob',
     });
     return response.data;

@@ -5,7 +5,7 @@
       <span class="status-text">{{ getStatusText() }}</span>
     </div>
     
-    <div class="connection-info" v-if="showDetails">
+    <div v-if="showDetails" class="connection-info">
       <div class="info-item">
         <span class="info-label">Protocol:</span>
         <span class="info-value">{{ protocol.toUpperCase() }}</span>
@@ -14,28 +14,28 @@
         <span class="info-label">Endpoint:</span>
         <span class="info-value">{{ endpoint }}</span>
       </div>
-      <div class="info-item" v-if="isConnected">
+      <div v-if="isConnected" class="info-item">
         <span class="info-label">Connected:</span>
         <span class="info-value">{{ formatTime(connectedAt) }}</span>
       </div>
-      <div class="info-item" v-if="lastMessage">
+      <div v-if="lastMessage" class="info-item">
         <span class="info-label">Last Message:</span>
         <span class="info-value">{{ formatTime(lastMessage) }}</span>
       </div>
-      <div class="info-item" v-if="reconnectAttempts > 0">
+      <div v-if="reconnectAttempts > 0" class="info-item">
         <span class="info-label">Reconnect Attempts:</span>
         <span class="info-value">{{ reconnectAttempts }}</span>
       </div>
     </div>
     
-    <div class="status-actions" v-if="showActions">
+    <div v-if="showActions" class="status-actions">
       <el-button
         v-if="!isConnected && !isConnecting"
         type="primary"
         size="small"
-        @click="connect"
         :loading="isConnecting"
         :aria-label="'Connect to server'"
+        @click="connect"
       >
         <el-icon><Connection /></el-icon>
         Connect
@@ -45,8 +45,8 @@
         v-if="isConnected"
         type="danger"
         size="small"
-        @click="disconnect"
         :aria-label="'Disconnect from server'"
+        @click="disconnect"
       >
         <el-icon><Close /></el-icon>
         Disconnect
@@ -56,8 +56,8 @@
         v-if="isConnecting || hasError"
         type="warning"
         size="small"
-        @click="cancelConnection"
         :aria-label="'Cancel connection'"
+        @click="cancelConnection"
       >
         <el-icon><Close /></el-icon>
         Cancel

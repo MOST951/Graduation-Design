@@ -1,12 +1,9 @@
 /**
  * 报告生成模块 API
  */
-import axios from 'axios';
+import apiClient from '@/api';
 
-const api = axios.create({
-  baseURL: '/api/reports',
-  timeout: 60000,
-});
+const api = apiClient;
 
 // 模拟延迟
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -162,7 +159,7 @@ export async function getTemplates(params?: {
   pageSize?: number;
 }): Promise<{ list: ReportTemplate[]; total: number }> {
   try {
-    const response = await api.get<{ list: ReportTemplate[]; total: number }>('/templates', { params });
+    const response = await api.get<{ list: ReportTemplate[]; total: number }>('/reports/templates', { params });
     return response.data;
   } catch (error) {
     // 模拟数据
@@ -199,7 +196,7 @@ export async function getTemplateById(id: string): Promise<ReportTemplate> {
  */
 export async function createTemplate(data: Partial<ReportTemplate>): Promise<ReportTemplate> {
   try {
-    const response = await api.post<ReportTemplate>('/templates', data);
+    const response = await api.post<ReportTemplate>('/reports/templates', data);
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -310,7 +307,7 @@ export async function importTemplate(file: File): Promise<ReportTemplate> {
   try {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await api.post<ReportTemplate>('/templates/import', formData);
+    const response = await api.post<ReportTemplate>('/reports/templates/import', formData);
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -360,7 +357,7 @@ export async function shareTemplate(id: string, options?: {
  */
 export async function generateReport(config: ReportGenerateConfig): Promise<Report> {
   try {
-    const response = await api.post<Report>('/generate', config);
+    const response = await api.post<Report>('/reports/generate', config);
     return response.data;
   } catch (error) {
     await sleep(1000);
@@ -396,7 +393,7 @@ export async function getReports(params?: {
   pageSize?: number;
 }): Promise<{ list: Report[]; total: number }> {
   try {
-    const response = await api.get<{ list: Report[]; total: number }>('/reports', { params });
+    const response = await api.get<{ list: Report[]; total: number }>('/reports/reports', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -458,7 +455,7 @@ export async function exportReport(id: string, format: ExportFormat): Promise<Bl
  */
 export async function previewReport(config: ReportGenerateConfig): Promise<string> {
   try {
-    const response = await api.post<{ html: string }>('/preview', config);
+    const response = await api.post<{ html: string }>('/reports/preview', config);
     return response.data.html;
   } catch (error) {
     await sleep(500);
@@ -473,7 +470,7 @@ export async function previewReport(config: ReportGenerateConfig): Promise<strin
  */
 export async function createScheduledReport(config: ReportGenerateConfig): Promise<{ id: string }> {
   try {
-    const response = await api.post<{ id: string }>('/scheduled', config);
+    const response = await api.post<{ id: string }>('/reports/scheduled', config);
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -486,7 +483,7 @@ export async function createScheduledReport(config: ReportGenerateConfig): Promi
  */
 export async function getScheduledReports(): Promise<any[]> {
   try {
-    const response = await api.get('/scheduled');
+    const response = await api.get('/reports/scheduled');
     return response.data;
   } catch (error) {
     await sleep(200);
@@ -516,7 +513,7 @@ export async function getMarketplaceTemplates(params?: {
   sortBy?: 'popular' | 'recent' | 'rating';
 }): Promise<ReportTemplate[]> {
   try {
-    const response = await api.get<ReportTemplate[]>('/marketplace', { params });
+    const response = await api.get<ReportTemplate[]>('/reports/marketplace', { params });
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -703,7 +700,7 @@ export async function getReports(params?: {
   sortOrder?: 'asc' | 'desc';
 }): Promise<{ list: Report[]; total: number }> {
   try {
-    const response = await api.get<{ list: Report[]; total: number }>('/reports', { params });
+    const response = await api.get<{ list: Report[]; total: number }>('/reports/reports', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -768,7 +765,7 @@ export async function createReport(data: {
   filters?: Record<string, any>;
 }): Promise<Report> {
   try {
-    const response = await api.post<Report>('/reports', data);
+    const response = await api.post<Report>('/reports/reports', data);
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -856,7 +853,7 @@ export async function cloneReport(id: string, newName?: string): Promise<Report>
  */
 export async function batchDeleteReports(ids: string[]): Promise<void> {
   try {
-    await api.post('/reports/batch-delete', { ids });
+    await api.post('/reports/reports/batch-delete', { ids });
   } catch (error) {
     await sleep(300);
   }
@@ -884,7 +881,7 @@ export async function getReportPreview(id: string, format: 'html' | 'pdf' = 'htm
  */
 export async function batchDeleteTemplates(ids: string[]): Promise<void> {
   try {
-    await api.post('/templates/batch-delete', { ids });
+    await api.post('/reports/templates/batch-delete', { ids });
   } catch (error) {
     await sleep(200);
   }
@@ -916,7 +913,7 @@ export async function getTemplateStats(id: string): Promise<{
  */
 export async function searchTemplates(query: string): Promise<ReportTemplate[]> {
   try {
-    const response = await api.get<ReportTemplate[]>('/templates/search', {
+    const response = await api.get<ReportTemplate[]>('/reports/templates/search', {
       params: { q: query },
     });
     return response.data;
@@ -937,7 +934,7 @@ export async function getGenerationTasks(params?: {
   pageSize?: number;
 }): Promise<{ list: GenerationTask[]; total: number }> {
   try {
-    const response = await api.get<{ list: GenerationTask[]; total: number }>('/tasks', { params });
+    const response = await api.get<{ list: GenerationTask[]; total: number }>('/reports/tasks', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -998,7 +995,7 @@ export async function createGenerationTask(data: {
   };
 }): Promise<GenerationTask> {
   try {
-    const response = await api.post<GenerationTask>('/tasks', data);
+    const response = await api.post<GenerationTask>('/reports/tasks', data);
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -1144,7 +1141,7 @@ export async function batchExportReports(
   }
 ): Promise<{ taskId: string }> {
   try {
-    const response = await api.post<{ taskId: string }>('/reports/batch-export', {
+    const response = await api.post<{ taskId: string }>('/reports/reports/batch-export', {
       ids,
       format,
       options,
@@ -1215,7 +1212,7 @@ export async function getExportHistory(params?: {
   status?: string;
 }): Promise<{ list: ExportHistory[]; total: number }> {
   try {
-    const response = await api.get('/exports/history', { params });
+    const response = await api.get('/reports/exports/history', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -1468,7 +1465,7 @@ export async function getReportStatistics(params?: {
   recentReports: Report[];
 }> {
   try {
-    const response = await api.get('/reports/statistics', { params });
+    const response = await api.get('/reports/reports/statistics', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -1491,7 +1488,7 @@ export async function getTemplateStatistics(): Promise<{
   popularTemplates: Array<{ id: string; name: string; usageCount: number }>;
 }> {
   try {
-    const response = await api.get('/templates/statistics');
+    const response = await api.get('/reports/templates/statistics');
     return response.data;
   } catch (error) {
     await sleep(300);

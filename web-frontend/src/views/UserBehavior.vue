@@ -10,10 +10,10 @@
         <p class="page-desc">基于用户属性、行为特征和社交网络的智能标签分析</p>
       </div>
       <div class="header-right">
-        <el-button :icon="Refresh" @click="triggerUpdate" :loading="updating">
+        <el-button :icon="Refresh" :loading="updating" @click="triggerUpdate">
           更新标签
         </el-button>
-        <el-button type="primary" :icon="Refresh" @click="fetchData" :loading="loading">
+        <el-button type="primary" :icon="Refresh" :loading="loading" @click="fetchData">
           刷新数据
         </el-button>
       </div>
@@ -289,7 +289,7 @@
                 <el-option label="孤立节点" value="孤立节点" />
               </el-option-group>
             </el-select>
-            <el-button type="primary" @click="queryUsers" :loading="querying" style="margin-top: 12px">
+            <el-button type="primary" :loading="querying" style="margin-top: 12px" @click="queryUsers">
               查询用户
             </el-button>
           </div>

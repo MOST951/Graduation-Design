@@ -1,12 +1,9 @@
 /**
  * 扩展模块 API
  */
-import axios from 'axios';
+import apiClient from '@/api';
 
-const api = axios.create({
-  baseURL: '/api/extensions',
-  timeout: 30000,
-});
+const api = apiClient;
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -78,7 +75,7 @@ export async function getTopicRecommendations(params?: {
   category?: string;
 }): Promise<Recommendation[]> {
   try {
-    const response = await api.get<Recommendation[]>('/recommend/topics', { params });
+    const response = await api.get<Recommendation[]>('/extensions/recommend/topics', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -112,7 +109,7 @@ export async function getContentRecommendations(params?: {
   type?: 'post' | 'article' | 'video';
 }): Promise<Recommendation[]> {
   try {
-    const response = await api.get<Recommendation[]>('/recommend/content', { params });
+    const response = await api.get<Recommendation[]>('/extensions/recommend/content', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -128,7 +125,7 @@ export async function getUserRecommendations(params?: {
   limit?: number;
 }): Promise<Recommendation[]> {
   try {
-    const response = await api.get<Recommendation[]>('/recommend/users', { params });
+    const response = await api.get<Recommendation[]>('/extensions/recommend/users', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -144,7 +141,7 @@ export async function recordRecommendationFeedback(data: {
   action: 'click' | 'like' | 'dislike' | 'ignore';
 }): Promise<void> {
   try {
-    await api.post('/recommend/feedback', data);
+    await api.post('/extensions/recommend/feedback', data);
   } catch (error) {
     await sleep(100);
   }
@@ -161,7 +158,7 @@ export async function predictTraffic(params: {
   granularity: 'hour' | 'day' | 'week';
 }): Promise<Prediction> {
   try {
-    const response = await api.post<Prediction>('/predict/traffic', params);
+    const response = await api.post<Prediction>('/extensions/predict/traffic', params);
     return response.data;
   } catch (error) {
     await sleep(500);
@@ -190,7 +187,7 @@ export async function predictSentimentTrend(params: {
   horizon: number;
 }): Promise<Prediction> {
   try {
-    const response = await api.post<Prediction>('/predict/sentiment', params);
+    const response = await api.post<Prediction>('/extensions/predict/sentiment', params);
     return response.data;
   } catch (error) {
     await sleep(500);
@@ -219,7 +216,7 @@ export async function getPredictionHistory(params?: {
   endDate?: string;
 }): Promise<Prediction[]> {
   try {
-    const response = await api.get<Prediction[]>('/predict/history', { params });
+    const response = await api.get<Prediction[]>('/extensions/predict/history', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -234,7 +231,7 @@ export async function getPredictionHistory(params?: {
  */
 export async function extractEntities(text: string): Promise<KnowledgeEntity[]> {
   try {
-    const response = await api.post<KnowledgeEntity[]>('/knowledge/extract', { text });
+    const response = await api.post<KnowledgeEntity[]>('/extensions/knowledge/extract', { text });
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -255,7 +252,7 @@ export async function extractEntities(text: string): Promise<KnowledgeEntity[]> 
  */
 export async function extractRelations(text: string): Promise<KnowledgeRelation[]> {
   try {
-    const response = await api.post<KnowledgeRelation[]>('/knowledge/relations', { text });
+    const response = await api.post<KnowledgeRelation[]>('/extensions/knowledge/relations', { text });
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -275,7 +272,7 @@ export async function getKnowledgeGraph(params?: {
   edges: KnowledgeRelation[];
 }> {
   try {
-    const response = await api.get('/knowledge/graph', { params });
+    const response = await api.get('/extensions/knowledge/graph', { params });
     return response.data;
   } catch (error) {
     await sleep(500);
@@ -314,7 +311,7 @@ export async function getKnowledgeGraph(params?: {
  */
 export async function searchEntities(query: string, type?: string): Promise<KnowledgeEntity[]> {
   try {
-    const response = await api.get<KnowledgeEntity[]>('/knowledge/search', {
+    const response = await api.get<KnowledgeEntity[]>('/extensions/knowledge/search', {
       params: { q: query, type },
     });
     return response.data;
@@ -340,7 +337,7 @@ export async function sendChatMessage(data: {
   suggestions?: string[];
 }> {
   try {
-    const response = await api.post('/chatbot/message', data);
+    const response = await api.post('/extensions/chatbot/message', data);
     return response.data;
   } catch (error) {
     await sleep(500);
@@ -358,7 +355,7 @@ export async function sendChatMessage(data: {
  */
 export async function getChatbotConfig(): Promise<ChatbotConfig> {
   try {
-    const response = await api.get<ChatbotConfig>('/chatbot/config');
+    const response = await api.get<ChatbotConfig>('/extensions/chatbot/config');
     return response.data;
   } catch (error) {
     await sleep(200);
@@ -379,7 +376,7 @@ export async function getChatbotConfig(): Promise<ChatbotConfig> {
  */
 export async function updateChatbotConfig(config: Partial<ChatbotConfig>): Promise<ChatbotConfig> {
   try {
-    const response = await api.put<ChatbotConfig>('/chatbot/config', config);
+    const response = await api.put<ChatbotConfig>('/extensions/chatbot/config', config);
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -417,7 +414,7 @@ export async function detectLanguage(text: string): Promise<{
   confidence: number;
 }> {
   try {
-    const response = await api.post('/language/detect', { text });
+    const response = await api.post('/extensions/language/detect', { text });
     return response.data;
   } catch (error) {
     await sleep(200);
@@ -437,7 +434,7 @@ export async function translateText(data: {
   to: string;
 }): Promise<{ translation: string }> {
   try {
-    const response = await api.post('/language/translate', data);
+    const response = await api.post('/extensions/language/translate', data);
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -459,7 +456,7 @@ export async function analyzeMultilingualSentiment(data: {
   language: string;
 }> {
   try {
-    const response = await api.post('/language/sentiment', data);
+    const response = await api.post('/extensions/language/sentiment', data);
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -480,7 +477,7 @@ export async function getSupportedLanguages(): Promise<Array<{
   nativeName: string;
 }>> {
   try {
-    const response = await api.get('/language/supported');
+    const response = await api.get('/extensions/language/supported');
     return response.data;
   } catch (error) {
     await sleep(200);

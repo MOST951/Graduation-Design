@@ -13,7 +13,7 @@
       </div>
 
       <!-- 导航分组标签 -->
-      <div class="nav-section" v-show="!isCollapse">数据处理</div>
+      <div v-show="!isCollapse" class="nav-section">数据处理</div>
 
       <el-menu
         :default-active="activeMenu"
@@ -123,14 +123,14 @@
             <div class="notification-panel">
               <div class="notification-header">
                 <span class="title">通知中心</span>
-                <el-button type="primary" link size="small" @click="markAllRead" v-if="unreadCount > 0">
+                <el-button v-if="unreadCount > 0" type="primary" link size="small" @click="markAllRead">
                   全部已读
                 </el-button>
               </div>
               
               <el-tabs v-model="notificationTab" class="notification-tabs">
                 <el-tab-pane label="预警" name="alert">
-                  <div class="notification-list" v-if="alertNotifications.length > 0">
+                  <div v-if="alertNotifications.length > 0" class="notification-list">
                     <div 
                       v-for="item in alertNotifications" 
                       :key="item.id" 
@@ -150,7 +150,7 @@
                 </el-tab-pane>
                 
                 <el-tab-pane label="系统" name="system">
-                  <div class="notification-list" v-if="systemNotifications.length > 0">
+                  <div v-if="systemNotifications.length > 0" class="notification-list">
                     <div 
                       v-for="item in systemNotifications" 
                       :key="item.id" 
@@ -170,7 +170,7 @@
                 </el-tab-pane>
                 
                 <el-tab-pane label="任务" name="task">
-                  <div class="notification-list" v-if="taskNotifications.length > 0">
+                  <div v-if="taskNotifications.length > 0" class="notification-list">
                     <div 
                       v-for="item in taskNotifications" 
                       :key="item.id" 

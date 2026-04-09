@@ -22,7 +22,7 @@
         <div class="score-label">Score</div>
       </div>
       
-      <div class="score-breakdown" v-if="!compact">
+      <div v-if="!compact" class="score-breakdown">
         <div class="score-item">
           <span class="score-label">Positive:</span>
           <span class="score-value positive">{{ (result.positive * 100).toFixed(1) }}%</span>
@@ -37,7 +37,7 @@
         </div>
       </div>
       
-      <div class="cascade-decision" v-if="result.cascadeDecision">
+      <div v-if="result.cascadeDecision" class="cascade-decision">
         <div class="decision-header">
           <el-icon><Operation /></el-icon>
           <span class="decision-title">Cascade Decision</span>
@@ -53,7 +53,7 @@
             <span class="reason-label">Reason:</span>
             <span class="reason-text">{{ result.cascadeDecision.reason }}</span>
           </div>
-          <div class="decision-threshold" v-if="result.cascadeDecision.threshold">
+          <div v-if="result.cascadeDecision.threshold" class="decision-threshold">
             <span class="threshold-label">Threshold:</span>
             <span class="threshold-value">{{ result.cascadeDecision.threshold }}</span>
           </div>
@@ -61,7 +61,7 @@
       </div>
     </div>
     
-    <div class="card-footer" v-if="!compact">
+    <div v-if="!compact" class="card-footer">
       <div class="timestamp">
         <el-icon><Clock /></el-icon>
         <span>{{ formatTime(result.timestamp) }}</span>

@@ -182,8 +182,8 @@
         type="primary"
         :loading="isAnalyzing"
         :disabled="!canStartAnalysis"
-        @click="handleStartAnalysis"
         style="width: 100%;"
+        @click="handleStartAnalysis"
       >
         <el-icon><VideoPlay /></el-icon>
         {{ isAnalyzing ? '分析中...' : '开始分析' }}
@@ -193,8 +193,8 @@
         v-if="config.selectedTasks.length > 1"
         type="success"
         :loading="isAnalyzing"
-        @click="handleBatchAnalysis"
         style="width: 100%; margin-top: 10px;"
+        @click="handleBatchAnalysis"
       >
         <el-icon><Files /></el-icon>
         批量分析 ({{ config.selectedTasks.length }}个任务)
@@ -214,8 +214,8 @@
       <el-button
         type="warning"
         plain
-        @click="trainingDialogVisible = true"
         style="width: 100%; margin-top: 10px;"
+        @click="trainingDialogVisible = true"
       >
         <el-icon><Setting /></el-icon>
         模型训练
@@ -233,10 +233,10 @@
       <div class="section-title">
         <el-icon><Clock /></el-icon>
         历史分析记录
-        <el-button text size="small" @click="clearHistory" class="clear-btn">清空</el-button>
+        <el-button text size="small" class="clear-btn" @click="clearHistory">清空</el-button>
       </div>
 
-      <el-scrollbar height="200px" v-if="analysisHistory.length > 0">
+      <el-scrollbar v-if="analysisHistory.length > 0" height="200px">
         <el-timeline>
           <el-timeline-item
             v-for="item in analysisHistory"
@@ -251,7 +251,7 @@
                 <el-tag size="small" :type="getModelTagType(item.model)">{{ item.model }}</el-tag>
                 <span class="history-count">{{ item.dataCount }}条</span>
               </div>
-              <div class="history-result" v-if="item.status === 'completed'">
+              <div v-if="item.status === 'completed'" class="history-result">
                 <span class="positive">正面 {{ item.result?.positive }}%</span>
                 <span class="negative">负面 {{ item.result?.negative }}%</span>
               </div>

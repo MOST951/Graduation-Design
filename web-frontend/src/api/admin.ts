@@ -1,12 +1,9 @@
 /**
  * 系统管理模块 API
  */
-import axios from 'axios';
+import apiClient from '@/api';
 
-const api = axios.create({
-  baseURL: '/api/admin',
-  timeout: 30000,
-});
+const api = apiClient;
 
 // 模拟延迟
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -185,7 +182,7 @@ export async function getUsers(params?: {
   sortOrder?: 'asc' | 'desc';
 }): Promise<{ list: User[]; total: number }> {
   try {
-    const response = await api.get<{ list: User[]; total: number }>('/users', { params });
+    const response = await api.get<{ list: User[]; total: number }>('/admin/users', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -250,7 +247,7 @@ export async function createUser(data: {
   department?: string;
 }): Promise<User> {
   try {
-    const response = await api.post<User>('/users', data);
+    const response = await api.post<User>('/admin/users', data);
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -301,7 +298,7 @@ export async function deleteUser(id: string): Promise<void> {
  */
 export async function batchDeleteUsers(ids: string[]): Promise<void> {
   try {
-    await api.post('/users/batch-delete', { ids });
+    await api.post('/admin/users/batch-delete', { ids });
   } catch (error) {
     await sleep(300);
   }
@@ -340,7 +337,7 @@ export async function updateUserStatus(id: string, status: UserStatus): Promise<
  */
 export async function batchUpdateUserStatus(ids: string[], status: UserStatus): Promise<void> {
   try {
-    await api.post('/users/batch-status', { ids, status });
+    await api.post('/admin/users/batch-status', { ids, status });
   } catch (error) {
     await sleep(300);
   }
@@ -357,7 +354,7 @@ export async function importUsers(file: File): Promise<{
   try {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await api.post('/users/import', formData);
+    const response = await api.post('/admin/users/import', formData);
     return response.data;
   } catch (error) {
     await sleep(1000);
@@ -380,7 +377,7 @@ export async function exportUsers(params?: {
   roleId?: string;
 }): Promise<Blob> {
   try {
-    const response = await api.get('/users/export', {
+    const response = await api.get('/admin/users/export', {
       params,
       responseType: 'blob',
     });
@@ -406,7 +403,7 @@ export async function getUserStatistics(): Promise<{
   activityRate: number;
 }> {
   try {
-    const response = await api.get('/users/statistics');
+    const response = await api.get('/admin/users/statistics');
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -437,7 +434,7 @@ export async function getUserStatistics(): Promise<{
  */
 export async function getRoles(): Promise<Role[]> {
   try {
-    const response = await api.get<Role[]>('/roles');
+    const response = await api.get<Role[]>('/admin/roles');
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -499,7 +496,7 @@ export async function createRole(data: {
   permissions: string[];
 }): Promise<Role> {
   try {
-    const response = await api.post<Role>('/roles', data);
+    const response = await api.post<Role>('/admin/roles', data);
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -582,7 +579,7 @@ export async function assignUserRole(userId: string, roleIds: string[]): Promise
  */
 export async function getPermissionTree(): Promise<Permission[]> {
   try {
-    const response = await api.get<Permission[]>('/permissions/tree');
+    const response = await api.get<Permission[]>('/admin/permissions/tree');
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -669,7 +666,7 @@ export async function getUserPermissions(userId: string): Promise<string[]> {
  */
 export async function checkPermission(userId: string, permission: string): Promise<boolean> {
   try {
-    const response = await api.post<{ hasPermission: boolean }>('/permissions/check', {
+    const response = await api.post<{ hasPermission: boolean }>('/admin/permissions/check', {
       userId,
       permission,
     });
@@ -687,7 +684,7 @@ export async function checkPermission(userId: string, permission: string): Promi
  */
 export async function getSystemConfig(): Promise<SystemConfig> {
   try {
-    const response = await api.get<SystemConfig>('/config');
+    const response = await api.get<SystemConfig>('/admin/config');
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -736,7 +733,7 @@ export async function getSystemConfig(): Promise<SystemConfig> {
  */
 export async function updateSystemConfig(data: Partial<SystemConfig>): Promise<SystemConfig> {
   try {
-    const response = await api.put<SystemConfig>('/config', data);
+    const response = await api.put<SystemConfig>('/admin/config', data);
     return response.data;
   } catch (error) {
     await sleep(400);
@@ -756,7 +753,7 @@ export async function testEmailConfig(data: {
   to: string;
 }): Promise<{ success: boolean; message: string }> {
   try {
-    const response = await api.post('/config/test-email', data);
+    const response = await api.post('/admin/config/test-email', data);
     return response.data;
   } catch (error) {
     await sleep(1000);
@@ -777,7 +774,7 @@ export async function testStorageConfig(data: {
   secretKey?: string;
 }): Promise<{ success: boolean; message: string }> {
   try {
-    const response = await api.post('/config/test-storage', data);
+    const response = await api.post('/admin/config/test-storage', data);
     return response.data;
   } catch (error) {
     await sleep(800);
@@ -799,7 +796,7 @@ export async function getStorageUsage(): Promise<{
   files: number;
 }> {
   try {
-    const response = await api.get('/config/storage-usage');
+    const response = await api.get('/admin/config/storage-usage');
     return response.data;
   } catch (error) {
     await sleep(200);
@@ -820,7 +817,7 @@ export async function getStorageUsage(): Promise<{
  */
 export async function getSystemMetrics(): Promise<SystemMetrics> {
   try {
-    const response = await api.get<SystemMetrics>('/metrics');
+    const response = await api.get<SystemMetrics>('/admin/metrics');
     return response.data;
   } catch (error) {
     await sleep(200);
@@ -868,7 +865,7 @@ export async function getSystemLogs(params?: {
   pageSize?: number;
 }): Promise<{ list: SystemLog[]; total: number }> {
   try {
-    const response = await api.get('/logs/system', { params });
+    const response = await api.get('/admin/logs/system', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -909,7 +906,7 @@ export async function getAuditLogs(params?: {
   pageSize?: number;
 }): Promise<{ list: AuditLog[]; total: number }> {
   try {
-    const response = await api.get('/logs/audit', { params });
+    const response = await api.get('/admin/logs/audit', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -959,7 +956,7 @@ export async function getBackupList(params?: {
   pageSize?: number;
 }): Promise<{ list: Backup[]; total: number }> {
   try {
-    const response = await api.get('/backups', { params });
+    const response = await api.get('/admin/backups', { params });
     return response.data;
   } catch (error) {
     await sleep(300);
@@ -992,7 +989,7 @@ export async function createBackup(data: {
   description?: string;
 }): Promise<{ taskId: string }> {
   try {
-    const response = await api.post('/backups', data);
+    const response = await api.post('/admin/backups', data);
     return response.data;
   } catch (error) {
     await sleep(500);
@@ -1050,7 +1047,7 @@ export async function getBackupConfig(): Promise<{
   path: string;
 }> {
   try {
-    const response = await api.get('/backups/config');
+    const response = await api.get('/admin/backups/config');
     return response.data;
   } catch (error) {
     await sleep(200);
@@ -1075,7 +1072,7 @@ export async function updateBackupConfig(data: {
   path: string;
 }): Promise<void> {
   try {
-    await api.put('/backups/config', data);
+    await api.put('/admin/backups/config', data);
   } catch (error) {
     await sleep(300);
   }
