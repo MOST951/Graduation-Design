@@ -791,6 +791,22 @@ export interface RankedTopic {
   trend: 'up' | 'stable' | 'down';
 }
 
+/** 后端返回的原始话题数据（字段名可能与前端不同） */
+interface RawRankedTopicItem {
+  topic_id?: string | number;
+  keyword?: string;
+  name?: string;
+  keywords?: string[];
+  composite_score?: number;
+  sentiment_score?: number;
+  sentiment_avg?: number;
+  popularity_score?: number;
+  weibo_count?: number;
+  post_count?: number;
+  rank?: number;
+  trend?: 'up' | 'stable' | 'down';
+}
+
 /** 双维度配置 */
 export interface DualDimensionConfig {
   sentiment_weight: number;
@@ -809,7 +825,7 @@ export async function getRankedTopics(): Promise<RankedTopic[]> {
     FallbackDataService.resetErrorCount('rankedTopics');
     // 后端返回格式: { code: 200, data: { topics: [...] } }
     const topics = response.data?.data?.topics || response.data?.topics || response.data || [];
-    return topics.map((item: any, idx: number) => ({
+    return topics.map((item: RawRankedTopicItem, idx: number) => ({
       topic_id: item.topic_id || `topic_${idx}`,
       name: item.keyword || item.name || '',
       keywords: item.keywords || [item.keyword].filter(Boolean),

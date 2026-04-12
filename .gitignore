@@ -65,6 +65,7 @@ node_modules/
 .yarn-integrity
 eslint-output.txt
 eslint-report.json
+# package-lock.json  # 保留: Docker 构建需要锁文件确保可复现
 
 # ====== Maven/Java ======
 target/
@@ -106,6 +107,8 @@ out/
 spark-warehouse/
 derby.log
 metastore_db/
+checkpoints/
+spark-events/
 
 # ====== Models (large files) ======
 models/*.pkl
@@ -127,3 +130,17 @@ docker-data/
 *.temp
 *.bak
 *.backup
+
+# ====== Runtime / PID files ======
+.flask.pid
+.java-backend.pid
+.frontend.pid
+
+# ====== Test reports ======
+test-reports/
+htmlcov/
+.coverage
+coverage/
+
+# ====== Frontend build ======
+web-frontend/dist/

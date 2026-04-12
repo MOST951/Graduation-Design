@@ -868,14 +868,14 @@ onUnmounted(() => {
       margin: 0 0 6px 0;
       
       .el-icon {
-        color: #409eff;
+        color: var(--color-primary);
       }
     }
     
     .page-desc {
       margin: 0;
       font-size: 13px;
-      color: #909399;
+      color: var(--color-text-secondary);
     }
   }
   
@@ -996,7 +996,7 @@ onUnmounted(() => {
     
     .info-icon {
       font-size: 14px;
-      color: #909399;
+      color: var(--color-text-secondary);
       cursor: help;
     }
   }
@@ -1023,7 +1023,7 @@ onUnmounted(() => {
       
       .tag-count {
         font-size: 12px;
-        color: #909399;
+        color: var(--color-text-secondary);
       }
     }
   }
@@ -1073,7 +1073,7 @@ onUnmounted(() => {
       .interaction-percent {
         font-size: 18px;
         font-weight: 700;
-        color: #409eff;
+        color: var(--color-primary);
       }
     }
   }
@@ -1100,7 +1100,7 @@ onUnmounted(() => {
     
     .time-count {
       font-size: 12px;
-      color: #909399;
+      color: var(--color-text-secondary);
       min-width: 50px;
     }
   }
@@ -1188,7 +1188,7 @@ onUnmounted(() => {
           
           .score {
             font-size: 11px;
-            color: #909399;
+            color: var(--color-text-secondary);
           }
         }
       }
@@ -1235,7 +1235,7 @@ onUnmounted(() => {
       code {
         font-family: 'Consolas', 'Monaco', monospace;
         font-size: 13px;
-        color: #409eff;
+        color: var(--color-primary);
       }
     }
     

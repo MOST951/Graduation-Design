@@ -1,80 +1,41 @@
 # ===================================================================
-# Dockerfile for Vue Frontend (Multi-stage)
+# 微博情感分析系统 - Vue 前端 Dockerfile (多阶段构建)
+# ===================================================================
+# 构建上下文: 项目根目录 (context: ..)
 # ===================================================================
 
 # --- Stage 1: Build ---
-# Use a Node.js image to build the Vue application.
 FROM node:16-alpine AS builder
 
 WORKDIR /build
 
-# Copy package files and install dependencies first to leverage caching.
-COPY ../../web-frontend/package*.json ./
-RUN npm install
+# 复制 package 文件并安装依赖 (利用 Docker 缓存)
+COPY web-frontend/package*.json ./
+RUN npm install --registry=https://registry.npmmirror.com
 
-# Copy the rest of the frontend source code.
-COPY ../../web-frontend/ .
-
-# Build the application for production.
+# 复制前端源码并构建
+COPY web-frontend/ .
 RUN npm run build
 
 # ===================================================================
 # --- Stage 2: Serve ---
-# Use a lightweight Nginx image to serve the static files.
 FROM nginx:alpine
 
-# Remove the default Nginx configuration.
-RUN rm /etc/nginx/conf.d/default.conf
+# 设置时区
+RUN apk add --no-cache tzdata \
+    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone
 
-# Copy the custom Nginx configuration file into the container.
-# This configuration is written here directly using a HEREDOC.
-COPY <<EOF /etc/nginx/conf.d/default.conf
-server {
-    listen 80;
-    server_name localhost;
+# 复制自定义 Nginx 配置
+COPY deployment/docker/nginx-frontend.conf /etc/nginx/conf.d/default.conf
 
-    # Root directory for static files.
-    root /usr/share/nginx/html;
-    index index.html index.htm;
-
-    # --- Performance & Caching ---
-    # Enable Gzip compression.
-    gzip on;
-    gzip_vary on;
-    gzip_proxied any;
-    gzip_comp_level 6;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-
-    # Cache static assets for a long time.
-    location ~* \.(?:jpg|jpeg|gif|png|ico|css|js)$ {
-        expires 1y;
-        add_header Cache-Control "public";
-    }
-
-    # --- SPA (Single Page Application) Support ---
-    # If a file is not found, fall back to index.html.
-    # This is crucial for client-side routing (e.g., Vue Router).
-    location / {
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    # --- Security Headers ---
-    add_header X-Frame-Options "SAMEORIGIN";
-    add_header X-Content-Type-Options "nosniff";
-    add_header Referrer-Policy "no-referrer";
-    add_header Content-Security-Policy "default-src 'self'";
-}
-EOF
-
-# Copy the built static files from the builder stage.
+# 复制构建产物
 COPY --from=builder /build/dist /usr/share/nginx/html
 
-# Health check to ensure Nginx is running.
+# 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
   CMD wget -q --spider http://localhost/ || exit 1
 
-# Expose the port Nginx will listen on.
 EXPOSE 80
 
-# The command to start Nginx in the foreground.
 CMD ["nginx", "-g", "daemon off;"]

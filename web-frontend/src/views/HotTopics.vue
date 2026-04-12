@@ -509,7 +509,7 @@ onUnmounted(() => {
   
   .refresh-time {
     font-size: 12px;
-    color: #909399;
+    color: var(--color-text-secondary);
   }
 }
 
@@ -524,14 +524,14 @@ onUnmounted(() => {
     font-weight: bold;
     
     .el-icon {
-      color: #67c23a;
+      color: var(--color-success);
     }
   }
   
   .header-desc {
     margin: 8px 0 0;
     font-size: 13px;
-    color: #909399;
+    color: var(--color-text-secondary);
     font-weight: normal;
   }
 }
@@ -599,7 +599,7 @@ onUnmounted(() => {
   
   .refresh-time {
     font-size: 12px;
-    color: #909399;
+    color: var(--color-text-secondary);
   }
 }
 
@@ -738,12 +738,12 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: bold;
   margin-right: 12px;
-  background: #909399;
+  background: var(--color-text-secondary);
   color: #fff;
 }
 
-.rank-1 { background: #f56c6c; }
-.rank-2 { background: #e6a23c; }
+.rank-1 { background: var(--color-danger); }
+.rank-2 { background: var(--color-warning); }
 .rank-3 { background: #f4e04d; color: #333; }
 
 .item-content {
@@ -768,7 +768,7 @@ onUnmounted(() => {
 }
 
 .heat {
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 /* 话题表格 */
@@ -777,7 +777,7 @@ onUnmounted(() => {
 }
 
 .topic-name:hover {
-  color: #409eff;
+  color: var(--color-primary);
 }
 
 .topic-keywords {
@@ -799,8 +799,8 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.heat-trend.up { color: #67c23a; }
-.heat-trend.down { color: #f56c6c; }
+.heat-trend.up { color: var(--color-success); }
+.heat-trend.down { color: var(--color-danger); }
 
 .pagination-wrapper {
   margin-top: 15px;
@@ -848,7 +848,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 15px;
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 /* 词语详情 */
@@ -876,6 +876,6 @@ onUnmounted(() => {
   padding: 10px 0;
 }
 
-.text-success { color: #67c23a; }
-.text-danger { color: #f56c6c; }
+.text-success { color: var(--color-success); }
+.text-danger { color: var(--color-danger); }
 </style>

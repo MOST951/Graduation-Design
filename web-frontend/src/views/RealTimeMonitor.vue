@@ -826,18 +826,18 @@ onUnmounted(() => {
         animation: pulse 2s infinite;
         
         &.status-connected {
-          background-color: #67c23a;
+          background-color: var(--color-success);
           box-shadow: 0 0 0 2px rgba(103, 194, 58, 0.2);
         }
         
         &.status-reconnecting {
-          background-color: #e6a23c;
+          background-color: var(--color-warning);
           box-shadow: 0 0 0 2px rgba(230, 162, 60, 0.2);
           animation: pulse 1s infinite;
         }
         
         &.status-disconnected {
-          background-color: #f56c6c;
+          background-color: var(--color-danger);
           box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.2);
           animation: none;
         }

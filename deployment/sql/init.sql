@@ -1,21 +1,13 @@
 -- ===================================================================
--- Weibo Sentiment Analysis Platform - Database Initialization Script
+-- 微博情感分析系统 - 数据库初始化脚本
+-- ===================================================================
+-- 说明: 此脚本由 Docker MySQL 容器自动执行
+--       数据库和用户已由 MYSQL_DATABASE / MYSQL_USER 环境变量创建
+--       此脚本只负责建表和初始数据
 -- ===================================================================
 
--- ---------------------------------
--- 1. Database and User Creation
--- ---------------------------------
-CREATE DATABASE IF NOT EXISTS weibo_prod
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_unicode_ci;
-
-CREATE USER 'prod_user'@'localhost' IDENTIFIED BY 'your_secure_password';
-
-GRANT ALL PRIVILEGES ON weibo_prod.* TO 'prod_user'@'localhost';
-
-FLUSH PRIVILEGES;
-
-USE weibo_prod;
+SET NAMES utf8mb4;
+SET CHARACTER SET utf8mb4;
 
 -- ---------------------------------
 -- 2. Table Creation

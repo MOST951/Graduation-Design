@@ -218,6 +218,20 @@ class ConfigPresets:
         )
     
     @staticmethod
+    def pseudo_cluster() -> SparkOptimizedConfig:
+        """伪集群配置 — 从 .env 读取 SPARK_MASTER_URL"""
+        master = os.getenv('SPARK_MASTER_URL', 'spark://localhost:7077')
+        return SparkOptimizedConfig(
+            app_name="WeiboSentiment-PseudoCluster",
+            master=master,
+            driver_memory=os.getenv('SPARK_DRIVER_MEMORY', '4g'),
+            executor_memory=os.getenv('SPARK_EXECUTOR_MEMORY', '4g'),
+            shuffle_partitions=int(os.getenv('SPARK_SQL_SHUFFLE_PARTITIONS', '200')),
+            default_parallelism=int(os.getenv('SPARK_DEFAULT_PARALLELISM', '8')),
+            memory_fraction=0.6,
+        )
+
+    @staticmethod
     def testing() -> SparkOptimizedConfig:
         """测试环境配置"""
         return SparkOptimizedConfig(
@@ -248,6 +262,8 @@ def get_spark_session(
     # 获取预设配置
     if preset == "production":
         config = ConfigPresets.production()
+    elif preset == "pseudo_cluster":
+        config = ConfigPresets.pseudo_cluster()
     elif preset == "testing":
         config = ConfigPresets.testing()
     else:

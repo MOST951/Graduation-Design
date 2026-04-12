@@ -82,7 +82,7 @@ class StreamingConfig:
     """流处理配置"""
     # Spark 配置
     app_name: str = "WeiboStreamingSentiment"
-    master: str = "local[*]"
+    master: str = os.getenv('SPARK_MASTER_URL', 'local[*]')
     
     # 内存配置
     driver_memory: str = "2g"
@@ -335,9 +335,11 @@ class StreamingSentimentAnalyzer:
     def _init_spark(self):
         """初始化 SparkSession"""
         try:
+            from .spark_config import _resolve_master
+            resolved_master = _resolve_master(self.config.master)
             builder = SparkSession.builder \
                 .appName(self.config.app_name) \
-                .master(self.config.master) \
+                .master(resolved_master) \
                 .config("spark.driver.memory", self.config.driver_memory) \
                 .config("spark.executor.memory", self.config.executor_memory) \
                 .config("spark.sql.shuffle.partitions", str(self.config.shuffle_partitions)) \
@@ -351,7 +353,7 @@ class StreamingSentimentAnalyzer:
             self.spark = builder.getOrCreate()
             self.spark.sparkContext.setLogLevel("WARN")
             
-            logger.info(f"Spark Streaming 初始化成功: {self.config.master}")
+            logger.info(f"Spark Streaming 初始化成功: {resolved_master}")
             
         except Exception as e:
             logger.error(f"Spark 初始化失败: {e}")
@@ -760,28 +762,37 @@ class MockDataGenerator:
         self._load_weibo_data()
     
     def _load_weibo_data(self):
-        """从爬虫数据目录加载真实微博数据"""
-        data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
+        """从爬虫数据目录或演示数据目录加载微博数据"""
+        backend_dir = os.path.dirname(os.path.dirname(__file__))
+        project_root = os.path.dirname(backend_dir)
         
-        try:
-            for filename in os.listdir(data_dir):
-                if filename.startswith('crawl_result_') and filename.endswith('.json'):
-                    filepath = os.path.join(data_dir, filename)
-                    try:
-                        with open(filepath, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                            if isinstance(data, list):
-                                self._weibo_data.extend(data)
-                    except Exception as e:
-                        logger.warning(f"加载文件 {filename} 失败: {e}")
-            
-            if self._weibo_data:
-                logger.info(f"已加载 {len(self._weibo_data)} 条微博数据用于流式处理")
-            else:
-                logger.warning("未找到爬虫数据，请先执行微博采集任务")
-                
-        except Exception as e:
-            logger.error(f"加载爬虫数据失败: {e}")
+        # Search paths: crawler data first, then demo data
+        search_dirs = [
+            os.path.join(backend_dir, 'data'),
+            os.path.join(project_root, 'scripts', 'demo_data'),
+        ]
+        
+        for data_dir in search_dirs:
+            if not os.path.isdir(data_dir):
+                continue
+            try:
+                for filename in os.listdir(data_dir):
+                    if filename.endswith('.json'):
+                        filepath = os.path.join(data_dir, filename)
+                        try:
+                            with open(filepath, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                                if isinstance(data, list):
+                                    self._weibo_data.extend(data)
+                        except Exception as e:
+                            logger.warning(f"加载文件 {filename} 失败: {e}")
+            except Exception as e:
+                logger.error(f"加载目录 {data_dir} 失败: {e}")
+        
+        if self._weibo_data:
+            logger.info(f"已加载 {len(self._weibo_data)} 条微博数据用于流式处理")
+        else:
+            logger.warning("未找到数据，请先执行爬虫采集或 python scripts/generate_demo_data.py")
     
     def generate_one(self) -> Dict:
         """获取一条真实微博数据"""

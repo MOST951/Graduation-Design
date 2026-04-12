@@ -75,7 +75,7 @@ export interface ReportComponent {
 export interface ComponentCondition {
   field: string;
   operator: 'equals' | 'contains' | 'greater' | 'less';
-  value: any;
+  value: unknown;
   action: 'show' | 'hide' | 'highlight';
 }
 
@@ -84,10 +84,10 @@ export interface TemplateVariable {
   name: string;
   label: string;
   type: 'string' | 'number' | 'date' | 'boolean' | 'array' | 'object';
-  defaultValue?: any;
+  defaultValue?: string | number | boolean | null;
   required: boolean;
   description?: string;
-  options?: Array<{ label: string; value: any }>;
+  options?: Array<{ label: string; value: string | number | boolean }>;
 }
 
 /** 模板样式 */
@@ -481,7 +481,7 @@ export async function createScheduledReport(config: ReportGenerateConfig): Promi
 /**
  * 获取定时报告列表
  */
-export async function getScheduledReports(): Promise<any[]> {
+export async function getScheduledReports(): Promise<ScheduledReport[]> {
   try {
     const response = await api.get('/reports/scheduled');
     return response.data;
@@ -1315,9 +1315,9 @@ export async function compareReportVersions(
   version1: string,
   version2: string
 ): Promise<{
-  additions: any[];
-  deletions: any[];
-  modifications: any[];
+  additions: VersionDiffEntry[];
+  deletions: VersionDiffEntry[];
+  modifications: VersionDiffEntry[];
 }> {
   try {
     const response = await api.get(`/reports/${reportId}/versions/compare`, {
@@ -1502,7 +1502,34 @@ export async function getTemplateStatistics(): Promise<{
 
 // ==================== 辅助类型定义 ====================
 
-interface GenerationTask {
+/** 定时报告 */
+export interface ScheduledReport {
+  id: string;
+  name: string;
+  templateId: string;
+  config: ReportGenerateConfig;
+  schedule: {
+    frequency: 'daily' | 'weekly' | 'monthly';
+    time: string;
+    dayOfWeek?: number;
+    dayOfMonth?: number;
+  };
+  enabled: boolean;
+  lastRunAt?: string;
+  nextRunAt?: string;
+  createdAt: string;
+}
+
+/** 版本差异条目 */
+export interface VersionDiffEntry {
+  path: string;
+  type: 'component' | 'style' | 'data' | 'config';
+  description: string;
+  oldValue?: string;
+  newValue?: string;
+}
+
+export interface GenerationTask {
   id: string;
   reportId: string | null;
   templateId: string;
@@ -1519,7 +1546,7 @@ interface GenerationTask {
   } | null;
 }
 
-interface TaskLog {
+export interface TaskLog {
   id: string;
   taskId: string;
   level: 'info' | 'warn' | 'error';
@@ -1527,7 +1554,7 @@ interface TaskLog {
   timestamp: string;
 }
 
-interface ExportHistory {
+export interface ExportHistory {
   id: string;
   reportId: string;
   reportName: string;
@@ -1539,7 +1566,7 @@ interface ExportHistory {
   completedAt: string;
 }
 
-interface ReportVersion {
+export interface ReportVersion {
   id: string;
   reportId: string;
   version: number;
@@ -1553,7 +1580,7 @@ interface ReportVersion {
   fileUrl: string;
 }
 
-interface ReportComment {
+export interface ReportComment {
   id: string;
   reportId: string;
   author: string;

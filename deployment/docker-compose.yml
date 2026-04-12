@@ -1,13 +1,13 @@
 # ====================================================================
 # 微博情感分析系统 - Docker Compose 配置
 # ====================================================================
+# 兼容: Docker Compose v2.x (Ubuntu 20.04+ / 1Panel)
 # 使用说明:
-# 1. 复制 .env.docker.example 为 .env.docker
-# 2. 修改 .env.docker 中的敏感配置
-# 3. 运行: docker-compose --env-file .env.docker up -d
+#   1. cp .env.docker.example .env.docker && vim .env.docker
+#   2. docker compose --env-file .env.docker \
+#        --profile with-frontend --profile with-java-backend \
+#        --profile with-spark --profile with-bigdata up -d
 # ====================================================================
-
-version: '3.8'
 
 services:
   # ====== Flask 后端服务 ======
@@ -37,17 +37,32 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - HDFS_NAMENODE_HOST=namenode
+      - HDFS_NAMENODE_PORT=9000
+      - HBASE_HOST=hbase-master
+      - HBASE_PORT=16000
+      - HBASE_THRIFT_PORT=${HBASE_THRIFT_PORT:-9090}
+      - TZ=Asia/Shanghai
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - PYTHONIOENCODING=utf-8
     volumes:
-      - ../logs:/app/logs
-      - ../backend/model_cache:/app/model_cache
+      - app_logs:/app/logs
+      - model_cache:/app/model_cache
     networks:
       - weibo-network
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 512M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
   # ====== MySQL 数据库服务 ======
   db:
@@ -59,17 +74,26 @@ services:
       MYSQL_DATABASE: ${DB_NAME:-weibo_sentiment}
       MYSQL_USER: ${DB_USER:-weibo_user}
       MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      TZ: Asia/Shanghai
     ports:
       - "${DB_PORT:-3306}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     networks:
       - weibo-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --default-authentication-plugin=mysql_native_password
+      - --max-connections=200
+      - --innodb-buffer-pool-size=128M
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
       interval: 10s
@@ -88,9 +112,15 @@ services:
       - redis_data:/data
     networks:
       - weibo-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     command: >
       redis-server
       --appendonly yes
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
       ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -98,21 +128,319 @@ services:
       timeout: 5s
       retries: 3
 
-  # ====== 前端服务 (可选，开发时使用) ======
+  # ====== Java 后端服务 (Spring Boot, 可选) ======
+  java-backend:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.web-backend
+    container_name: weibo_sentiment_java
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${JAVA_BACKEND_PORT:-8081}:8081"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/${DB_NAME:-weibo_sentiment}?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+      - SPRING_DATASOURCE_USERNAME=${DB_USER:-weibo_user}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:?DB_PASSWORD is required}
+      - SPRING_PROFILES_ACTIVE=docker
+      - JWT_SECRET=${JWT_SECRET:-DefaultSuperSecretKeyForDevAndTestEnvironmentsOnlyDoNotUseInProd}
+      - SPARK_HOME=/opt/spark
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - TZ=Asia/Shanghai
+      - JAVA_OPTS=-Xmx256m -Xms128m -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai
+    networks:
+      - weibo-network
+    profiles:
+      - with-java-backend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/api/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  # ====== Spark Master (可选) ======
+  spark-master:
+    image: bitnami/spark:3.5
+    container_name: weibo_sentiment_spark_master
+    restart: unless-stopped
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - HADOOP_CONF_DIR=/opt/hadoop-conf
+      - TZ=Asia/Shanghai
+    ports:
+      - "${SPARK_MASTER_PORT:-7077}:7077"
+      - "${SPARK_WEBUI_PORT:-8080}:8080"
+    volumes:
+      - ./config/hadoop/core-site.xml:/opt/hadoop-conf/core-site.xml:ro
+      - ./config/hadoop/hdfs-site.xml:/opt/hadoop-conf/hdfs-site.xml:ro
+      - ./config/hbase/hbase-site.xml:/opt/hadoop-conf/hbase-site.xml:ro
+    networks:
+      - weibo-network
+    profiles:
+      - with-spark
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ====== Spark Worker (可选) ======
+  spark-worker:
+    image: bitnami/spark:3.5
+    container_name: weibo_sentiment_spark_worker
+    restart: unless-stopped
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=${SPARK_WORKER_MEMORY:-4g}
+      - SPARK_WORKER_CORES=${SPARK_WORKER_CORES:-2}
+      - HADOOP_CONF_DIR=/opt/hadoop-conf
+      - TZ=Asia/Shanghai
+    depends_on:
+      - spark-master
+    volumes:
+      - ./config/hadoop/core-site.xml:/opt/hadoop-conf/core-site.xml:ro
+      - ./config/hadoop/hdfs-site.xml:/opt/hadoop-conf/hdfs-site.xml:ro
+      - ./config/hbase/hbase-site.xml:/opt/hadoop-conf/hbase-site.xml:ro
+    networks:
+      - weibo-network
+    profiles:
+      - with-spark
+    deploy:
+      resources:
+        limits:
+          memory: ${SPARK_WORKER_MEMORY_LIMIT:-4608M}
+        reservations:
+          memory: 2048M
+
+  # ====== 前端服务 (Nginx + Vue) ======
   frontend:
     build:
-      context: ../web-frontend
-      dockerfile: ../deployment/docker/Dockerfile.frontend
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.frontend
     container_name: weibo_sentiment_frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-5173}:80"
+      - "${FRONTEND_PORT:-3001}:80"
     depends_on:
       - web
+    environment:
+      - TZ=Asia/Shanghai
     networks:
       - weibo-network
     profiles:
       - with-frontend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # ==================================================================
+  #                   大数据服务 (with-bigdata profile)
+  # ==================================================================
+
+  # ====== ZooKeeper (HBase 依赖) ======
+  zookeeper:
+    image: zookeeper:3.8
+    container_name: weibo_sentiment_zookeeper
+    restart: unless-stopped
+    ports:
+      - "${ZK_PORT:-2181}:2181"
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_4LW_COMMANDS_WHITELIST: "*"
+      ZOO_HEAP_SIZE: 128
+      TZ: Asia/Shanghai
+    volumes:
+      - zk_data:/data
+      - zk_datalog:/datalog
+    networks:
+      - weibo-network
+    profiles:
+      - with-bigdata
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ====== HDFS NameNode ======
+  namenode:
+    image: apache/hadoop:3.3.6
+    container_name: weibo_sentiment_namenode
+    hostname: namenode
+    restart: unless-stopped
+    ports:
+      - "${HDFS_NAMENODE_HTTP_PORT:-50070}:50070"
+      - "${HDFS_NAMENODE_PORT:-9000}:9000"
+    environment:
+      HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
+      ENSURE_NAMENODE_DIR: /hadoop/dfs/name
+      TZ: Asia/Shanghai
+      LANG: C.UTF-8
+    volumes:
+      - hdfs_namenode:/hadoop/dfs/name
+      - ./config/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./config/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+      - ./scripts/hdfs-entrypoint.sh:/entrypoint.sh:ro
+    command: ["/bin/bash", "/entrypoint.sh"]
+    networks:
+      - weibo-network
+    profiles:
+      - with-bigdata
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:50070/dfshealth.html || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ====== HDFS DataNode ======
+  datanode:
+    image: apache/hadoop:3.3.6
+    container_name: weibo_sentiment_datanode
+    hostname: datanode
+    restart: unless-stopped
+    ports:
+      - "${HDFS_DATANODE_HTTP_PORT:-50075}:50075"
+    environment:
+      HADOOP_CONF_DIR: /opt/hadoop/etc/hadoop
+      TZ: Asia/Shanghai
+      LANG: C.UTF-8
+    depends_on:
+      namenode:
+        condition: service_healthy
+    volumes:
+      - hdfs_datanode:/hadoop/dfs/data
+      - ./config/hadoop/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml:ro
+      - ./config/hadoop/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml:ro
+    command: ["hdfs", "datanode"]
+    networks:
+      - weibo-network
+    profiles:
+      - with-bigdata
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:50075 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ====== HBase Master ======
+  hbase-master:
+    image: harisekhon/hbase:2.4
+    container_name: weibo_sentiment_hbase_master
+    hostname: hbase-master
+    restart: unless-stopped
+    ports:
+      - "${HBASE_MASTER_PORT:-16000}:16000"
+      - "${HBASE_MASTER_WEBUI_PORT:-16010}:16010"
+    environment:
+      HBASE_CONF_DIR: /opt/hbase/conf
+      JAVA_HOME: /usr
+      HBASE_HEAPSIZE: 384
+      TZ: Asia/Shanghai
+      LANG: C.UTF-8
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+    volumes:
+      - hbase_data:/hbase
+      - ./config/hbase/hbase-site.xml:/opt/hbase/conf/hbase-site.xml:ro
+      - ./scripts/hbase-init.sh:/hbase-init.sh:ro
+    command: ["/bin/bash", "/hbase-init.sh"]
+    networks:
+      - weibo-network
+    profiles:
+      - with-bigdata
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:16010/master-status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ====== HBase RegionServer ======
+  hbase-regionserver:
+    image: harisekhon/hbase:2.4
+    container_name: weibo_sentiment_hbase_rs
+    hostname: hbase-regionserver
+    restart: unless-stopped
+    ports:
+      - "${HBASE_RS_PORT:-16020}:16020"
+      - "${HBASE_RS_WEBUI_PORT:-16030}:16030"
+    environment:
+      HBASE_CONF_DIR: /opt/hbase/conf
+      JAVA_HOME: /usr
+      HBASE_HEAPSIZE: 512
+      TZ: Asia/Shanghai
+      LANG: C.UTF-8
+    depends_on:
+      hbase-master:
+        condition: service_started
+    volumes:
+      - ./config/hbase/hbase-site.xml:/opt/hbase/conf/hbase-site.xml:ro
+    command: ["/opt/hbase/bin/hbase", "regionserver", "start"]
+    networks:
+      - weibo-network
+    profiles:
+      - with-bigdata
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:16030/rs-status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 # ====== 网络配置 ======
 networks:
@@ -126,3 +454,17 @@ volumes:
     name: weibo_sentiment_mysql_data
   redis_data:
     name: weibo_sentiment_redis_data
+  app_logs:
+    name: weibo_sentiment_app_logs
+  model_cache:
+    name: weibo_sentiment_model_cache
+  hdfs_namenode:
+    name: weibo_sentiment_hdfs_namenode
+  hdfs_datanode:
+    name: weibo_sentiment_hdfs_datanode
+  zk_data:
+    name: weibo_sentiment_zk_data
+  zk_datalog:
+    name: weibo_sentiment_zk_datalog
+  hbase_data:
+    name: weibo_sentiment_hbase_data

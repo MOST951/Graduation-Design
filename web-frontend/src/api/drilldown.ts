@@ -14,7 +14,7 @@ export type ConditionOperator = 'equals' | 'contains' | 'greater' | 'less' | 'be
 export interface DrillCondition {
   field: string;
   operator: ConditionOperator;
-  value: any;
+  value: unknown;
 }
 
 /** 下钻级别配置 */
@@ -47,11 +47,11 @@ export interface DrillNode {
   levelId: string;
   dimension: DrillDimension;
   label: string;
-  value: any;
-  data: any;
+  value: unknown;
+  data: unknown;
   parentId?: string;
   children?: DrillNode[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /** 下钻状态 */
@@ -59,7 +59,7 @@ export interface DrillState {
   pathId: string;
   currentLevel: number;
   nodes: DrillNode[];
-  filters: Record<string, any>;
+  filters: Record<string, unknown>;
   timestamp: number;
 }
 
@@ -336,8 +336,8 @@ export function createDrillNode(
   levelId: string,
   dimension: DrillDimension,
   label: string,
-  value: any,
-  data: any,
+  value: unknown,
+  data: unknown,
   parentId?: string
 ): DrillNode {
   return {
@@ -482,8 +482,8 @@ export function generateInsights(analysis: DrillAnalysis): string[] {
 /**
  * 构建下钻过滤器
  */
-export function buildDrillFilters(nodes: DrillNode[]): Record<string, any> {
-  const filters: Record<string, any> = {};
+export function buildDrillFilters(nodes: DrillNode[]): Record<string, unknown> {
+  const filters: Record<string, unknown> = {};
   
   nodes.forEach(node => {
     const key = `${node.dimension}_${node.levelId}`;
@@ -496,7 +496,7 @@ export function buildDrillFilters(nodes: DrillNode[]): Record<string, any> {
 /**
  * 验证下钻条件
  */
-export function validateDrillCondition(condition: DrillCondition, data: any): boolean {
+export function validateDrillCondition(condition: DrillCondition, data: Record<string, unknown>): boolean {
   const fieldValue = data[condition.field];
   
   switch (condition.operator) {

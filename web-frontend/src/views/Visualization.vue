@@ -1285,7 +1285,7 @@ onUnmounted(() => {
   box-sizing: border-box;
   
   &.selected {
-    outline: 2px solid #409EFF;
+    outline: 2px solid var(--color-primary);
     outline-offset: -2px;
   }
   
@@ -1302,7 +1302,7 @@ onUnmounted(() => {
   position: absolute;
   width: 10px;
   height: 10px;
-  background: #409EFF;
+  background: var(--color-primary);
   border: 2px solid #fff;
   border-radius: 2px;
   
@@ -1320,12 +1320,12 @@ onUnmounted(() => {
   position: absolute;
   top: 4px;
   right: 4px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .selection-box {
   position: absolute;
-  border: 1px dashed #409EFF;
+  border: 1px dashed var(--color-primary);
   background: rgba(64, 158, 255, 0.1);
   pointer-events: none;
 }
@@ -1388,7 +1388,7 @@ onUnmounted(() => {
   transition: all 0.2s;
   
   &:hover {
-    border-color: #409EFF;
+    border-color: var(--color-primary);
     box-shadow: 0 2px 12px rgba(64, 158, 255, 0.2);
   }
   
@@ -1411,7 +1411,7 @@ onUnmounted(() => {
     
     .template-desc {
       font-size: 12px;
-      color: #909399;
+      color: var(--color-text-secondary);
     }
   }
 }
@@ -1451,7 +1451,7 @@ onUnmounted(() => {
   }
   
   .no-linkage {
-    color: #909399;
+    color: var(--color-text-secondary);
     font-style: italic;
   }
 }

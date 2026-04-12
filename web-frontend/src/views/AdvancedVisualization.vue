@@ -1080,11 +1080,11 @@ const CountUp = {
   }
   
   &.warning {
-    border-left: 4px solid #E6A23C;
+    border-left: 4px solid var(--color-warning);
   }
   
   &.danger {
-    border-left: 4px solid #F56C6C;
+    border-left: 4px solid var(--color-danger);
   }
   
   .metric-content {
@@ -1113,7 +1113,7 @@ const CountUp = {
       
       .metric-unit {
         font-size: 14px;
-        color: #909399;
+        color: var(--color-text-secondary);
         margin-left: 4px;
       }
     }
@@ -1131,8 +1131,8 @@ const CountUp = {
       align-items: center;
       gap: 2px;
       
-      &.up { color: #67C23A; }
-      &.down { color: #F56C6C; }
+      &.up { color: var(--color-success); }
+      &.down { color: var(--color-danger); }
     }
   }
 }
@@ -1159,19 +1159,19 @@ const CountUp = {
     }
     
     &.warning {
-      border-left: 3px solid #E6A23C;
+      border-left: 3px solid var(--color-warning);
     }
     
     &.danger {
-      border-left: 3px solid #F56C6C;
+      border-left: 3px solid var(--color-danger);
     }
     
     &.info {
-      border-left: 3px solid #409EFF;
+      border-left: 3px solid var(--color-primary);
     }
     
     .alert-icon {
-      color: #E6A23C;
+      color: var(--color-warning);
     }
     
     .alert-content {
@@ -1190,7 +1190,7 @@ const CountUp = {
       
       .alert-time {
         font-size: 12px;
-        color: #909399;
+        color: var(--color-text-secondary);
         margin-top: 4px;
       }
     }
@@ -1199,7 +1199,7 @@ const CountUp = {
 
 .threshold-hint {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-text-secondary);
   margin-top: 4px;
 }
 
@@ -1240,7 +1240,7 @@ const CountUp = {
       display: flex;
       justify-content: space-between;
       font-size: 12px;
-      color: #909399;
+      color: var(--color-text-secondary);
       margin-top: 4px;
     }
   }
@@ -1280,7 +1280,7 @@ const CountUp = {
     
     .quadrant-ratio {
       font-size: 14px;
-      color: #909399;
+      color: var(--color-text-secondary);
     }
   }
 }
@@ -1300,7 +1300,7 @@ const CountUp = {
   .highlight {
     font-size: 18px;
     font-weight: bold;
-    color: #409EFF;
+    color: var(--color-primary);
   }
 }
 

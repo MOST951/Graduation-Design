@@ -144,7 +144,7 @@ export interface TaskLog {
   level: 'info' | 'warning' | 'error';
   message: string;
   timestamp: string;
-  details?: any;
+  details?: Record<string, unknown>;
 }
 
 export interface CreateTaskRequest {
@@ -434,7 +434,7 @@ export interface LogEntry {
   ip?: string;
   userAgent?: string;
   requestId?: string;
-  details?: any;
+  details?: Record<string, unknown>;
 }
 
 export interface LogFilter {
@@ -452,7 +452,7 @@ export interface ExportRequest {
   type: 'csv' | 'json' | 'excel' | 'pdf';
   data: {
     source: 'sentiment' | 'collection' | 'dual-dimension' | 'logs';
-    filters?: any;
+    filters?: Record<string, unknown>;
     fields?: string[];
   };
   options: {
@@ -460,6 +460,32 @@ export interface ExportRequest {
     dateFormat?: string;
     encoding?: string;
   };
+}
+
+/** 通用分页响应 */
+export interface PageResponse<T> {
+  list: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** 采集的数据条目 */
+export interface CollectedDataItem {
+  id: number;
+  taskId: number;
+  content: string;
+  author?: string;
+  publishTime?: string;
+  platform: Platform;
+  url?: string;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  sentimentScore?: number;
+  collectedAt: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ExportResponse {

@@ -500,7 +500,7 @@ onUnmounted(() => {
   }
   
   .register-desc {
-    color: #909399;
+    color: var(--color-text-secondary);
     font-size: 14px;
     margin: 0;
   }
@@ -526,7 +526,7 @@ onUnmounted(() => {
   
   .password-toggle {
     cursor: pointer;
-    color: #909399;
+    color: var(--color-text-secondary);
     
     &:hover {
       color: #667eea;
@@ -589,7 +589,7 @@ onUnmounted(() => {
   p {
     margin: 0;
     font-size: 12px;
-    color: #909399;
+    color: var(--color-text-secondary);
     
     &.copyright {
       margin-top: 4px;

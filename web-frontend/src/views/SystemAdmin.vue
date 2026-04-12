@@ -544,6 +544,7 @@ import {
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
 import { useAdminStore, type TaskLog } from '@/store/admin';
 import { SUCCESS, INFO } from '@/styles/colors';
+import { useReconnectingEventSource } from '@/composables/useReconnect';
 
 const adminStore = useAdminStore();
 
@@ -643,7 +644,6 @@ const sparkRestartRequired = ref(false);
 const showSparkRestartDialog = ref(false);
 const showEmailPassword = ref(false);
 const isRestartingSpark = ref(false);
-const eventSource = ref<EventSource | null>(null);
 const realTimeLogs = ref<{ message: string; level: string; timestamp: string }[]>([]);
 const isRealTimeLogsEnabled = ref(false);
 
@@ -1040,7 +1040,9 @@ const handleSaveSystemParams = async () => {
   }
 };
 
-// ==================== WebSocket real-time logs ====================
+// ==================== SSE real-time logs (auto-reconnect) ====================
+let sseControl: ReturnType<typeof useReconnectingEventSource> | null = null;
+
 const toggleRealTimeLogs = (enabled: boolean) => {
   if (enabled) {
     startRealTimeLogs();
@@ -1050,43 +1052,37 @@ const toggleRealTimeLogs = (enabled: boolean) => {
 };
 
 const startRealTimeLogs = () => {
-  try {
-    // Create EventSource for server-sent events
-    eventSource.value = new EventSource('/api/admin/logs/stream');
-    
-    eventSource.value.onmessage = (event) => {
-      try {
-        const logData = JSON.parse(event.data);
-        realTimeLogs.value.unshift(logData);
-        
-        // Keep only last 100 logs
-        if (realTimeLogs.value.length > 100) {
-          realTimeLogs.value = realTimeLogs.value.slice(0, 100);
-        }
-      } catch (error) {
-        console.error('Error parsing log data:', error);
+  // 使用 composable 创建带自动重连的 SSE 连接
+  sseControl = useReconnectingEventSource('/api/admin/logs/stream', {
+    immediate: true,
+    maxAttempts: 5,
+    initialDelay: 2000,
+    onParsedMessage: (logData) => {
+      const log = logData as { message: string; level: string; timestamp: string };
+      realTimeLogs.value.unshift(log);
+      if (realTimeLogs.value.length > 100) {
+        realTimeLogs.value = realTimeLogs.value.slice(0, 100);
       }
-    };
-    
-    eventSource.value.onerror = (error) => {
-      console.error('EventSource error:', error);
-      ElMessage.error('Real-time logs connection error');
-      stopRealTimeLogs();
-    };
-    
-    ElMessage.success('Real-time logs enabled');
-  } catch (error) {
-    console.error('Error starting real-time logs:', error);
-    ElMessage.error('Failed to start real-time logs');
-  }
+    },
+    onStatusChange: (status) => {
+      if (status === 'connected') {
+        ElMessage.success('实时日志已连接');
+      } else if (status === 'reconnecting') {
+        ElMessage.warning('实时日志连接断开，正在重连…');
+      }
+    },
+    onError: () => {
+      console.error('[SSE] 实时日志连接错误');
+    },
+  });
 };
 
 const stopRealTimeLogs = () => {
-  if (eventSource.value) {
-    eventSource.value.close();
-    eventSource.value = null;
+  if (sseControl) {
+    sseControl.disconnect();
+    sseControl = null;
   }
-  ElMessage.info('Real-time logs disabled');
+  ElMessage.info('实时日志已关闭');
 };
 
 const clearRealTimeLogs = () => {
@@ -1485,3 +1481,4 @@ onMounted(async () => {
   box-shadow: $shadow-lg;
   border: 1px solid $border-base;
 }
+</style>

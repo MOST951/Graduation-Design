@@ -438,7 +438,7 @@ onMounted(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #409eff;
+    background: var(--color-primary);
     color: #fff;
     border-radius: 50%;
     font-size: 14px;

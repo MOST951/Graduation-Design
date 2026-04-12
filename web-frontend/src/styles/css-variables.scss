@@ -22,6 +22,13 @@
   --color-info: #86909C;
   --color-info-light: #E5E6EB;
 
+  // Aliases (convenience shorthand)
+  --primary-color: var(--color-primary);
+  --success-color: var(--color-success);
+  --warning-color: var(--color-warning);
+  --danger-color: var(--color-danger);
+  --text-secondary: var(--color-text-secondary);
+
   // Text colors
   --color-text-primary: #1D2129;
   --color-text-regular: #4E5969;

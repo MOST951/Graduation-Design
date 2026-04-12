@@ -84,6 +84,8 @@ class NotificationManager:
             msg['Subject'] = Header(f"[{alert_level.upper()}] {subject}", 'utf-8')
             
             # 
+            bg_color = '#ffebee' if alert_level == 'critical' else '#fff3e0'
+            content_html = content.replace('\n', '<br>')
             body = f"""
             <html>
             <body>
@@ -91,8 +93,8 @@ class NotificationManager:
                 <p><strong> :</strong> {alert_level}</p>
                 <p><strong> :</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
                 <hr>
-                <div style="background-color: {'#ffebee' if alert_level == 'critical' else '#fff3e0'}; padding: 15px; border-radius: 5px;">
-                    {content.replace('\n', '<br>')}
+                <div style="background-color: {bg_color}; padding: 15px; border-radius: 5px;">
+                    {content_html}
                 </div>
                 <hr>
                 <p><small> </small></p>

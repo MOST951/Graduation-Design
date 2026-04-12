@@ -4,20 +4,27 @@
 spring:
   application:
     name: weibo-sentiment-backend
-  # This placeholder is replaced by Maven/Gradle during the build process
-  # to set the active profile (dev, test, prod).
   profiles:
-    active: dev
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
 
 server:
   port: 8081
   servlet:
     context-path: /api
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 logging:
   level:
     com.weibo: INFO
     org.springframework: WARN
+  file:
+    encoding: UTF-8
 
 # ===================================================================
 # API Documentation (SpringDoc / Swagger)
@@ -30,22 +37,21 @@ springdoc:
   show-actuator: true
 
 # ===================================================================
-# JWT Security Configuration
-# ===================================================================
 # Spark Configuration
+# ===================================================================
 spark:
   home: ${SPARK_HOME:/opt/spark}
   master:
     url: ${SPARK_MASTER_URL:spark://localhost:7077}
-
   jobs:
     preprocessing:
       jar:
-        path: d:/Capstone Project/demo-surf/weibo-sentiment-analysis/spark-preprocessing/target/spark-preprocessing-1.0.0.jar
+        path: ${SPARK_JOB_JAR:/opt/spark/jobs/spark-preprocessing-1.0.0.jar}
 
+# ===================================================================
+# JWT Security Configuration
+# ===================================================================
 jwt:
-  # This is a default secret for local development. 
-  # It is overridden in the production profile to use a secure environment variable.
   secret: "${JWT_SECRET:DefaultSuperSecretKeyForDevAndTestEnvironmentsOnlyDoNotUseInProd}"
   header: "Authorization"
   token-prefix: "Bearer "

@@ -527,8 +527,13 @@ export class RealtimeWebSocket {
   private url: string;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
-  private reconnectDelay = 3000;
+  private initialDelay = 1000;
+  private maxDelay = 30000;
+  private cooldownAfterMax = 60000;
   private heartbeatInterval: number | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private cooldownTimer: ReturnType<typeof setTimeout> | null = null;
+  private intentionalClose = false;
   private messageQueue: WSMessage[] = [];
   private listeners: Map<WSMessageType, ((data: any) => void)[]> = new Map();
   private statusListeners: ((status: ConnectionStats['status']) => void)[] = [];
@@ -551,11 +556,25 @@ export class RealtimeWebSocket {
   connect(): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
     
+    this.intentionalClose = false;
+    this.reconnectAttempts = 0;
+    this.clearTimers();
+    this.doConnect();
+  }
+
+  private doConnect(): void {
     this.setStatus('connecting');
-    this.ws = new WebSocket(this.url);
+    
+    try {
+      this.ws = new WebSocket(this.url);
+    } catch (e) {
+      console.error('[WS] 连接创建失败:', e);
+      this.scheduleReconnect();
+      return;
+    }
     
     this.ws.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('[WS] 已连接');
       this.setStatus('connected');
       this.reconnectAttempts = 0;
       this.startHeartbeat();
@@ -570,27 +589,34 @@ export class RealtimeWebSocket {
         const message: WSMessage = JSON.parse(event.data);
         this.notifyListeners(message.type, message.data);
       } catch (e) {
-        console.error('Failed to parse WebSocket message:', e);
+        console.error('[WS] 消息解析失败:', e);
       }
     };
     
     this.ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.error('[WS] 连接错误:', error);
     };
     
     this.ws.onclose = () => {
-      console.log('WebSocket closed');
-      this.setStatus('disconnected');
+      console.log('[WS] 连接关闭');
       this.stopHeartbeat();
-      this.attemptReconnect();
+      if (!this.intentionalClose) {
+        this.scheduleReconnect();
+      } else {
+        this.setStatus('disconnected');
+      }
     };
   }
 
   disconnect(): void {
-    this.reconnectAttempts = this.maxReconnectAttempts; // 阻止重连
+    this.intentionalClose = true;
+    this.clearTimers();
     this.stopHeartbeat();
-    this.ws?.close();
-    this.ws = null;
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
     this.setStatus('disconnected');
   }
 
@@ -652,16 +678,38 @@ export class RealtimeWebSocket {
     }
   }
 
-  private attemptReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
+  private clearTimers(): void {
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    if (this.cooldownTimer) { clearTimeout(this.cooldownTimer); this.cooldownTimer = null; }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.intentionalClose) return;
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.warn(`[WS] 达到最大重连次数 (${this.maxReconnectAttempts})，${this.cooldownAfterMax / 1000}s 后重试`);
+      this.setStatus('disconnected');
+      this.cooldownTimer = setTimeout(() => {
+        this.reconnectAttempts = 0;
+        this.doConnect();
+      }, this.cooldownAfterMax);
+      return;
+    }
+    
+    // 指数退避 + 随机抖动
+    const base = Math.min(this.initialDelay * Math.pow(2, this.reconnectAttempts), this.maxDelay);
+    const jitter = base * 0.25 * (Math.random() * 2 - 1);
+    const delay = Math.round(base + jitter);
     
     this.reconnectAttempts++;
     this.stats.reconnectCount++;
-    console.log(`Attempting reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+    console.log(`[WS] 重连 #${this.reconnectAttempts}/${this.maxReconnectAttempts}，延迟 ${delay}ms`);
+    this.setStatus('connecting');
     
-    setTimeout(() => {
-      this.connect();
-    }, this.reconnectDelay * this.reconnectAttempts);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.doConnect();
+    }, delay);
   }
 
   private flushMessageQueue(): void {

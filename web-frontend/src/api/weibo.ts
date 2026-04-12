@@ -127,6 +127,19 @@ export interface SparkInfo {
   status: string;
 }
 
+/** 排序后的微博条目 */
+export interface RankedWeiboItem {
+  id: string;
+  text: string;
+  rank: number;
+  dual_score: number;
+  sentiment_score: number;
+  heat_score: number;
+  reposts_count: number;
+  comments_count: number;
+  attitudes_count: number;
+}
+
 /** 数据概览统计 */
 export interface OverviewStats {
   total_crawl_tasks: number;
@@ -153,6 +166,18 @@ export interface LiveHotSearchResponse {
   last_refresh: string;
 }
 
+/** 热搜相关的微博样本 */
+export interface SampleWeibo {
+  id: string;
+  text: string;
+  user?: string;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  sentiment_score?: number;
+  reposts_count?: number;
+  comments_count?: number;
+  attitudes_count?: number;
+}
+
 /** 实时热搜项（带情感分析） */
 export interface LiveHotSearchItem extends HotSearchItem {
   sentiment: 'positive' | 'neutral' | 'negative';
@@ -160,7 +185,7 @@ export interface LiveHotSearchItem extends HotSearchItem {
   positive_ratio: number;
   negative_ratio: number;
   weibo_count: number;
-  sample_weibos: any[];
+  sample_weibos: SampleWeibo[];
   trend: string;
   label?: string;
   is_fei?: boolean;
@@ -188,7 +213,7 @@ export async function getLiveHotSearch(): Promise<LiveHotSearchResponse> {
       const hotList = response.data.data || [];
       if (hotList.length > 0) {
         return {
-          hot_list: hotList.map((item: any, idx: number) => ({
+          hot_list: hotList.map((item: HotSearchItem, idx: number) => ({
             ...item,
             sentiment: 'neutral',
             sentiment_score: 0,
@@ -630,7 +655,7 @@ export async function getCollectionTasks(): Promise<CollectionTask[]> {
   try {
     const response = await apiClient.get('/weibo/crawl/tasks');
     if (response.data.code === 200 && response.data.data?.tasks) {
-      const crawlTasks = response.data.data.tasks.map((t: any) => ({
+      const crawlTasks = response.data.data.tasks.map((t: CrawlTask) => ({
         id: t.id,
         name: t.keywords?.join(', ') || '采集任务',
         keywords: (t.keywords || []).map((k: string) => ({ word: k })),
@@ -759,7 +784,7 @@ export async function getPreprocessTasks(): Promise<PreprocessTask[]> {
 export async function createPreprocessTask(params: {
   name?: string;
   sourceTaskId?: string;
-  data?: any[];
+  data?: WeiboData[];
   cleanRules?: string[];
   segmentTool?: string;
 }): Promise<PreprocessTask> {
@@ -943,7 +968,7 @@ export async function startDataflowTask(params: {
 // 模拟数据流任务存储
 const mockDataflowTasks: Map<string, DataflowTask> = new Map();
 
-function startMockDataflowTask(taskId: string, params: any) {
+function startMockDataflowTask(taskId: string, _params: { keywords?: string[]; pages?: number; crawl_hot?: boolean; auto_process?: boolean }) {
   const task: DataflowTask = {
     task_id: taskId,
     status: 'crawling',
@@ -1026,7 +1051,7 @@ export async function getDataflowTaskResult(
   page: number = 1,
   pageSize: number = 50
 ): Promise<{
-  items: any[];
+  items: RankedWeiboItem[];
   total: number;
   page: number;
   page_size: number;
@@ -1049,7 +1074,7 @@ export async function getDataflowTaskResult(
   }
 }
 
-function generateMockRankedData(count: number): any[] {
+function generateMockRankedData(count: number): RankedWeiboItem[] {
   return Array.from({ length: count }, (_, i) => ({
     id: `ranked_${i}`,
     text: `这是第${i + 1}条排序后的微博内容...`,
@@ -1238,7 +1263,7 @@ export async function getDataQuality(): Promise<{
  * 验证数据质量
  */
 export async function validateDataQuality(params: {
-  data: any[];
+  data: WeiboData[];
   check_duplicates?: boolean;
   auto_fix?: boolean;
   generate_report?: boolean;

@@ -23,7 +23,7 @@ export type ConditionOperator = 'equals' | 'contains' | 'greater' | 'less' | 'be
 export interface LinkageCondition {
   field: string;
   operator: ConditionOperator;
-  value: any;
+  value: unknown;
   enabled: boolean;
 }
 
@@ -54,18 +54,18 @@ export interface LinkageEvent {
   sourceComponentId: string;
   triggerType: TriggerType;
   timestamp: number;
-  data: any;
+  data: unknown;
   affectedComponents: string[];
 }
 
 /** 联动状态 */
 export interface LinkageState {
   activeRules: string[];
-  currentFilters: Record<string, any>;
-  highlightedData: Record<string, any[]>;
-  selectedData: Record<string, any[]>;
-  zoomRange: { start: any; end: any } | null;
-  drillPath: { componentId: string; level: number; data: any }[];
+  currentFilters: Record<string, unknown>;
+  highlightedData: Record<string, unknown[]>;
+  selectedData: Record<string, unknown[]>;
+  zoomRange: { start: unknown; end: unknown } | null;
+  drillPath: { componentId: string; level: number; data: unknown }[];
 }
 
 /** 联动历史记录 */
@@ -144,7 +144,7 @@ export function createDefaultRule(sourceComponentId: string): LinkageRule {
 /**
  * 评估联动条件
  */
-export function evaluateCondition(condition: LinkageCondition, data: any): boolean {
+export function evaluateCondition(condition: LinkageCondition, data: Record<string, unknown>): boolean {
   if (!condition.enabled) return true;
   
   const fieldValue = data[condition.field];
@@ -170,7 +170,7 @@ export function evaluateCondition(condition: LinkageCondition, data: any): boole
 /**
  * 评估所有条件
  */
-export function evaluateConditions(conditions: LinkageCondition[], data: any): boolean {
+export function evaluateConditions(conditions: LinkageCondition[], data: Record<string, unknown>): boolean {
   if (conditions.length === 0) return true;
   return conditions.every(c => evaluateCondition(c, data));
 }
@@ -178,7 +178,7 @@ export function evaluateConditions(conditions: LinkageCondition[], data: any): b
 /**
  * 应用数据转换
  */
-export function applyTransform(data: any, transform?: string): any {
+export function applyTransform(data: unknown, transform?: string): unknown {
   if (!transform) return data;
   
   try {

@@ -11,8 +11,21 @@ import type {
   TaskLog,
   ApiResponse,
   PageResponse,
-  CreateTaskRequest
+  CreateTaskRequest,
+  CollectedDataItem,
 } from './types';
+
+/** WebSocket 实时消息 */
+export interface RealtimeMessage {
+  type: 'progress' | 'data' | 'log' | 'error' | 'complete';
+  taskId?: number;
+  progress?: number;
+  collected?: number;
+  failed?: number;
+  speed?: number;
+  message?: string;
+  data?: CollectedDataItem;
+}
 
 /** 任务列表查询参数 */
 export interface TaskListParams {
@@ -200,7 +213,7 @@ export async function getGlobalStats(params: { startDate?: string; endDate?: str
  */
 export function connectRealtimeData(
   taskId: number | null,
-  onMessage: (data: any) => void,
+  onMessage: (data: RealtimeMessage) => void,
   onError?: (error: Event) => void
 ): () => void {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -250,7 +263,7 @@ export async function pollRealtimeData(taskId?: number): Promise<{
   failed: number;
   speed: number;
   recentLogs: TaskLog[];
-  recentData: any[];
+  recentData: CollectedDataItem[];
 }> {
   const url = taskId ? `/collection/tasks/${taskId}/realtime` : '/collection/realtime';
   const response = await apiClient.get(url);
@@ -350,7 +363,7 @@ export async function clearTaskData(id: number): Promise<void> {
 export async function getTaskDataPreview(
   id: number,
   params: { page?: number; pageSize?: number } = {}
-): Promise<PageResponse<any>> {
+): Promise<PageResponse<CollectedDataItem>> {
   const response = await apiClient.get(`/collection/tasks/${id}/data`, { params });
   return response.data.data;
 }
@@ -358,7 +371,7 @@ export async function getTaskDataPreview(
 /**
  * 获取单条采集数据详情
  */
-export async function getDataDetail(taskId: number, dataId: number): Promise<any> {
+export async function getDataDetail(taskId: number, dataId: number): Promise<CollectedDataItem> {
   const response = await apiClient.get(`/collection/tasks/${taskId}/data/${dataId}`);
   return response.data.data;
 }

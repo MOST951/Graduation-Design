@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!-- 微博舆情分析系统 - HDFS 配置 (伪集群, 副本数=1) -->
+<configuration>
+    <!-- 副本数: 伪集群只有 1 个 DataNode -->
+    <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+    </property>
+
+    <!-- NameNode 数据存储路径 -->
+    <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>file:///hadoop/dfs/name</value>
+    </property>
+
+    <!-- DataNode 数据存储路径 -->
+    <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>file:///hadoop/dfs/data</value>
+    </property>
+
+    <!-- 关闭权限检查 (伪集群开发用) -->
+    <property>
+        <name>dfs.permissions.enabled</name>
+        <value>false</value>
+    </property>
+
+    <!-- WebUI 绑定地址 -->
+    <property>
+        <name>dfs.namenode.http-address</name>
+        <value>0.0.0.0:50070</value>
+    </property>
+
+    <!-- 允许追加写入 -->
+    <property>
+        <name>dfs.support.append</name>
+        <value>true</value>
+    </property>
+
+    <!-- DataNode 地址 -->
+    <property>
+        <name>dfs.datanode.address</name>
+        <value>0.0.0.0:50010</value>
+    </property>
+    <property>
+        <name>dfs.datanode.http.address</name>
+        <value>0.0.0.0:50075</value>
+    </property>
+    <property>
+        <name>dfs.datanode.ipc.address</name>
+        <value>0.0.0.0:50020</value>
+    </property>
+
+    <!-- 安全模式退出阈值: 伪集群下快速退出 -->
+    <property>
+        <name>dfs.namenode.safemode.threshold-pct</name>
+        <value>0</value>
+    </property>
+
+    <!-- 块大小: 64MB (适合小数据集) -->
+    <property>
+        <name>dfs.blocksize</name>
+        <value>67108864</value>
+    </property>
+</configuration>

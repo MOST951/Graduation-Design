@@ -203,6 +203,7 @@ import {
   SuccessFilled, CircleCloseFilled, TrendCharts, Odometer,
   Delete, Download, Connection, Refresh, Link
 } from '@element-plus/icons-vue';
+import { useReconnectingWebSocket } from '@/composables/useReconnect';
 
 // Tab 状态
 const activeTab = ref('progress');
@@ -367,46 +368,39 @@ function refreshPreview() {
   addLog('INFO', '刷新数据预览...');
 }
 
-// ========== WebSocket 连接 ==========
-let ws: WebSocket | null = null;
-let reconnectTimer: number | null = null;
+// ========== WebSocket 连接 (auto-reconnect) ==========
 let simulationTimer: number | null = null;
 
-function connectWebSocket() {
-  try {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.hostname}:8081/api/ws/collection`);
-    
-    ws.onopen = () => {
-      wsConnected.value = true;
-      addLog('INFO', 'WebSocket 连接成功');
-    };
-    
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        handleWebSocketMessage(data);
-      } catch (e) {
-        addLog('WARN', `消息解析失败: ${event.data}`);
-      }
-    };
-    
-    ws.onerror = () => {
-      addLog('ERROR', 'WebSocket 连接错误');
-    };
-    
-    ws.onclose = () => {
-      wsConnected.value = false;
-      addLog('WARN', 'WebSocket 连接断开，5秒后重连...');
-      reconnectTimer = window.setTimeout(connectWebSocket, 5000);
-    };
-  } catch (e) {
-    addLog('ERROR', 'WebSocket 初始化失败，使用模拟数据');
-    startSimulation();
-  }
-}
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const wsUrl = `${protocol}//${window.location.hostname}:8081/api/ws/collection`;
 
-function handleWebSocketMessage(data: any) {
+const { connect: connectWs, disconnect: disconnectWs } = useReconnectingWebSocket(wsUrl, {
+  immediate: false,
+  maxAttempts: 5,
+  initialDelay: 1000,
+  onOpen: () => {
+    wsConnected.value = true;
+    addLog('INFO', 'WebSocket 连接成功');
+  },
+  onParsedMessage: (data) => {
+    handleWebSocketMessage(data as Record<string, unknown>);
+  },
+  onError: () => {
+    addLog('ERROR', 'WebSocket 连接错误');
+  },
+  onStatusChange: (status) => {
+    if (status === 'disconnected' && !wsConnected.value) {
+      // 达到最大重连后降级到模拟数据
+      addLog('WARN', 'WebSocket 重连失败，切换到模拟数据');
+      startSimulation();
+    } else if (status === 'reconnecting') {
+      wsConnected.value = false;
+      addLog('WARN', 'WebSocket 连接断开，正在重连…');
+    }
+  },
+});
+
+function handleWebSocketMessage(data: Record<string, unknown>) {
   if (data.type === 'progress') {
     overallProgress.value = data.progress;
     metrics.collected = data.collected;
@@ -500,29 +494,14 @@ onMounted(() => {
     initPlatformChart();
   });
   
-  // 尝试连接 WebSocket，失败则使用模拟数据
-  try {
-    connectWebSocket();
-  } catch {
-    startSimulation();
-  }
-  
-  // 如果 3 秒内没有连接成功，启动模拟
-  setTimeout(() => {
-    if (!wsConnected.value) {
-      startSimulation();
-    }
-  }, 3000);
+  // 尝试连接 WebSocket（composable 处理重连，最终降级到模拟数据）
+  connectWs();
   
   window.addEventListener('resize', () => platformChart?.resize());
 });
 
 onUnmounted(() => {
-  if (ws) {
-    ws.onclose = null;
-    ws.close();
-  }
-  if (reconnectTimer) clearTimeout(reconnectTimer);
+  disconnectWs();
   if (simulationTimer) clearInterval(simulationTimer);
   platformChart?.dispose();
   window.removeEventListener('resize', () => platformChart?.resize());

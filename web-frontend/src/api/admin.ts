@@ -135,7 +135,7 @@ export interface SystemLog {
   userId?: string;
   ip?: string;
   timestamp: string;
-  details?: any;
+  details?: Record<string, unknown>;
 }
 
 /** 审计日志 */
@@ -149,7 +149,7 @@ export interface AuditLog {
   ip: string;
   userAgent: string;
   timestamp: string;
-  details?: any;
+  details?: Record<string, unknown>;
 }
 
 /** 备份记录 */

@@ -1,36 +1,110 @@
 """
 Spark伪集群配置
 用于配置本地Spark环境
+
+配置加载优先级：
+  1. 环境变量 / .env 文件 （通过 config.py 统一管理）
+  2. 本文件硬编码默认值
+
+伪集群自动检测：
+  如果 SPARK_MASTER_URL 指向 spark://host:port，会先尝试连接，
+  失败则自动回退到 local[*]。
 """
 import os
+import sys
+import logging
+import socket
 
-# Spark配置
+logger = logging.getLogger(__name__)
+
+
+def _load_from_config():
+    """Try to load config from the centralized config.py"""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+        from config import config
+        return config.spark
+    except Exception:
+        return None
+
+
+def _is_master_reachable(master_url: str, timeout: float = 2.0) -> bool:
+    """
+    Check if a Spark master (spark://host:port) is reachable.
+    Returns True for local[*] or local[N] masters without checking.
+    """
+    if not master_url or master_url.startswith('local'):
+        return True
+    try:
+        # Parse spark://host:port
+        addr = master_url.replace('spark://', '')
+        host, port = addr.split(':')
+        port = int(port)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except Exception:
+        return False
+
+
+def _resolve_master(configured_master: str) -> str:
+    """
+    Resolve Spark master URL with auto-fallback.
+    If pseudo-cluster master is unreachable, fall back to local[*].
+    """
+    if _is_master_reachable(configured_master):
+        logger.info(f"Spark master reachable: {configured_master}")
+        return configured_master
+    else:
+        logger.warning(
+            f"Spark master {configured_master} unreachable, "
+            f"falling back to local[*]"
+        )
+        return 'local[*]'
+
+
+# Load centralized config
+_cfg = _load_from_config()
+
+_master = _cfg.master_url if _cfg else os.getenv('SPARK_MASTER_URL', 'local[*]')
+_app_name = _cfg.app_name if _cfg else os.getenv('SPARK_APP_NAME', 'WeiboSentimentAnalysis')
+_driver_mem = _cfg.driver_memory if _cfg else os.getenv('SPARK_DRIVER_MEMORY', '2g')
+_executor_mem = _cfg.executor_memory if _cfg else os.getenv('SPARK_EXECUTOR_MEMORY', '2g')
+_parallelism = str(_cfg.default_parallelism) if _cfg else os.getenv('SPARK_DEFAULT_PARALLELISM', '4')
+_adaptive = str(_cfg.sql_adaptive_enabled).lower() if _cfg else 'true'
+_coalesce = str(_cfg.sql_adaptive_coalesce_partitions_enabled).lower() if _cfg else 'true'
+
+# Auto-detect pseudo-cluster availability
+_resolved_master = _resolve_master(_master)
+
 SPARK_CONFIG = {
-    # 基础配置
-    'spark.app.name': 'WeiboSentimentAnalysis',
-    'spark.master': 'local[*]',  # 本地模式，使用所有CPU核心
+    # Basic
+    'spark.app.name': _app_name,
+    'spark.master': _resolved_master,
     
-    # 内存配置
-    'spark.driver.memory': '2g',
-    'spark.executor.memory': '2g',
+    # Memory
+    'spark.driver.memory': _driver_mem,
+    'spark.executor.memory': _executor_mem,
     
-    # 并行度配置
-    'spark.sql.shuffle.partitions': '4',
-    'spark.default.parallelism': '4',
+    # Parallelism
+    'spark.sql.shuffle.partitions': _parallelism,
+    'spark.default.parallelism': _parallelism,
     
-    # UI配置
+    # UI
     'spark.ui.enabled': 'true',
     'spark.ui.port': '4040',
     
-    # 日志配置
+    # Logging
     'spark.ui.showConsoleProgress': 'false',
     
-    # 序列化配置
+    # Serialization
     'spark.serializer': 'org.apache.spark.serializer.KryoSerializer',
     
-    # 其他优化
-    'spark.sql.adaptive.enabled': 'true',
-    'spark.sql.adaptive.coalescePartitions.enabled': 'true',
+    # Adaptive Query Execution
+    'spark.sql.adaptive.enabled': _adaptive,
+    'spark.sql.adaptive.coalescePartitions.enabled': _coalesce,
 }
 
 # 数据路径配置

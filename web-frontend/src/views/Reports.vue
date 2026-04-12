@@ -531,7 +531,7 @@ onMounted(() => {
     
     .header-desc {
       margin: 0;
-      color: #909399;
+      color: var(--color-text-secondary);
       font-size: 14px;
     }
   }
@@ -573,7 +573,7 @@ onMounted(() => {
     
     .stat-label {
       font-size: 13px;
-      color: #909399;
+      color: var(--color-text-secondary);
       margin-top: 4px;
     }
   }
@@ -628,7 +628,7 @@ onMounted(() => {
       width: 50px;
       text-align: right;
       font-weight: 500;
-      color: #409EFF;
+      color: var(--color-primary);
     }
   }
   
@@ -681,9 +681,9 @@ onMounted(() => {
       justify-content: center;
       color: #fff;
       
-      &.sentiment { background: linear-gradient(135deg, #67C23A, #95d475); }
-      &.hotspot { background: linear-gradient(135deg, #E6A23C, #eebe77); }
-      &.comprehensive { background: linear-gradient(135deg, #409EFF, #79bbff); }
+      &.sentiment { background: linear-gradient(135deg, var(--color-success), #95d475); }
+      &.hotspot { background: linear-gradient(135deg, var(--color-warning), #eebe77); }
+      &.comprehensive { background: linear-gradient(135deg, var(--color-primary), #79bbff); }
     }
     
     .report-info {
@@ -700,7 +700,7 @@ onMounted(() => {
         align-items: center;
         gap: 8px;
         font-size: 12px;
-        color: #909399;
+        color: var(--color-text-secondary);
       }
     }
   }

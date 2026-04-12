@@ -48,15 +48,55 @@ class HBaseConfig:
     """HBase configuration"""
     quorum: str = 'localhost'
     port: int = 9090
+    thrift_port: int = 9090
+    master_port: int = 16000
     timeout: int = 30000
     
     @classmethod
     def from_env(cls) -> 'HBaseConfig':
         return cls(
-            quorum=os.getenv('HBASE_QUORUM', 'localhost'),
+            quorum=os.getenv('HBASE_HOST', os.getenv('HBASE_QUORUM', 'localhost')),
             port=int(os.getenv('HBASE_PORT', '9090')),
+            thrift_port=int(os.getenv('HBASE_THRIFT_PORT', '9090')),
+            master_port=int(os.getenv('HBASE_MASTER_PORT', '16000')),
             timeout=int(os.getenv('HBASE_TIMEOUT', '30000')),
         )
+
+
+@dataclass
+class HDFSConfig:
+    """HDFS configuration"""
+    namenode_host: str = ''
+    namenode_port: int = 9000
+    webhdfs_port: int = 50070
+    user: str = 'root'
+    raw_dir: str = '/weibo/raw'
+    output_dir: str = '/weibo/output'
+    checkpoint_dir: str = '/weibo/checkpoint'
+    
+    @classmethod
+    def from_env(cls) -> 'HDFSConfig':
+        return cls(
+            namenode_host=os.getenv('HDFS_NAMENODE_HOST', ''),
+            namenode_port=int(os.getenv('HDFS_NAMENODE_PORT', '9000')),
+            webhdfs_port=int(os.getenv('HDFS_WEBHDFS_PORT', '50070')),
+            user=os.getenv('HDFS_USER', 'root'),
+            raw_dir=os.getenv('HDFS_RAW_DIR', '/weibo/raw'),
+            output_dir=os.getenv('HDFS_OUTPUT_DIR', '/weibo/output'),
+            checkpoint_dir=os.getenv('HDFS_CHECKPOINT_DIR', '/weibo/checkpoint'),
+        )
+    
+    @property
+    def is_enabled(self) -> bool:
+        """Check if HDFS is configured"""
+        return bool(self.namenode_host)
+    
+    @property
+    def fs_default(self) -> str:
+        """Get fs.defaultFS URL"""
+        if self.is_enabled:
+            return f'hdfs://{self.namenode_host}:{self.namenode_port}'
+        return ''
 
 
 @dataclass
@@ -283,6 +323,7 @@ class Config:
     flask: FlaskConfig
     database: DatabaseConfig
     hbase: HBaseConfig
+    hdfs: HDFSConfig
     redis: RedisConfig
     spark: SparkConfig
     logging: LoggingConfig
@@ -299,6 +340,7 @@ class Config:
             flask=FlaskConfig.from_env(),
             database=DatabaseConfig.from_env(),
             hbase=HBaseConfig.from_env(),
+            hdfs=HDFSConfig.from_env(),
             redis=RedisConfig.from_env(),
             spark=SparkConfig.from_env(),
             logging=LoggingConfig.from_env(),
@@ -379,7 +421,8 @@ __all__ = [
     'Config',
     'config',
     'DatabaseConfig',
-    'HBaseConfig', 
+    'HBaseConfig',
+    'HDFSConfig',
     'RedisConfig',
     'SparkConfig',
     'FlaskConfig',

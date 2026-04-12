@@ -1,6 +1,8 @@
 # ====================================================================
 # 微博情感分析系统 - Flask 后端 Dockerfile
 # ====================================================================
+# 构建上下文: 项目根目录 (context: ..)
+# ====================================================================
 
 FROM python:3.9-slim
 
@@ -11,42 +13,47 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=Asia/Shanghai
 
-# 安装系统依赖
+# 安装系统依赖 (含 MySQL 客户端库, 时区数据)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
         g++ \
         curl \
-        && rm -rf /var/lib/apt/lists/*
+        default-libmysqlclient-dev \
+        pkg-config \
+        tzdata \
+    && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖文件
-COPY backend/requirements.txt .
+# 复制依赖文件 (注意: 构建上下文为项目根目录)
+COPY backend-python/requirements.txt .
 
-# 安装Python依赖
+# 安装 Python 依赖
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt \
     && pip install gunicorn
 
 # 复制应用代码
-COPY backend/ ./backend/
-COPY config/ ./config/
+COPY backend-python/ ./backend/
 
-# 创建非root用户
+# 创建非 root 用户
 RUN useradd -m -u 1000 appuser \
+    && mkdir -p logs model_cache \
     && chown -R appuser:appuser /app
 USER appuser
-
-# 创建必要目录
-RUN mkdir -p logs model_cache
 
 # 暴露端口
 EXPOSE 5000
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:5000/ || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -sf http://localhost:5000/api/health || exit 1
 
 # 启动命令
 CMD ["gunicorn", \

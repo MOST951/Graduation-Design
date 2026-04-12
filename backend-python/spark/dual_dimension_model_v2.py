@@ -20,7 +20,10 @@ from enum import Enum
 import json
 import logging
 import threading
-from schedule import schedule, every, run_pending
+try:
+    import schedule
+except ImportError:
+    schedule = None
 
 # Spark导入
 try:
