@@ -6,7 +6,12 @@
 # ====================================================================
 set -e
 
-FORMATTED_FLAG="/hadoop/dfs/name/.formatted"
+NAMENODE_DIR="/hadoop/dfs/name"
+FORMATTED_FLAG="${NAMENODE_DIR}/.formatted"
+
+echo "[NameNode] 确保数据目录存在并具有正确权限..."
+mkdir -p "${NAMENODE_DIR}"
+chown -R "$(whoami)" "${NAMENODE_DIR}" 2>/dev/null || true
 
 echo "[NameNode] 检查 HDFS 格式化状态..."
 

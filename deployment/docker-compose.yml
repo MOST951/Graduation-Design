@@ -289,6 +289,7 @@ services:
     image: apache/hadoop:3.3.6
     container_name: weibo_sentiment_namenode
     hostname: namenode
+    user: root
     restart: unless-stopped
     ports:
       - "${HDFS_NAMENODE_HTTP_PORT:-50070}:50070"
@@ -327,6 +328,7 @@ services:
     image: apache/hadoop:3.3.6
     container_name: weibo_sentiment_datanode
     hostname: datanode
+    user: root
     restart: unless-stopped
     ports:
       - "${HDFS_DATANODE_HTTP_PORT:-50075}:50075"
