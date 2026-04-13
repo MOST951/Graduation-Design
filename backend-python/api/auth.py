@@ -8,23 +8,23 @@ import logging
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 logger = logging.getLogger(__name__)
 
-# 模拟用户数据
+# 用户数据
 users = {
     'admin': {
         'id': 1,
         'username': 'admin',
         'password': 'admin123',
-        'name': '管理员',
+        'name': '系统管理员',
         'email': 'admin@example.com',
         'role': 'admin',
         'avatar': 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png',
     },
-    'user': {
+    'user01': {
         'id': 2,
-        'username': 'user',
+        'username': 'user01',
         'password': 'user123',
         'name': '普通用户',
-        'email': 'user@example.com',
+        'email': 'user01@example.com',
         'role': 'user',
         'avatar': 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png',
     }

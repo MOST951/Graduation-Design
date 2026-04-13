@@ -270,30 +270,6 @@ class ModelConfig:
 
 
 @dataclass
-class EmailConfig:
-    """Email server configuration"""
-    host: str = 'smtp.gmail.com'
-    port: int = 587
-    username: str = ''
-    password: str = ''
-    ssl: bool = True
-    use_tls: bool = True
-    default_from: str = 'noreply@example.com'
-    
-    @classmethod
-    def from_env(cls) -> 'EmailConfig':
-        return cls(
-            host=os.getenv('EMAIL_HOST', 'smtp.gmail.com'),
-            port=int(os.getenv('EMAIL_PORT', '587')),
-            username=os.getenv('EMAIL_USERNAME', ''),
-            password=os.getenv('EMAIL_PASSWORD', ''),
-            ssl=os.getenv('EMAIL_SSL', 'true').lower() == 'true',
-            use_tls=os.getenv('EMAIL_USE_TLS', 'true').lower() == 'true',
-            default_from=os.getenv('EMAIL_FROM', 'noreply@example.com'),
-        )
-
-
-@dataclass
 class SystemConfig:
     """System configuration parameters"""
     session_timeout: int = 120  # minutes
@@ -330,7 +306,6 @@ class Config:
     security: SecurityConfig
     crawler: CrawlerConfig
     model: ModelConfig
-    email: EmailConfig
     system: SystemConfig
     
     @classmethod
@@ -347,7 +322,6 @@ class Config:
             security=SecurityConfig.from_env(),
             crawler=CrawlerConfig.from_env(),
             model=ModelConfig.from_env(),
-            email=EmailConfig.from_env(),
             system=SystemConfig.from_env(),
         )
     

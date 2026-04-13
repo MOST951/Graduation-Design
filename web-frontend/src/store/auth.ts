@@ -31,19 +31,20 @@ export const useAuthStore = defineStore('auth', {
     },
     // 模拟登录（后端未启动时使用）
     mockLogin(username: string, password: string): boolean {
-      if ((username === 'admin' && password === 'admin123') || 
-          (username === 'admin' && password === 'admin')) {
-        const mockToken = 'mock-token-' + Date.now();
-        const mockUser: User = {
-          id: 1,
-          username: 'admin',
-          name: '系统管理员',
-          email: 'admin@example.com',
-          role: 'admin',
-          avatar: '',
-        };
-        this.setToken(mockToken);
-        this.setUser(mockUser);
+      const mockUsers: Record<string, { password: string; user: User }> = {
+        admin: {
+          password: 'admin123',
+          user: { id: 1, username: 'admin', name: '系统管理员', email: 'admin@example.com', role: 'admin', avatar: '' },
+        },
+        user01: {
+          password: 'user123',
+          user: { id: 2, username: 'user01', name: '普通用户', email: 'user01@example.com', role: 'user', avatar: '' },
+        },
+      };
+      const entry = mockUsers[username];
+      if (entry && entry.password === password) {
+        this.setToken('mock-token-' + Date.now());
+        this.setUser(entry.user);
         return true;
       }
       return false;

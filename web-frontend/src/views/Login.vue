@@ -33,29 +33,11 @@
           </div>
         </transition>
 
-        <!-- 登录方式切换 -->
-        <div class="login-tabs">
-          <div
-            class="tab-item"
-            :class="{ active: loginType === 'password' }"
-            @click="loginType = 'password'"
-          >
-            <el-icon :size="14"><Lock /></el-icon>
-            <span>密码登录</span>
-          </div>
-          <div
-            class="tab-item"
-            :class="{ active: loginType === 'email' }"
-            @click="loginType = 'email'"
-          >
-            <el-icon :size="14"><Message /></el-icon>
-            <span>邮箱验证码</span>
-          </div>
-        </div>
+        <!-- 登录标题 -->
+        <div class="login-subtitle">密码登录</div>
 
         <!-- ======== 密码登录表单 ======== -->
         <el-form
-          v-show="loginType === 'password'"
           ref="loginFormRef"
           :model="loginForm"
           :rules="loginRules"
@@ -106,8 +88,7 @@
           <div class="form-options">
             <el-checkbox v-model="loginForm.rememberMe">记住密码</el-checkbox>
             <div class="options-right">
-              <a class="glass-link" @click="goToForgotPassword">忘记密码?</a>
-              <a class="glass-link" @click="showMsg('请联系管理员 admin@weibo-sa.com', false)">联系管理员</a>
+              <a class="glass-link" @click="showMsg('请联系管理员', false)">联系管理员</a>
             </div>
           </div>
 
@@ -127,67 +108,10 @@
           </button>
         </el-form>
 
-        <!-- ======== 邮箱验证码登录表单 ======== -->
-        <el-form
-          v-show="loginType === 'email'"
-          ref="emailFormRef"
-          :model="emailForm"
-          :rules="emailRules"
-          class="login-form"
-          @keyup.enter="handleEmailLogin"
-        >
-          <el-form-item prop="email">
-            <label class="glass-label">邮箱</label>
-            <el-input
-              v-model="emailForm.email"
-              placeholder="请输入邮箱地址"
-              :prefix-icon="Message"
-              size="large"
-              clearable
-            />
-          </el-form-item>
-
-          <el-form-item prop="code">
-            <label class="glass-label">验证码</label>
-            <div class="code-row">
-              <el-input
-                v-model="emailForm.code"
-                placeholder="6位验证码"
-                :prefix-icon="Key"
-                size="large"
-                maxlength="6"
-              />
-              <button
-                type="button"
-                class="btn-code"
-                :disabled="countdown > 0 || sendingCode"
-                @click="sendCode"
-              >
-                {{ countdown > 0 ? `${countdown}s` : '获取验证码' }}
-              </button>
-            </div>
-          </el-form-item>
-
-          <button
-            type="button"
-            class="btn-primary"
-            :disabled="loading"
-            @click="handleEmailLogin"
-          >
-            <template v-if="!loading">
-              <el-icon :size="16"><Right /></el-icon>
-              <span>登录系统</span>
-            </template>
-            <span v-else class="btn-loading">
-              <i class="spinner"></i> 登录中...
-            </span>
-          </button>
-        </el-form>
-
         <!-- 演示账号提示 -->
         <div class="demo-tip">
-          <span v-if="loginType === 'password'">演示账号: <strong>admin</strong> / <strong>admin123</strong></span>
-          <span v-else>输入任意邮箱，验证码显示在后端控制台</span>
+          <div class="demo-row">管理员账号：<strong>admin</strong> / <strong>admin123</strong></div>
+          <div class="demo-row">普通用户账号：<strong>user01</strong> / <strong>user123</strong></div>
         </div>
 
         <!-- 底部 -->
@@ -213,22 +137,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onUnmounted, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
-import { User, Lock, View, Hide, DataAnalysis, TrendCharts, Histogram, Cpu, Message, Key, Right } from '@element-plus/icons-vue';
+import { User, Lock, View, Hide, DataAnalysis, TrendCharts, Right } from '@element-plus/icons-vue';
 import apiClient from '@/api/index';
 import { useAuthStore } from '@/store/auth';
 
 const router = useRouter();
 const authStore = useAuthStore();
 
-// 登录方式
-const loginType = ref<'password' | 'email'>('password');
-
 // 表单状态
 const loginFormRef = ref<FormInstance>();
-const emailFormRef = ref<FormInstance>();
 const loading = ref(false);
 const passwordVisible = ref(false);
 
@@ -299,17 +219,6 @@ const loginForm = reactive({
   rememberMe: false
 });
 
-// 邮箱验证码表单
-const emailForm = reactive({
-  email: '',
-  code: ''
-});
-
-// 验证码相关
-const sendingCode = ref(false);
-const countdown = ref(0);
-let countdownTimer: number | null = null;
-
 // 密码登录验证规则
 const loginRules = reactive<FormRules>({
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -318,63 +227,6 @@ const loginRules = reactive<FormRules>({
     { min: 5, message: '密码长度不能少于5位', trigger: 'blur' }
   ],
 });
-
-// 邮箱验证码验证规则
-const emailRules = reactive<FormRules>({
-  email: [
-    { required: true, message: '请输入邮箱地址', trigger: 'blur' },
-    { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' }
-  ],
-  code: [
-    { required: true, message: '请输入验证码', trigger: 'blur' },
-    { len: 6, message: '验证码为6位数字', trigger: 'blur' }
-  ],
-});
-
-// 发送验证码
-const sendCode = async () => {
-  // 先验证邮箱
-  try {
-    await emailFormRef.value?.validateField('email');
-  } catch {
-    return;
-  }
-  
-  sendingCode.value = true;
-  try {
-    const response = await apiClient.post('/auth/send-code', {
-      email: emailForm.email
-    });
-    
-    if (response.data.code === 200) {
-      ElMessage.success(response.data.message);
-      
-      // 开发环境显示验证码
-      if (response.data.data?.debug_code) {
-        ElMessage.info(`验证码: ${response.data.data.debug_code}`, { duration: 10000 });
-      }
-      
-      // 开始倒计时
-      countdown.value = 60;
-      countdownTimer = window.setInterval(() => {
-        countdown.value--;
-        if (countdown.value <= 0) {
-          if (countdownTimer) {
-            clearInterval(countdownTimer);
-            countdownTimer = null;
-          }
-        }
-      }, 1000);
-    } else {
-      ElMessage.error(response.data.message || '发送失败');
-    }
-  } catch (error: any) {
-    const msg = error.response?.data?.message || '发送验证码失败';
-    ElMessage.error(msg);
-  } finally {
-    sendingCode.value = false;
-  }
-};
 
 // 密码登录处理
 const handleLogin = () => {
@@ -414,61 +266,11 @@ const handleLogin = () => {
   });
 };
 
-// 邮箱验证码登录处理
-const handleEmailLogin = () => {
-  emailFormRef.value?.validate(async (valid) => {
-    if (valid) {
-      loading.value = true;
-      
-      try {
-        const response = await apiClient.post('/auth/login-by-code', {
-          email: emailForm.email,
-          code: emailForm.code
-        });
-        
-        if (response.data.code === 200) {
-          showMsg('登录成功，正在跳转...', false);
-          
-          const userData = response.data.data;
-          authStore.setToken(userData.accessToken);
-          authStore.setUser(userData.user);
-          localStorage.setItem('isLoggedIn', 'true');
-          localStorage.setItem('username', userData.user.username);
-          localStorage.setItem('userEmail', userData.user.email);
-          localStorage.setItem('userRole', userData.user.role);
-          localStorage.setItem('accessToken', userData.accessToken);
-          localStorage.setItem('loginType', 'email');
-          
-          setTimeout(() => router.push('/dashboard'), 600);
-        } else {
-          showMsg(response.data.message || '登录失败', true);
-        }
-      } catch (error: any) {
-        const msg = error.response?.data?.message || '验证码错误';
-        showMsg(msg, true);
-      } finally {
-        loading.value = false;
-      }
-    }
-  });
-};
-
 // 跳转注册
 const goToRegister = () => {
   router.push('/register');
 };
 
-// 跳转忘记密码
-const goToForgotPassword = () => {
-  router.push('/forgot-password');
-};
-
-// 清理定时器
-onUnmounted(() => {
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-  }
-});
 </script>
 
 <style scoped lang="scss">
@@ -620,35 +422,14 @@ onUnmounted(() => {
   transform: translateY(-8px);
 }
 
-/* ---------- login tabs ---------- */
-.login-tabs {
-  display: flex;
-  margin-bottom: 22px;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-
-  .tab-item {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 10px 0;
-    cursor: pointer;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.6);
-    background: rgba(255, 255, 255, 0.05);
-    transition: all 0.3s;
-    user-select: none;
-
-    &:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
-
-    &.active {
-      color: #fff;
-      background: linear-gradient(135deg, #165DFF 0%, #0F48C9 100%);
-    }
-  }
+/* ---------- login subtitle ---------- */
+.login-subtitle {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* ---------- form ---------- */
@@ -848,36 +629,6 @@ onUnmounted(() => {
   to { transform: rotate(360deg); }
 }
 
-/* ---------- code row ---------- */
-.code-row {
-  display: flex;
-  gap: 10px;
-  width: 100%;
-
-  .el-input { flex: 1; }
-}
-
-.btn-code {
-  flex-shrink: 0;
-  width: 110px;
-  padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.22);
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-}
 
 /* ---------- demo tip ---------- */
 .demo-tip {
@@ -888,11 +639,14 @@ onUnmounted(() => {
   border: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 12px;
   color: rgba(255, 255, 255, 0.55);
-  text-align: center;
 
   strong {
     color: #60a5fa;
     font-weight: 600;
+  }
+
+  .demo-row {
+    line-height: 1.8;
   }
 }
 

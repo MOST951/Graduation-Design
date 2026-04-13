@@ -11,7 +11,6 @@ import { useAuthStore } from '@/store/auth';
 // 
 const Login = defineAsyncComponent(() => import('@/views/Login.vue'));
 const Register = defineAsyncComponent(() => import('@/views/Register.vue'));
-const ForgotPassword = defineAsyncComponent(() => import('@/views/ForgotPassword.vue'));
 const MainLayout = defineAsyncComponent(() => import('@/layouts/MainLayout.vue'));
 
 // 
@@ -43,14 +42,6 @@ const routes: RouteRecordRaw[] = [
     name: 'Register',
     component: Register,
     meta: { title: 'register', requiresAuth: false }
-  },
-  
-  // 
-  {
-    path: '/forgot-password',
-    name: 'ForgotPassword',
-    component: ForgotPassword,
-    meta: { title: 'forgot password', requiresAuth: false }
   },
   
   // 
