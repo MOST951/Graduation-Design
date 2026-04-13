@@ -256,18 +256,116 @@ get_host_ip() {
     echo "${ip:-localhost}"
 }
 
+# ==================== 镜像拉取 (国内代理自动回退) ====================
+
+# 代理源列表 (按优先级排序, 可根据实际情况调整)
+MIRROR_PROXIES=(
+    "docker.1panel.live"
+    "hub.rat.dev"
+    "docker.anyhub.us.kg"
+    "dockerpull.org"
+)
+
+# 所有需要的第三方镜像 (docker-compose.yml 中引用的)
+REQUIRED_IMAGES=(
+    "bitnami/spark:3.5"
+    "harisekhon/hbase:2.4"
+    "zookeeper:3.8"
+    "apache/hadoop:3.3.6"
+    "mysql:8.0"
+    "redis:7-alpine"
+    "maven:3.8-openjdk-11-slim"
+    "openjdk:11-jre-slim"
+    "python:3.9-slim"
+)
+
+# 智能拉取单个镜像: 直连 Docker Hub → 失败则遍历代理源
+small_pull() {
+    local image="$1"
+    local timeout_sec=30
+
+    # 已存在则跳过
+    if docker image inspect "${image}" &>/dev/null; then
+        echo -e "    ${GREEN}✔${NC} ${image} (本地已存在)"
+        return 0
+    fi
+
+    # 尝试 1: 直连 Docker Hub (timeout 控制)
+    echo -ne "    ⤷ ${image} ... 直连 Docker Hub ... "
+    if timeout ${timeout_sec} docker pull "${image}" &>/dev/null 2>&1; then
+        echo -e "${GREEN}OK${NC}"
+        return 0
+    fi
+    echo -e "${YELLOW}超时${NC}"
+
+    # 尝试 2: 遍历代理源
+    # 判断镜像是否属于 library (官方镜像无命名空间, 代理需要加 library/ 前缀)
+    local proxy_path="${image}"
+    if [[ "${image}" != */* ]]; then
+        proxy_path="library/${image}"
+    fi
+
+    for proxy in "${MIRROR_PROXIES[@]}"; do
+        local proxy_image="${proxy}/${proxy_path}"
+        echo -ne "    ⤷ ${image} ... 代理 ${proxy} ... "
+        if timeout 60 docker pull "${proxy_image}" &>/dev/null 2>&1; then
+            # 拉取成功, 打 tag 为原始名称
+            docker tag "${proxy_image}" "${image}" &>/dev/null
+            docker rmi "${proxy_image}" &>/dev/null 2>&1 || true
+            echo -e "${GREEN}OK${NC}"
+            return 0
+        fi
+        echo -e "${YELLOW}失败${NC}"
+    done
+
+    echo -e "    ${RED}✘${NC} ${image} 所有源均失败!"
+    return 1
+}
+
+# 批量预拉取所有所需镜像
+ensure_images() {
+    step "检查并拉取所需 Docker 镜像..."
+    echo ""
+    local fail_count=0
+
+    for image in "${REQUIRED_IMAGES[@]}"; do
+        if ! small_pull "${image}"; then
+            fail_count=$((fail_count + 1))
+        fi
+    done
+
+    echo ""
+    if [[ ${fail_count} -gt 0 ]]; then
+        warn "${fail_count} 个镜像拉取失败, 部分服务可能无法启动"
+        echo "  可尝试:"
+        echo "    1. 检查网络连接"
+        echo "    2. 手动拉取: docker pull docker.1panel.live/<镜像名>"
+        echo "    3. 再执行: ./docker-cluster.sh"
+        echo ""
+        read -r -p "是否仍然继续启动? (y/N) " confirm
+        if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
+            exit 1
+        fi
+    else
+        info "所有镜像就绪"
+    fi
+}
+
 # ==================== 核心操作 ====================
 
 # 首次部署 (带重试)
 do_first_deploy() {
     echo ""
-    info "检测到首次运行，正在部署完整的 Spark 伪集群 + 前后端服务，这可能需要几分钟..."
+    info "检测到首次运行，正在部署完整集群 (Spark + HDFS + HBase + 前后端)，这可能需要几分钟..."
     echo ""
+
+    # 预拉取所有镜像 (自动国内代理回退)
+    ensure_images
 
     local attempt=0
     while [[ ${attempt} -lt ${MAX_RETRY} ]]; do
         attempt=$((attempt + 1))
-        step "[${attempt}/${MAX_RETRY}] 拉取镜像 & 构建..."
+        step "[${attempt}/${MAX_RETRY}] 构建并启动服务..."
 
         if run_compose up -d 2>&1 | tee -a "${LOG_FILE}"; then
             echo ""
@@ -287,6 +385,7 @@ do_first_deploy() {
     error "部署在 ${MAX_RETRY} 次尝试后仍然失败，请检查日志:"
     echo "  日志文件: ${LOG_FILE}"
     echo "  容器日志: ${COMPOSE_CMD} ${COMPOSE_BASE} logs"
+    echo "  手动拉镜像: docker pull docker.1panel.live/<镜像名>"
     exit 1
 }
 

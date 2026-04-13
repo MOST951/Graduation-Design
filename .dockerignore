@@ -13,8 +13,8 @@
 .cursor
 *.iml
 
-# 构建输出
-target/
+# 构建输出 (Maven 多阶段构建在 Docker 内进行, 排除本地产物)
+**/target/
 node_modules/
 dist/
 web-frontend/node_modules/
