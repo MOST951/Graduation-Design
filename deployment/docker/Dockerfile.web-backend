@@ -38,14 +38,14 @@ RUN mvn clean package -pl web-backend -am \
     -Dmaven.test.skip=true -Dmaven.javadoc.skip=true -q
 
 # ==================== 阶段 2: JRE 运行 ====================
-FROM openjdk:11-jre-slim
+FROM eclipse-temurin:11-jre-jammy
 
 ENV TZ=Asia/Shanghai \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl tzdata \
+    && apt-get install -y --no-install-recommends curl \
     && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
