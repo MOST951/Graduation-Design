@@ -53,6 +53,11 @@ try:
     logger.info(f"PyTorch版本: {torch.__version__}, CUDA: {torch.cuda.is_available()}")
 except ImportError:
     logger.warning("PyTorch未安装")
+    # 提供占位类，使模块定义不报错 (功能在运行时检查 TORCH_AVAILABLE)
+    class Dataset:
+        pass
+    class DataLoader:
+        pass
 
 try:
     from transformers import (

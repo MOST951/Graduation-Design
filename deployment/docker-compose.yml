@@ -386,7 +386,8 @@ services:
       - hbase_data:/hbase
       - ./config/hbase/hbase-site.xml:/opt/hbase/conf/hbase-site.xml:ro
       - ./scripts/hbase-init.sh:/hbase-init.sh:ro
-    command: ["/bin/bash", "/hbase-init.sh"]
+    entrypoint: ["/bin/bash", "/hbase-init.sh"]
+    command: []
     networks:
       - weibo-network
     profiles:
@@ -425,7 +426,8 @@ services:
         condition: service_started
     volumes:
       - ./config/hbase/hbase-site.xml:/opt/hbase/conf/hbase-site.xml:ro
-    command: ["/opt/hbase/bin/hbase", "regionserver", "start"]
+    entrypoint: ["/opt/hbase/bin/hbase"]
+    command: ["regionserver", "start"]
     networks:
       - weibo-network
     profiles:
