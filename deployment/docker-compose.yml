@@ -372,7 +372,7 @@ services:
       - "${HBASE_MASTER_PORT:-16000}:16000"
       - "${HBASE_MASTER_WEBUI_PORT:-16010}:16010"
     environment:
-      HBASE_CONF_DIR: /opt/hbase/conf
+      HBASE_CONF_DIR: /hbase/conf
       JAVA_HOME: /usr
       HBASE_HEAPSIZE: 384
       TZ: Asia/Shanghai
@@ -383,8 +383,8 @@ services:
       namenode:
         condition: service_healthy
     volumes:
-      - hbase_data:/hbase
-      - ./config/hbase/hbase-site.xml:/opt/hbase/conf/hbase-site.xml:ro
+      - hbase_data:/hbase-data
+      - ./config/hbase/hbase-site.xml:/hbase/conf/hbase-site.xml:ro
       - ./scripts/hbase-init.sh:/hbase-init.sh:ro
     entrypoint: ["/bin/bash", "/hbase-init.sh"]
     command: []
@@ -416,7 +416,7 @@ services:
       - "${HBASE_RS_PORT:-16020}:16020"
       - "${HBASE_RS_WEBUI_PORT:-16030}:16030"
     environment:
-      HBASE_CONF_DIR: /opt/hbase/conf
+      HBASE_CONF_DIR: /hbase/conf
       JAVA_HOME: /usr
       HBASE_HEAPSIZE: 512
       TZ: Asia/Shanghai
@@ -425,8 +425,8 @@ services:
       hbase-master:
         condition: service_started
     volumes:
-      - ./config/hbase/hbase-site.xml:/opt/hbase/conf/hbase-site.xml:ro
-    entrypoint: ["/opt/hbase/bin/hbase"]
+      - ./config/hbase/hbase-site.xml:/hbase/conf/hbase-site.xml:ro
+    entrypoint: ["/hbase/bin/hbase"]
     command: ["regionserver", "start"]
     networks:
       - weibo-network

@@ -9,13 +9,13 @@ set -e
 INIT_FLAG="/hbase/tmp/.tables_created"
 
 echo "[HBase] 启动 HBase Master..."
-/opt/hbase/bin/hbase master start &
+/hbase/bin/hbase master start &
 HBASE_PID=$!
 
 # 等待 HBase Master 就绪
 echo "[HBase] 等待 HBase Master 就绪..."
 for i in $(seq 1 90); do
-    if echo "status" | /opt/hbase/bin/hbase shell 2>/dev/null | grep -q "active"; then
+    if echo "status" | /hbase/bin/hbase shell 2>/dev/null | grep -q "active"; then
         echo "[HBase] Master 就绪 (${i}s)"
         break
     fi
@@ -30,7 +30,7 @@ if [ ! -f "${INIT_FLAG}" ]; then
     echo "[HBase] 首次启动, 创建 weibo_sentiment 表..."
     sleep 10  # 额外等待 RegionServer 注册
 
-    /opt/hbase/bin/hbase shell <<'EOF'
+    /hbase/bin/hbase shell <<'EOF'
 create_if_not_exists = lambda do |table_name, *args|
   if !admin.tableExists?(table_name)
     create table_name, *args
