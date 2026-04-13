@@ -22,6 +22,9 @@ COPY data-collector/pom.xml ./data-collector/
 COPY sentiment-analysis/pom.xml ./sentiment-analysis/
 COPY model-training/pom.xml ./model-training/
 
+# 移除不参与编译的模块声明 (deployment 无 pom.xml)
+RUN sed -i '/<module>deployment<\/module>/d' pom.xml
+
 # 仅下载依赖 (缓存层, 源码变更不会重新下载)
 RUN mvn dependency:go-offline -pl web-backend -am \
     -Dmaven.test.skip=true -q || true
