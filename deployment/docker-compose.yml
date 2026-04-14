@@ -433,11 +433,11 @@ services:
         reservations:
           memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:16010/master-status || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "curl -sf http://localhost:16010/master-status >/dev/null 2>&1 || wget -q -O /dev/null http://localhost:16010/master-status 2>/dev/null || exit 1"]
+      interval: 20s
       timeout: 10s
-      retries: 5
-      start_period: 90s
+      retries: 8
+      start_period: 120s
 
   # ====== HBase RegionServer ======
   hbase-regionserver:
@@ -473,11 +473,11 @@ services:
         reservations:
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:16030/rs-status || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "curl -sf http://localhost:16030/rs-status >/dev/null 2>&1 || wget -q -O /dev/null http://localhost:16030/rs-status 2>/dev/null || exit 1"]
+      interval: 20s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 8
+      start_period: 90s
 
 # ====== 网络配置 ======
 networks:
