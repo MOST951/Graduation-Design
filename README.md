@@ -22,24 +22,35 @@
 
 ```bash
 # 1. 上传项目到 Ubuntu VM
-scp -r ./weibo-sentiment-analysis root@<VM_IP>:/root/
+scp -r ./weibo-sentiment-analysis root@<VM_IP>:/root/weibo-analysis
 
 # 2. 修复脚本权限和换行符
-cd /root/weibo-sentiment-analysis
+cd /root/weibo-analysis
 chmod +x docker-cluster.sh deployment/scripts/*.sh
 apt-get install -y dos2unix && find . -name "*.sh" -exec dos2unix {} \;
 
 # 3. 配置环境变量
 cd deployment && cp .env.docker.example .env.docker
-nano .env.docker   # 修改 DB_PASSWORD, SECRET_KEY 等
+nano .env.docker   # 开发测试默认密码为 123456；生产必须改密
 cd ..
 
 # 4. 一键启动
 ./docker-cluster.sh
 
+# 等价 Compose 全量启动命令（显式 --env-file + 全 profile）
+docker compose -f deployment/docker-compose.yml \
+  --env-file deployment/.env.docker \
+  --profile with-frontend \
+  --profile with-java-backend \
+  --profile with-spark \
+  --profile with-bigdata up -d
+
 # 5. 验证
 ./docker-cluster.sh health
+bash deployment/scripts/health-check.sh
 ```
+
+> 安全提醒：`123456` 仅适用于开发测试环境，生产环境请务必修改 `DB_PASSWORD`、`DB_ROOT_PASSWORD`、`REDIS_PASSWORD`、`SECRET_KEY`、`JWT_SECRET`。
 
 ### 访问地址
 
@@ -91,7 +102,7 @@ cd ..
 │  │  :6379    │  │  :3306    │  │ Master :8080  │   │
 │  └───────────┘  └───────────┘  │ Worker :7077  │   │
 │                                 └───────────────┘   │
-│  Network: weibo_sentiment_network (bridge)          │
+│  Network: weibo-net (bridge)                        │
 └─────────────────────────────────────────────────────┘
 ```
 

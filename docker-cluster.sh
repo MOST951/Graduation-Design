@@ -37,9 +37,9 @@ ENV_EXAMPLE="${DEPLOY_DIR}/.env.docker.example"
 LOG_DIR="${SCRIPT_DIR}/logs"
 LOG_FILE="${LOG_DIR}/cluster-$(date +%Y%m%d).log"
 
-# Compose 参数 (自动检测是否启用大数据 profile)
-PROFILES="--profile with-frontend --profile with-java-backend --profile with-spark --profile with-bigdata"
-COMPOSE_BASE="-f ${COMPOSE_FILE} --env-file ${ENV_FILE} ${PROFILES}"
+# Compose 参数 (启动时从 .env 动态构建, 见 init_compose_base)
+PROFILES=""
+COMPOSE_BASE=""
 
 # 标记容器（判断是否首次部署）
 SENTINEL_CONTAINER="weibo_sentiment_db"
@@ -145,8 +145,8 @@ check_ports() {
     for item in ${port_list}; do
         local port="${item%%:*}"
         local name="${item##*:}"
-        if ss -tlnp 2>/dev/null | grep -q ":${port} " || \
-           netstat -tlnp 2>/dev/null | grep -q ":${port} "; then
+        if ss -tlnp 2>/dev/null | grep -qE ":${port}\b" || \
+           netstat -tlnp 2>/dev/null | grep -qE ":${port}\b"; then
             # 检查是否是我们自己的容器占用
             local container_using
             container_using=$(docker ps --format '{{.Names}}' --filter "publish=${port}" 2>/dev/null | head -1)
@@ -181,12 +181,12 @@ check_directory_permissions() {
         if [[ ! -d "${dir}" ]]; then
             mkdir -p "${dir}" 2>/dev/null || {
                 warn "无法创建目录 ${dir}，尝试 sudo..."
-                sudo mkdir -p "${dir}" && sudo chmod 777 "${dir}"
+                sudo mkdir -p "${dir}" && sudo chmod 755 "${dir}"
             }
         fi
         if [[ ! -w "${dir}" ]]; then
             warn "目录 ${dir} 无写入权限，尝试修复..."
-            sudo chmod 777 "${dir}" 2>/dev/null || true
+            sudo chmod 755 "${dir}" 2>/dev/null || true
         fi
     done
     info "目录权限检查完成"
@@ -256,99 +256,307 @@ get_host_ip() {
     echo "${ip:-localhost}"
 }
 
-# ==================== 镜像拉取 (国内代理自动回退) ====================
+# 初始化 Compose 参数 (从 .env 动态读取启用的 profiles)
+init_compose_base() {
+    local enabled_profiles
+    enabled_profiles=$(grep -E "^ENABLED_PROFILES=" "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
+    if [[ -z "${enabled_profiles}" ]]; then
+        enabled_profiles="with-frontend,with-java-backend,with-spark,with-bigdata"
+    fi
+    PROFILES=""
+    local profile_list
+    IFS=',' read -ra profile_list <<< "${enabled_profiles}"
+    for p in "${profile_list[@]}"; do
+        PROFILES+=" --profile ${p}"
+    done
+    COMPOSE_BASE="-f ${COMPOSE_FILE} --env-file ${ENV_FILE}${PROFILES}"
+    info "启用 Profiles:${PROFILES}"
+}
 
-# 代理源列表 (按优先级排序, 可根据实际情况调整)
-MIRROR_PROXIES=(
+# ==================== 镜像拉取 (国内网络增强) ====================
+
+# 代理源候选 (根据响应速度动态排序)
+MIRROR_CANDIDATES=(
     "docker.1panel.live"
     "hub.rat.dev"
     "docker.anyhub.us.kg"
     "dockerpull.org"
 )
 
-# 所有需要的第三方镜像 (docker-compose.yml 中引用的)
+# 所需镜像列表 (Compose & Dockerfile 基础镜像)
 REQUIRED_IMAGES=(
     "bitnami/spark:3.5"
     "harisekhon/hbase:2.4"
-    "zookeeper:3.8"
     "apache/hadoop:3.3.6"
+    "zookeeper:3.8"
     "mysql:8.0"
     "redis:7-alpine"
     "maven:3.8-openjdk-11-slim"
-    "openjdk:11-jre-slim"
+    "eclipse-temurin:11-jre-jammy"
     "python:3.9-slim"
+    "node:16-alpine"
+    "nginx:alpine"
 )
 
-# 智能拉取单个镜像: 直连 Docker Hub → 失败则遍历代理源
-small_pull() {
-    local image="$1"
-    local timeout_sec=30
+# 镜像拉取超时时间 (秒)
+IMAGE_PULL_TIMEOUT=120
 
-    # 已存在则跳过
-    if docker image inspect "${image}" &>/dev/null; then
+# 镜像源测速结果
+declare -a MIRROR_PRIORITY=()
+
+# 特殊镜像备用方案 (space 分隔的候选列表)
+# 注意: Fallback 镜像必须与原镜像功能完全一致 (如: JDK 不可降级为 JRE)
+declare -A IMAGE_FALLBACKS=(
+    ["bitnami/spark:3.5"]="apache/spark:3.5 bitnamilegacy/spark:3.5"
+)
+
+# 测试镜像源可用性并记录耗时 (秒)
+test_mirror() {
+    local mirror="$1"
+    local proto
+    for proto in https http; do
+        local url="${proto}://${mirror}/v2/"
+        local result
+        result=$(curl -s -o /dev/null -w "%{http_code} %{time_total}" --connect-timeout 2 --max-time 4 "${url}" 2>/dev/null) || continue
+        local code="${result%% *}"
+        local timing="${result##* }"
+        if [[ "${code}" =~ ^(200|301|302|401)$ ]]; then
+            printf '%s' "${timing}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# 根据测速结果生成镜像源优先级
+prepare_mirror_priority() {
+    MIRROR_PRIORITY=()
+    local scored=()
+    for mirror in "${MIRROR_CANDIDATES[@]}"; do
+        local latency
+        latency=$(test_mirror "${mirror}" 2>/dev/null) || continue
+        scored+=("${latency}:${mirror}")
+    done
+
+    if [[ ${#scored[@]} -gt 0 ]]; then
+        IFS=$'\n' scored=($(printf '%s\n' "${scored[@]}" | sort -n))
+        unset IFS
+        for entry in "${scored[@]}"; do
+            MIRROR_PRIORITY+=("${entry#*:}")
+        done
+        info "镜像源测速成功: $(printf '%s ' "${MIRROR_PRIORITY[@]}")"
+    else
+        warn "镜像源测速全部失败，将直接尝试 Docker Hub"
+    fi
+}
+
+# 根据镜像名称生成代理路径
+get_proxy_path() {
+    local image="$1"
+    if [[ "${image}" != */* ]]; then
+        echo "library/${image}"
+    else
+        echo "${image}"
+    fi
+}
+
+# 尝试使用指定来源拉取镜像
+try_pull_with_source() {
+    local source="$1"      # DIRECT 或镜像域名
+    local src_image="$2"   # 镜像真实名称 (可能是备用)
+    local target_image="$3" # 目标标签
+
+    local remote_image label status
+    if [[ "${source}" == "DIRECT" ]]; then
+        remote_image="${src_image}"
+        label="直连 Docker Hub"
+    else
+        remote_image="${source}/$(get_proxy_path "${src_image}")"
+        label="代理 ${source}"
+    fi
+
+    echo -ne "    ⤷ ${target_image} ... ${label} ... "
+    if timeout "${IMAGE_PULL_TIMEOUT}" docker pull "${remote_image}" >/dev/null 2>&1; then
+        if [[ "${remote_image}" != "${target_image}" ]]; then
+            docker tag "${remote_image}" "${target_image}" >/dev/null 2>&1 || true
+            docker rmi "${remote_image}" >/dev/null 2>&1 || true
+        fi
+        echo -e "${GREEN}OK${NC}"
+        return 0
+    fi
+
+    status=$?
+    if [[ ${status} -eq 124 ]]; then
+        echo -e "${RED}超时${NC}"
+        return 124
+    fi
+    echo -e "${YELLOW}失败${NC}"
+    return 1
+}
+
+# 从当前可用来源列表尝试拉取镜像
+pull_from_sources() {
+    local source_image="$1"
+    local target_image="${2:-$1}"
+    local note="${3:-}"
+
+    [[ -n "${note}" ]] && echo -e "    ↺ ${note}"
+
+    local sources=("DIRECT")
+    if [[ ${#MIRROR_PRIORITY[@]} -gt 0 ]]; then
+        sources+=("${MIRROR_PRIORITY[@]}")
+    fi
+
+    local src rc
+    for src in "${sources[@]}"; do
+        try_pull_with_source "${src}" "${source_image}" "${target_image}"
+        rc=$?
+        if [[ ${rc} -eq 0 ]]; then
+            return 0
+        elif [[ ${rc} -eq 124 ]]; then
+            # 超时说明网络不通, 不再尝试后续代理源
+            return 1
+        fi
+    done
+    return 1
+}
+
+# 拉取单个镜像（含备用方案）
+pull_image() {
+    local image="$1"
+
+    if docker image inspect "${image}" >/dev/null 2>&1; then
         echo -e "    ${GREEN}✔${NC} ${image} (本地已存在)"
         return 0
     fi
 
-    # 尝试 1: 直连 Docker Hub (timeout 控制)
-    echo -ne "    ⤷ ${image} ... 直连 Docker Hub ... "
-    if timeout ${timeout_sec} docker pull "${image}" &>/dev/null 2>&1; then
-        echo -e "${GREEN}OK${NC}"
+    if pull_from_sources "${image}" "${image}"; then
         return 0
     fi
-    echo -e "${YELLOW}超时${NC}"
 
-    # 尝试 2: 遍历代理源
-    # 判断镜像是否属于 library (官方镜像无命名空间, 代理需要加 library/ 前缀)
-    local proxy_path="${image}"
-    if [[ "${image}" != */* ]]; then
-        proxy_path="library/${image}"
+    local fallback_images=""
+    if [[ -v IMAGE_FALLBACKS["${image}"] ]]; then
+        fallback_images="${IMAGE_FALLBACKS["${image}"]}"
+    fi
+    if [[ -n "${fallback_images}" ]]; then
+        local alt
+        for alt in ${fallback_images}; do
+            if pull_from_sources "${alt}" "${image}" "尝试备用镜像 ${alt}"; then
+                echo -e "    ${GREEN}✔${NC} ${image} 已通过备用镜像 ${alt} 获取"
+                return 0
+            fi
+        done
     fi
 
-    for proxy in "${MIRROR_PROXIES[@]}"; do
-        local proxy_image="${proxy}/${proxy_path}"
-        echo -ne "    ⤷ ${image} ... 代理 ${proxy} ... "
-        if timeout 60 docker pull "${proxy_image}" &>/dev/null 2>&1; then
-            # 拉取成功, 打 tag 为原始名称
-            docker tag "${proxy_image}" "${image}" &>/dev/null
-            docker rmi "${proxy_image}" &>/dev/null 2>&1 || true
-            echo -e "${GREEN}OK${NC}"
-            return 0
-        fi
-        echo -e "${YELLOW}失败${NC}"
-    done
-
-    echo -e "    ${RED}✘${NC} ${image} 所有源均失败!"
+    echo -e "    ${RED}✘${NC} ${image} 所有来源均失败"
+    echo "      建议:"
+    echo "        - 配置 /etc/docker/daemon.json 添加国内加速器, 例如:"
+    echo "          {\"registry-mirrors\": [\"https://docker.m.daocloud.io\", \"https://mirror.ccs.tencentyun.com\"]}"
+    echo "        - 或手动执行: docker pull ${image}"
+    if [[ -n "${fallback_images}" ]]; then
+        echo "        - 备用手动命令:"
+        local alt
+        for alt in ${fallback_images}; do
+            echo "            docker pull ${alt} && docker tag ${alt} ${image}"
+        done
+    fi
     return 1
 }
 
-# 批量预拉取所有所需镜像
+# 批量预拉取所有所需镜像 (并行拉取 + 失败重试)
 ensure_images() {
     step "检查并拉取所需 Docker 镜像..."
+    prepare_mirror_priority
     echo ""
-    local fail_count=0
 
+    local total=${#REQUIRED_IMAGES[@]}
+    local -a images_to_pull=()
+
+    # 阶段 1: 检查本地已存在的镜像
     for image in "${REQUIRED_IMAGES[@]}"; do
-        if ! small_pull "${image}"; then
-            fail_count=$((fail_count + 1))
+        if docker image inspect "${image}" >/dev/null 2>&1; then
+            echo -e "    ${GREEN}✔${NC} ${image} (本地已存在)"
+        else
+            images_to_pull+=("${image}")
         fi
     done
 
-    echo ""
-    if [[ ${fail_count} -gt 0 ]]; then
-        warn "${fail_count} 个镜像拉取失败, 部分服务可能无法启动"
-        echo "  可尝试:"
-        echo "    1. 检查网络连接"
-        echo "    2. 手动拉取: docker pull docker.1panel.live/<镜像名>"
-        echo "    3. 再执行: ./docker-cluster.sh"
+    if [[ ${#images_to_pull[@]} -eq 0 ]]; then
         echo ""
-        read -r -p "是否仍然继续启动? (y/N) " confirm
-        if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
+        info "所有 ${total} 个镜像就绪"
+        return 0
+    fi
+
+    # 阶段 2: 并行拉取缺失镜像
+    local pull_tmp
+    pull_tmp=$(mktemp -d /tmp/docker-pull-XXXXXX)
+    local -a pids=()
+    local idx=0
+
+    step "并行拉取 ${#images_to_pull[@]} 个缺失镜像..."
+    for image in "${images_to_pull[@]}"; do
+        idx=$((idx + 1))
+        (
+            if pull_image "${image}" > "${pull_tmp}/${idx}.log" 2>&1; then
+                echo "0" > "${pull_tmp}/${idx}.rc"
+            else
+                echo "1" > "${pull_tmp}/${idx}.rc"
+                echo "${image}" > "${pull_tmp}/${idx}.failed"
+            fi
+        ) &
+        pids+=($!)
+        echo "  ⤴ [${idx}/${#images_to_pull[@]}] 已提交: ${image}"
+    done
+
+    # 等待所有后台任务完成
+    step "等待所有镜像拉取完成..."
+    for pid in "${pids[@]}"; do
+        wait "${pid}" 2>/dev/null || true
+    done
+
+    # 阶段 3: 汇总结果
+    local -a failed_images=()
+    idx=0
+    for image in "${images_to_pull[@]}"; do
+        idx=$((idx + 1))
+        local rc_file="${pull_tmp}/${idx}.rc"
+        local log_file="${pull_tmp}/${idx}.log"
+        if [[ -f "${rc_file}" ]] && [[ "$(cat "${rc_file}")" == "0" ]]; then
+            echo -e "  ${GREEN}✅${NC} ${image} 拉取完成"
+        else
+            echo -e "  ${RED}✘${NC} ${image} 拉取失败"
+            [[ -f "${log_file}" ]] && sed 's/^/    /' "${log_file}"
+            failed_images+=("${image}")
+        fi
+    done
+
+    # 阶段 4: 对失败镜像进行串行重试
+    if [[ ${#failed_images[@]} -gt 0 ]]; then
+        echo ""
+        warn "以下 ${#failed_images[@]} 个镜像拉取失败，尝试串行重试..."
+        local -a still_failed=()
+        for image in "${failed_images[@]}"; do
+            echo -e "📦 重试拉取: ${image}"
+            if pull_image "${image}"; then
+                echo -e "  ${GREEN}✅${NC} ${image} 重试成功"
+            else
+                still_failed+=("${image}")
+            fi
+        done
+
+        if [[ ${#still_failed[@]} -gt 0 ]]; then
+            rm -rf "${pull_tmp}"
+            echo ""
+            error "以下镜像拉取失败: ${still_failed[*]}"
+            echo "  请配置国内镜像加速器或手动拉取后重试:"
+            echo "    ./docker-cluster.sh"
             exit 1
         fi
-    else
-        info "所有镜像就绪"
     fi
+
+    rm -rf "${pull_tmp}"
+    echo ""
+    info "所有 ${total} 个镜像就绪"
 }
 
 # ==================== 核心操作 ====================
@@ -416,53 +624,56 @@ do_start_existing() {
     exit 1
 }
 
-# 等待核心服务就绪
+# 等待核心服务就绪 (应用层检测)
 wait_for_healthy() {
     step "等待核心服务就绪 (最多 180 秒)..."
     local max_wait=180
     local waited=0
 
-    # 阶段 1: 等待 MySQL
+    # 阶段 1: 等待 MySQL (应用层: mysqladmin ping + SELECT 1)
     while [[ ${waited} -lt 60 ]]; do
-        local db_status
-        db_status=$(docker inspect --format='{{.State.Health.Status}}' "${SENTINEL_CONTAINER}" 2>/dev/null || echo "unknown")
-        if [[ "${db_status}" == "healthy" ]]; then
-            info "MySQL 服务就绪"
+        if docker exec "${SENTINEL_CONTAINER}" mysqladmin ping -h localhost \
+            -u root -p"$(get_env_val DB_ROOT_PASSWORD 'root')" &>/dev/null && \
+           docker exec "${SENTINEL_CONTAINER}" mysql -u root \
+            -p"$(get_env_val DB_ROOT_PASSWORD 'root')" -e "SELECT 1" &>/dev/null; then
+            info "MySQL 服务就绪 (应用层验证通过)"
             break
         fi
+        local db_status
+        db_status=$(docker inspect --format='{{.State.Health.Status}}' "${SENTINEL_CONTAINER}" 2>/dev/null || echo "unknown")
         echo -ne "  [${waited}s] 等待 MySQL... (${db_status})\r"
         sleep 5
         waited=$((waited + 5))
     done
 
-    # 阶段 2: 等待 HDFS NameNode
+    # 阶段 2: 等待 HDFS NameNode (应用层: 安全模式检测)
     local nn_container="weibo_sentiment_namenode"
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${nn_container}"; then
         step "等待 HDFS NameNode 就绪..."
         while [[ ${waited} -lt ${max_wait} ]]; do
-            local nn_status
-            nn_status=$(docker inspect --format='{{.State.Health.Status}}' "${nn_container}" 2>/dev/null || echo "unknown")
-            if [[ "${nn_status}" == "healthy" ]]; then
-                info "HDFS NameNode 就绪"
+            if timeout 10 docker exec "${nn_container}" hdfs dfsadmin -safemode get 2>/dev/null | grep -q "OFF"; then
+                info "HDFS NameNode 就绪 (安全模式已关闭)"
                 break
             fi
+            local nn_status
+            nn_status=$(docker inspect --format='{{.State.Health.Status}}' "${nn_container}" 2>/dev/null || echo "unknown")
             echo -ne "  [${waited}s] 等待 HDFS NameNode... (${nn_status})\r"
             sleep 5
             waited=$((waited + 5))
         done
     fi
 
-    # 阶段 3: 等待 HBase Master
+    # 阶段 3: 等待 HBase Master (应用层: ZooKeeper 连通 + hbase status)
     local hb_container="weibo_sentiment_hbase_master"
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${hb_container}"; then
         step "等待 HBase Master 就绪..."
         while [[ ${waited} -lt ${max_wait} ]]; do
-            local hb_status
-            hb_status=$(docker inspect --format='{{.State.Health.Status}}' "${hb_container}" 2>/dev/null || echo "unknown")
-            if [[ "${hb_status}" == "healthy" ]]; then
-                info "HBase Master 就绪"
+            if timeout 15 docker exec "${hb_container}" /opt/hbase/bin/hbase shell <<< "status" 2>/dev/null | grep -q "servers"; then
+                info "HBase Master 就绪 (应用层验证通过)"
                 break
             fi
+            local hb_status
+            hb_status=$(docker inspect --format='{{.State.Health.Status}}' "${hb_container}" 2>/dev/null || echo "unknown")
             echo -ne "  [${waited}s] 等待 HBase Master... (${hb_status})\r"
             sleep 5
             waited=$((waited + 5))
@@ -547,8 +758,14 @@ do_health() {
 
     # 检查容器运行状态
     step "容器运行状态:"
-    local containers="weibo_sentiment_web weibo_sentiment_db weibo_sentiment_redis weibo_sentiment_frontend weibo_sentiment_java weibo_sentiment_spark_master weibo_sentiment_spark_worker weibo_sentiment_zookeeper weibo_sentiment_namenode weibo_sentiment_datanode weibo_sentiment_hbase_master weibo_sentiment_hbase_rs"
-    for c in ${containers}; do
+    local -a containers=(
+        weibo_sentiment_web weibo_sentiment_db weibo_sentiment_redis
+        weibo_sentiment_frontend weibo_sentiment_java
+        weibo_sentiment_spark_master weibo_sentiment_spark_worker
+        weibo_sentiment_zookeeper weibo_sentiment_namenode weibo_sentiment_datanode
+        weibo_sentiment_hbase_master weibo_sentiment_hbase_rs
+    )
+    for c in "${containers[@]}"; do
         local status
         status=$(docker inspect --format='{{.State.Status}}' "${c}" 2>/dev/null || echo "missing")
         if [[ "${status}" == "running" ]]; then
@@ -601,23 +818,31 @@ do_health() {
     local nn_container="weibo_sentiment_namenode"
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${nn_container}"; then
         step "HDFS 状态:"
-        # 检查 NameNode 安全模式
+        # 检查 NameNode 安全模式 (超时保护)
         local safemode
-        safemode=$(docker exec "${nn_container}" hdfs dfsadmin -safemode get 2>/dev/null || echo "unknown")
+        safemode=$(timeout 10 docker exec "${nn_container}" hdfs dfsadmin -safemode get 2>/dev/null || echo "unknown")
         if echo "${safemode}" | grep -q "OFF"; then
             echo -e "    ${GREEN}●${NC} NameNode: 安全模式已关闭"
         else
             echo -e "    ${YELLOW}●${NC} NameNode: ${safemode}"
         fi
-        # 检查 HDFS 项目目录
-        if docker exec "${nn_container}" hdfs dfs -test -d /weibo/raw 2>/dev/null; then
+        # 检查 HDFS 项目目录 (超时标记为 UNKNOWN 而非 FAIL)
+        local hdfs_raw_rc=0
+        timeout 10 docker exec "${nn_container}" hdfs dfs -test -d /weibo/raw 2>/dev/null || hdfs_raw_rc=$?
+        if [[ ${hdfs_raw_rc} -eq 0 ]]; then
             echo -e "    ${GREEN}●${NC} HDFS 目录 /weibo/raw: 存在"
+        elif [[ ${hdfs_raw_rc} -eq 124 ]]; then
+            echo -e "    ${YELLOW}●${NC} HDFS 目录 /weibo/raw: 检测超时 (UNKNOWN)"
         else
             echo -e "    ${RED}●${NC} HDFS 目录 /weibo/raw: 不存在"
             all_ok=false
         fi
-        if docker exec "${nn_container}" hdfs dfs -test -d /weibo/output 2>/dev/null; then
+        local hdfs_output_rc=0
+        timeout 10 docker exec "${nn_container}" hdfs dfs -test -d /weibo/output 2>/dev/null || hdfs_output_rc=$?
+        if [[ ${hdfs_output_rc} -eq 0 ]]; then
             echo -e "    ${GREEN}●${NC} HDFS 目录 /weibo/output: 存在"
+        elif [[ ${hdfs_output_rc} -eq 124 ]]; then
+            echo -e "    ${YELLOW}●${NC} HDFS 目录 /weibo/output: 检测超时 (UNKNOWN)"
         else
             echo -e "    ${RED}●${NC} HDFS 目录 /weibo/output: 不存在"
             all_ok=false
@@ -630,7 +855,7 @@ do_health() {
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${hb_container}"; then
         step "HBase 状态:"
         local hb_tables
-        hb_tables=$(docker exec "${hb_container}" /opt/hbase/bin/hbase shell <<< "list" 2>/dev/null || echo "error")
+        hb_tables=$(timeout 15 docker exec "${hb_container}" /opt/hbase/bin/hbase shell <<< "list" 2>/dev/null || echo "error")
         if echo "${hb_tables}" | grep -q "weibo_sentiment"; then
             echo -e "    ${GREEN}●${NC} HBase 表 weibo_sentiment: 存在"
         else
@@ -639,7 +864,7 @@ do_health() {
         fi
         # RegionServer 数量
         local rs_count
-        rs_count=$(docker exec "${hb_container}" /opt/hbase/bin/hbase shell <<< "status 'simple'" 2>/dev/null | grep -c "regionserver" || echo "0")
+        rs_count=$(timeout 15 docker exec "${hb_container}" /opt/hbase/bin/hbase shell <<< "status 'simple'" 2>/dev/null | grep -c "regionserver" || echo "0")
         echo -e "    ${GREEN}●${NC} RegionServer 数量: ${rs_count}"
         echo ""
     fi
@@ -705,6 +930,10 @@ main() {
     check_compose_file
     check_directory_permissions
     check_env_file
+    init_compose_base
+
+    # 清理 7 天前的旧日志
+    find "${LOG_DIR}" -name "*.log" -mtime +7 -delete 2>/dev/null || true
 
     case "${action}" in
         start|up|"")

@@ -2,6 +2,7 @@
 
 > **适配环境:** Ubuntu 20.04 LTS / Docker Compose v2.35+ / 1Panel  
 > **硬件要求:** 4GB 内存 / 2 核 CPU / 20GB 磁盘  
+> **目录约定:** 下文统一以 `/root/weibo-analysis` 为项目根目录示例
 
 ---
 
@@ -11,10 +12,10 @@
 
 ```bash
 # 方式一: SCP 上传 (从 Windows 本机)
-scp -r ./weibo-sentiment-analysis root@<VM_IP>:/root/
+scp -r ./weibo-sentiment-analysis root@<VM_IP>:/root/weibo-analysis
 
 # 方式二: Git 克隆
-cd /root && git clone <仓库地址> weibo-sentiment-analysis
+cd /root && git clone <仓库地址> weibo-analysis
 ```
 
 ### 2. 安装 Docker (如已有 1Panel 可跳过)
@@ -37,28 +38,40 @@ docker compose version
 ### 3. 配置环境变量
 
 ```bash
-cd /root/weibo-sentiment-analysis/deployment
+cd /root/weibo-analysis/deployment
 
 # 从模板复制
 cp .env.docker.example .env.docker
 
-# 编辑配置 (必须修改密码!)
+# 编辑配置
 nano .env.docker
 ```
 
-**必须修改的配置项：**
+**开发测试默认值（已可直接启动）：**
+
+| 变量 | 默认值 |
+|------|--------|
+| `DB_USER` | `weibo_user` |
+| `DB_PASSWORD` | `123456` |
+| `DB_ROOT_PASSWORD` | `123456` |
+| `REDIS_PASSWORD` | `123456` |
+
+**生产环境必须修改的配置项：**
 
 | 变量 | 说明 | 示例值 |
 |------|------|--------|
 | `DB_PASSWORD` | 数据库密码 | `MyStr0ng!Pass` |
 | `DB_ROOT_PASSWORD` | Root 密码 | `R00t!Str0ng` |
+| `REDIS_PASSWORD` | Redis 密码 | `R3dis!Strong` |
 | `SECRET_KEY` | Flask 密钥 | 运行 `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `JWT_SECRET` | JWT 密钥 | 同上方法生成 |
+
+> 注意：`.env` 中密码值不要加引号；仅当值包含空格或特殊字符时，使用单引号包裹。
 
 ### 4. 修复文件权限
 
 ```bash
-cd /root/weibo-sentiment-analysis
+cd /root/weibo-analysis
 
 # 确保脚本可执行
 chmod +x docker-cluster.sh
@@ -75,16 +88,27 @@ find . -name ".env*" -exec dos2unix {} \;
 ### 5. 一键启动
 
 ```bash
-cd /root/weibo-sentiment-analysis
+cd /root/weibo-analysis
 
 # 首次部署 (自动构建镜像 + 启动所有服务)
 ./docker-cluster.sh
+
+# 等价的一键 Compose 命令（显式 --env-file + 全 profile）
+docker compose -f deployment/docker-compose.yml \
+  --env-file deployment/.env.docker \
+  --profile with-frontend \
+  --profile with-java-backend \
+  --profile with-spark \
+  --profile with-bigdata up -d
 
 # 查看状态
 ./docker-cluster.sh status
 
 # 健康检查
 ./docker-cluster.sh health
+
+# 一键验证 (MySQL/Redis/HBase/前后端)
+bash deployment/scripts/health-check.sh
 ```
 
 ### 6. 验证访问
@@ -135,7 +159,7 @@ bash deployment/scripts/health-check.sh
 本项目使用 Docker Compose 标准 API，完全兼容 1Panel 的 Docker 管理：
 
 - **容器名称前缀:** 所有容器以 `weibo_sentiment_` 开头，在 1Panel 容器列表中易于识别
-- **网络:** 使用独立的 `weibo_sentiment_network` 桥接网络，不与 1Panel 其他应用冲突
+- **网络:** 使用独立的 `weibo-net` 桥接网络，不与 1Panel 其他应用冲突
 - **数据卷:** 使用命名卷 (named volumes)，1Panel 存储卷管理中可见
 - **端口:** 默认端口可在 `.env.docker` 中修改，避免与 1Panel 已有服务冲突
 - **不冲突:** 脚本仅管理 `weibo_sentiment_*` 容器，不影响 1Panel 管理的其他容器
@@ -215,6 +239,66 @@ docker volume rm weibo_sentiment_mysql_data
 ./docker-cluster.sh start
 ```
 
+### 问题 4.1: MySQL Access denied (密码已改但仍报错)
+
+**原因:** 旧数据卷保留了历史账号/密码
+
+**解决:**
+```bash
+# 会清空 MySQL 历史数据（仅开发测试环境建议）
+docker compose -f deployment/docker-compose.yml down
+docker volume rm weibo_sentiment_mysql_data
+./docker-cluster.sh start
+```
+
+### 问题 4.2: Redis 连接超时或 NOAUTH
+
+**解决:**
+```bash
+# 1) 确认 .env.docker 中 REDIS_PASSWORD 与应用配置一致
+grep '^REDIS_PASSWORD=' deployment/.env.docker
+
+# 2) 验证 Redis 密码
+docker exec weibo_sentiment_redis redis-cli -a "$(grep '^REDIS_PASSWORD=' deployment/.env.docker | cut -d= -f2)" ping
+
+# 3) 若仍异常，重建 Redis 卷（会清空缓存）
+docker compose -f deployment/docker-compose.yml down
+docker volume rm weibo_sentiment_redis_data
+./docker-cluster.sh start
+```
+
+### 问题 4.3: HBase 无法连接 ZooKeeper
+
+**解决:**
+```bash
+# 检查 ZooKeeper 是否健康
+docker inspect --format='{{.State.Health.Status}}' weibo_sentiment_zookeeper
+
+# 检查 HBase Master 日志
+docker logs weibo_sentiment_hbase_master --tail=100
+
+# 先起大数据 profile，再看健康状态
+docker compose -f deployment/docker-compose.yml \
+  --env-file deployment/.env.docker \
+  --profile with-bigdata up -d
+```
+
+### 问题 4.4: 前端页面资源 404
+
+**解决:**
+```bash
+# 检查前端容器与 Nginx 配置
+docker logs weibo_sentiment_frontend --tail=100
+
+# 验证首页可访问
+curl -I http://127.0.0.1:3001/
+
+# 前端单独重建
+docker compose -f deployment/docker-compose.yml \
+  --env-file deployment/.env.docker \
+  --profile with-frontend up -d --build frontend
+```
+
 ### 问题 5: 镜像构建失败 (npm/pip 超时)
 
 **解决:**
@@ -254,10 +338,10 @@ source ~/.bashrc
 **解决:**
 ```bash
 sudo apt-get install -y dos2unix
-find /root/weibo-sentiment-analysis -name "*.sh" -exec dos2unix {} \;
-find /root/weibo-sentiment-analysis -name "*.yml" -exec dos2unix {} \;
-find /root/weibo-sentiment-analysis -name "*.conf" -exec dos2unix {} \;
-find /root/weibo-sentiment-analysis -name ".env*" -exec dos2unix {} \;
+find /root/weibo-analysis -name "*.sh" -exec dos2unix {} \;
+find /root/weibo-analysis -name "*.yml" -exec dos2unix {} \;
+find /root/weibo-analysis -name "*.conf" -exec dos2unix {} \;
+find /root/weibo-analysis -name ".env*" -exec dos2unix {} \;
 ```
 
 ### 问题 8: Spark Worker 内存不足
@@ -320,6 +404,14 @@ docker ps -a --filter "name=weibo_sentiment"
 │  │  :6379    │  │  :3306    │  │ Master :8080  │   │
 │  └───────────┘  └───────────┘  │ Worker :7077  │   │
 │                                 └───────────────┘   │
-│  Network: weibo_sentiment_network (bridge)          │
+│  Network: weibo-net (bridge)                        │
 └─────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 七、安全备注
+
+- `123456` 仅适用于开发测试环境。
+- 生产环境上线前，必须修改 `DB_PASSWORD`、`DB_ROOT_PASSWORD`、`REDIS_PASSWORD`、`SECRET_KEY`、`JWT_SECRET`。
+- 建议使用强随机密码，并避免将真实 `.env.docker` 提交到版本库。
