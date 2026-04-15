@@ -22,6 +22,7 @@ ChineseBERT情感分析微调模块
     # 预测
     results = model.predict(["这部电影太好看了！"])
 """
+from __future__ import annotations
 
 import os
 import json
@@ -52,6 +53,9 @@ try:
     TORCH_AVAILABLE = True
     logger.info(f"PyTorch版本: {torch.__version__}, CUDA: {torch.cuda.is_available()}")
 except ImportError:
+    torch = None  # 占位，避免 NameError
+    nn = None
+    F = None
     logger.warning("PyTorch未安装")
     # 提供占位类，使模块定义不报错 (功能在运行时检查 TORCH_AVAILABLE)
     class Dataset:
@@ -244,6 +248,9 @@ class WeiboSentimentDataset(Dataset):
         return len(self.texts)
     
     def __getitem__(self, idx):
+        if not TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch未安装，无法使用数据集")
+        
         text = self.texts[idx]
         label = self.labels[idx]
         
@@ -264,8 +271,11 @@ class WeiboSentimentDataset(Dataset):
             'labels': torch.tensor(label, dtype=torch.long)
         }
     
-    def get_class_weights(self) -> torch.Tensor:
+    def get_class_weights(self):
         """计算类别权重（用于处理类别不平衡）"""
+        if not TORCH_AVAILABLE:
+            raise RuntimeError("PyTorch未安装，无法计算类别权重")
+        
         label_counts = Counter(self.labels)
         total = len(self.labels)
         num_classes = len(label_counts)
@@ -286,85 +296,92 @@ class WeiboSentimentDataset(Dataset):
 
 # ==================== 自定义模型 ====================
 
-class BertSentimentClassifier(nn.Module):
-    """
-    BERT情感分类器
-    
-    结构：
-    - BERT编码器
-    - Dropout
-    - 全连接分类头
-    """
-    
-    def __init__(self, config: ModelConfig):
-        super().__init__()
-        
-        self.config = config
-        
-        # 加载预训练BERT
-        self.bert = BertModel.from_pretrained(config.model_name)
-        
-        # 分类头
-        self.dropout = nn.Dropout(config.dropout_rate)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-        
-        # 初始化分类头权重
-        self._init_weights()
-    
-    def _init_weights(self):
-        """初始化分类头权重"""
-        nn.init.xavier_uniform_(self.classifier.weight)
-        nn.init.zeros_(self.classifier.bias)
-    
-    def forward(self, input_ids, attention_mask, labels=None):
+# 仅在 PyTorch 可用时定义 BertSentimentClassifier
+if TORCH_AVAILABLE:
+    class BertSentimentClassifier(nn.Module):
         """
-        前向传播
+        BERT情感分类器
         
-        Args:
-            input_ids: 输入ID
-            attention_mask: 注意力掩码
-            labels: 标签（训练时使用）
+        结构：
+        - BERT编码器
+        - Dropout
+        - 全连接分类头
+        """
+        
+        def __init__(self, config: ModelConfig):
+            super().__init__()
             
-        Returns:
-            loss, logits
-        """
-        # BERT编码
-        outputs = self.bert(
-            input_ids=input_ids,
-            attention_mask=attention_mask
-        )
+            self.config = config
+            
+            # 加载预训练BERT
+            self.bert = BertModel.from_pretrained(config.model_name)
+            
+            # 分类头
+            self.dropout = nn.Dropout(config.dropout_rate)
+            self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+            
+            # 初始化分类头权重
+            self._init_weights()
         
-        # 取[CLS]向量
-        pooled_output = outputs.pooler_output
+        def _init_weights(self):
+            """初始化分类头权重"""
+            nn.init.xavier_uniform_(self.classifier.weight)
+            nn.init.zeros_(self.classifier.bias)
         
-        # 分类
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
+        def forward(self, input_ids, attention_mask, labels=None):
+            """
+            前向传播
+            
+            Args:
+                input_ids: 输入ID
+                attention_mask: 注意力掩码
+                labels: 标签（训练时使用）
+                
+            Returns:
+                loss, logits
+            """
+            # BERT编码
+            outputs = self.bert(
+                input_ids=input_ids,
+                attention_mask=attention_mask
+            )
+            
+            # 取[CLS]向量
+            pooled_output = outputs.pooler_output
+            
+            # 分类
+            pooled_output = self.dropout(pooled_output)
+            logits = self.classifier(pooled_output)
+            
+            # 计算损失
+            loss = None
+            if labels is not None:
+                loss_fn = nn.CrossEntropyLoss()
+                loss = loss_fn(logits, labels)
+            
+            return loss, logits
         
-        # 计算损失
-        loss = None
-        if labels is not None:
-            loss_fn = nn.CrossEntropyLoss()
-            loss = loss_fn(logits, labels)
+        def freeze_bert_layers(self, num_layers: int = 10):
+            """冻结BERT底层"""
+            # 冻结embeddings
+            for param in self.bert.embeddings.parameters():
+                param.requires_grad = False
+            
+            # 冻结前num_layers层
+            for i, layer in enumerate(self.bert.encoder.layer):
+                if i < num_layers:
+                    for param in layer.parameters():
+                        param.requires_grad = False
         
-        return loss, logits
-    
-    def freeze_bert_layers(self, num_layers: int = 10):
-        """冻结BERT底层"""
-        # 冻结embeddings
-        for param in self.bert.embeddings.parameters():
-            param.requires_grad = False
-        
-        # 冻结前num_layers层
-        for i, layer in enumerate(self.bert.encoder.layer):
-            if i < num_layers:
-                for param in layer.parameters():
-                    param.requires_grad = False
-    
-    def unfreeze_all(self):
-        """解冻所有层"""
-        for param in self.parameters():
-            param.requires_grad = True
+        def unfreeze_all(self):
+            """解冻所有层"""
+            for param in self.parameters():
+                param.requires_grad = True
+else:
+    # 占位类，避免导入错误
+    class BertSentimentClassifier:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("PyTorch未安装，无法使用BertSentimentClassifier")
 
 
 # ==================== 早停类 ====================
@@ -557,7 +574,7 @@ class ChineseBertSentimentModel:
         self.training_history = []
         self.best_metrics = None
     
-    def _get_device(self) -> torch.device:
+    def _get_device(self):
         """获取计算设备"""
         if self.training_config.device == 'auto':
             return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -575,7 +592,7 @@ class ChineseBertSentimentModel:
             )
             self.model.to(self.device)
     
-    def _get_optimizer(self) -> torch.optim.Optimizer:
+    def _get_optimizer(self):
         """
         获取优化器（分层学习率）
         
