@@ -782,7 +782,7 @@ do_health() {
     # 检查 HTTP 接口
     step "接口连通性:"
     local endpoints=(
-        "http://${host_ip}:${web_port}/api/health:Flask_API"
+        "http://${host_ip}:${web_port}/api/v2/health:Flask_API"
         "http://${host_ip}:${frontend_port}/:Frontend"
         "http://${host_ip}:${java_port}/api/actuator/health:Java_API"
         "http://${host_ip}:${spark_port}/:Spark_WebUI"
@@ -855,7 +855,7 @@ do_health() {
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${hb_container}"; then
         step "HBase 状态:"
         local hb_tables
-        hb_tables=$(timeout 15 docker exec "${hb_container}" /opt/hbase/bin/hbase shell <<< "list" 2>/dev/null || echo "error")
+        hb_tables=$(timeout 15 docker exec "${hb_container}" /hbase/bin/hbase shell <<< "list" 2>/dev/null || echo "error")
         if echo "${hb_tables}" | grep -q "weibo_sentiment"; then
             echo -e "    ${GREEN}●${NC} HBase 表 weibo_sentiment: 存在"
         else
@@ -864,7 +864,7 @@ do_health() {
         fi
         # RegionServer 数量
         local rs_count
-        rs_count=$(timeout 15 docker exec "${hb_container}" /opt/hbase/bin/hbase shell <<< "status 'simple'" 2>/dev/null | grep -c "regionserver" || echo "0")
+        rs_count=$(timeout 15 docker exec "${hb_container}" /hbase/bin/hbase shell <<< "status 'simple'" 2>/dev/null | grep -ci "regionserver" || echo "0")
         echo -e "    ${GREEN}●${NC} RegionServer 数量: ${rs_count}"
         echo ""
     fi

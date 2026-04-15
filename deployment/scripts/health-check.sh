@@ -289,7 +289,7 @@ section "6.6 HBase 状态"
 HB_CONTAINER="weibo_sentiment_hbase_master"
 hb_running=$(docker inspect --format='{{.State.Status}}' "${HB_CONTAINER}" 2>/dev/null || echo "not_found")
 if [[ "${hb_running}" == "running" ]]; then
-    hb_tables=$(docker exec "${HB_CONTAINER}" /opt/hbase/bin/hbase shell <<< "list" 2>/dev/null || echo "error")
+    hb_tables=$(docker exec "${HB_CONTAINER}" /hbase/bin/hbase shell <<< "list" 2>/dev/null || echo "error")
     if echo "${hb_tables}" | grep -q "weibo_sentiment"; then
         pass "HBase 表 weibo_sentiment 存在"
     else
@@ -323,7 +323,7 @@ test_endpoint() {
     fi
 }
 
-test_endpoint "http://${HOST_IP}:${WEB_PORT}/api/health" "Flask API"
+test_endpoint "http://${HOST_IP}:${WEB_PORT}/api/v2/health" "Flask_API"
 test_endpoint "http://${HOST_IP}:${FRONTEND_PORT}/" "Frontend"
 test_endpoint "http://${HOST_IP}:${JAVA_PORT}/api/actuator/health" "Java Backend"
 test_endpoint "http://${HOST_IP}:${SPARK_UI_PORT}/" "Spark Web UI"
