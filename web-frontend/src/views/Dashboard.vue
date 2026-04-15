@@ -144,9 +144,9 @@ async function loadDashboardData() {
       period: sentimentPeriod.value,
       dateRange: trendDateRange.value,
     });
-    overviewCards.value = response.overviewCards;
-    updateSentimentChart(response.sentimentDistribution);
-    updateTrendChart(response.trendData);
+    if (response.overviewCards) overviewCards.value = response.overviewCards;
+    if (response.sentimentDistribution) updateSentimentChart(response.sentimentDistribution);
+    if (response.trendData) updateTrendChart(response.trendData);
   } catch (error) {
     console.error('加载仪表盘数据失败:', error);
   }

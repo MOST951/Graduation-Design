@@ -568,9 +568,7 @@ const loadDatabaseStats = async () => {
       savePipelineCache();
     }
   } catch (e: any) {
-    if (e.response?.status === 404) {
-      console.debug('[Pipeline] stats 接口尚未就绪，使用缓存数据');
-    }
+    console.debug(`[Pipeline] stats 请求失败 (${e.response?.status || 'network'})，使用缓存数据`);
   } finally {
     loadingStats.value = false;
   }
@@ -586,9 +584,7 @@ const loadRanking = async () => {
       savePipelineCache();
     }
   } catch (e: any) {
-    if (e.response?.status === 404) {
-      console.debug('[Pipeline] ranking 接口尚未就绪，使用缓存数据');
-    }
+    console.debug(`[Pipeline] ranking 请求失败 (${e.response?.status || 'network'})，使用缓存数据`);
   } finally {
     loadingRanking.value = false;
   }

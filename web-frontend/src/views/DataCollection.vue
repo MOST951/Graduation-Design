@@ -771,6 +771,15 @@ const getStatusType = (status: string) => {
   return map[status] || 'info';
 };
 
+const getLogLevelType = (level: string) => {
+  const map: Record<string, any> = { error: 'danger', warning: 'warning', info: 'success', debug: 'info' };
+  return map[level.toLowerCase()] || 'info';
+};
+
+const loadPreviewData = () => {
+  fetchPreviewData([]);
+};
+
 const fetchPreviewData = async (hotList: any[]) => {
   try {
     previewData.value = hotList.slice(0, 5).map((item: any, index: number) => ({

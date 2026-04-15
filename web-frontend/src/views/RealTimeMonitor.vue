@@ -458,6 +458,75 @@ let eventSource: EventSource | null = null;
 let reconnectTimer: NodeJS.Timeout | null = null;
 let reconnectDelay = 1000; // 1
 
+// SSE 连接管理
+const connectSSE = () => {
+  try {
+    const sseUrl = '/api/monitor/sse';
+    eventSource = new EventSource(sseUrl);
+
+    eventSource.onopen = () => {
+      connectionStatus.connected = true;
+      connectionStatus.reconnecting = false;
+      connectionStatus.retryCount = 0;
+      connectionStatus.text = '已连接';
+      connectionStatus.class = 'status-connected';
+      connectionStatus.tagType = 'success';
+      reconnectDelay = 1000;
+    };
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.items) {
+          dataStream.value = data.items;
+        }
+      } catch (e) {
+        console.debug('[SSE] parse error', e);
+      }
+    };
+
+    eventSource.onerror = () => {
+      connectionStatus.connected = false;
+      eventSource?.close();
+      eventSource = null;
+
+      if (connectionStatus.retryCount < connectionStatus.maxRetries) {
+        connectionStatus.reconnecting = true;
+        connectionStatus.text = '重连中...';
+        connectionStatus.class = 'status-reconnecting';
+        connectionStatus.tagType = 'warning';
+        connectionStatus.retryCount++;
+
+        reconnectTimer = setTimeout(() => {
+          connectSSE();
+        }, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      } else {
+        connectionStatus.text = '连接失败';
+        connectionStatus.class = 'status-disconnected';
+        connectionStatus.tagType = 'danger';
+        connectionStatus.reconnecting = false;
+      }
+    };
+  } catch (e) {
+    console.debug('[SSE] connect failed', e);
+  }
+};
+
+const disconnectSSE = () => {
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  connectionStatus.connected = false;
+  connectionStatus.reconnecting = false;
+  connectionStatus.retryCount = 0;
+};
+
 // 关键词订阅
 const monitorKeywords = ref<string[]>([]);
 const newKeyword = ref('');

@@ -1168,6 +1168,13 @@ watch(chartMode, () => {
   updateScatterChart();
 });
 
+// 初始化散点图
+const initChart = () => {
+  if (scatterChartRef.value) {
+    scatterChart = echarts.init(scatterChartRef.value);
+  }
+};
+
 // 生命周期
 onMounted(() => {
   initChart();
