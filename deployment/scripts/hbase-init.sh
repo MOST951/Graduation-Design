@@ -55,13 +55,13 @@ end
 # cf_sentiment: 情感分析 (得分, 标签, 置信度, 方法)
 # cf_metrics: 热度指标 (转发, 评论, 点赞, 热度分, 排序分)
 create_if_not_exists.call 'weibo_sentiment', \
-  {NAME => 'cf_info', VERSIONS => 1, TTL => 'FOREVER', COMPRESSION => 'SNAPPY'}, \
-  {NAME => 'cf_sentiment', VERSIONS => 3, TTL => 'FOREVER', COMPRESSION => 'SNAPPY'}, \
-  {NAME => 'cf_metrics', VERSIONS => 5, TTL => 'FOREVER', COMPRESSION => 'SNAPPY'}
+  {NAME => 'cf_info', VERSIONS => 1, TTL => 'FOREVER'}, \
+  {NAME => 'cf_sentiment', VERSIONS => 3, TTL => 'FOREVER'}, \
+  {NAME => 'cf_metrics', VERSIONS => 5, TTL => 'FOREVER'}
 
 # 原始数据索引表 (按时间分区, 加速范围查询)
 create_if_not_exists.call 'weibo_raw_index', \
-  {NAME => 'cf_idx', VERSIONS => 1, COMPRESSION => 'SNAPPY'}
+  {NAME => 'cf_idx', VERSIONS => 1}
 
 puts "All tables ready."
 list
