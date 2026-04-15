@@ -16,6 +16,7 @@ ChineseBERT情感分析模块 - 完整实现
 作者：毕业设计
 日期：2024-12
 """
+from __future__ import annotations
 
 import os
 import sys
@@ -64,6 +65,20 @@ try:
         logger.info(f"GPU设备: {torch.cuda.get_device_name(0)}")
 except ImportError as e:
     logger.warning(f"PyTorch未安装: {e}")
+    # 占位桩：使类定义（注解 + @torch.no_grad() 装饰器）不报错
+    class _NoGrad:
+        def __call__(self, fn): return fn
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+    class _TorchStub:
+        no_grad = _NoGrad
+    torch = _TorchStub()  # type: ignore
+    nn = None
+    F = None
+    class Dataset:
+        pass
+    class DataLoader:
+        pass
 
 try:
     from transformers import (
