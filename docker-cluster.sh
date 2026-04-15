@@ -855,7 +855,7 @@ do_health() {
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${hb_container}"; then
         step "HBase 状态:"
         local hb_page
-        hb_page=$(timeout 10 docker exec "${hb_container}" wget -q -O - http://localhost:16010/table.jsp 2>/dev/null || echo "")
+        hb_page=$(timeout 10 docker exec "${hb_container}" wget -q -O - http://localhost:16010/tablesDetailed.jsp 2>/dev/null || echo "")
         if echo "${hb_page}" | grep -q "weibo_sentiment"; then
             echo -e "    ${GREEN}●${NC} HBase 表 weibo_sentiment: 存在"
         else

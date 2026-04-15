@@ -290,7 +290,7 @@ HB_CONTAINER="weibo_sentiment_hbase_master"
 hb_running=$(docker inspect --format='{{.State.Status}}' "${HB_CONTAINER}" 2>/dev/null || echo "not_found")
 if [[ "${hb_running}" == "running" ]]; then
     # 通过 Web UI 检测表 (避免 hbase shell JVM 启动慢)
-    hb_page=$(timeout 10 docker exec "${HB_CONTAINER}" wget -q -O - http://localhost:16010/table.jsp 2>/dev/null || echo "")
+    hb_page=$(timeout 10 docker exec "${HB_CONTAINER}" wget -q -O - http://localhost:16010/tablesDetailed.jsp 2>/dev/null || echo "")
     if echo "${hb_page}" | grep -q "weibo_sentiment"; then
         pass "HBase 表 weibo_sentiment 存在"
     else
