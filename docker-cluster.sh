@@ -850,22 +850,28 @@ do_health() {
         echo ""
     fi
 
-    # 检查 HBase 状态
+    # 检查 HBase 状态 (通过 Web UI，避免 hbase shell JVM 启动慢)
     local hb_container="weibo_sentiment_hbase_master"
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${hb_container}"; then
         step "HBase 状态:"
-        local hb_tables
-        hb_tables=$(timeout 15 docker exec "${hb_container}" /hbase/bin/hbase shell <<< "list" 2>/dev/null || echo "error")
-        if echo "${hb_tables}" | grep -q "weibo_sentiment"; then
+        local hb_page
+        hb_page=$(timeout 10 docker exec "${hb_container}" wget -q -O - http://localhost:16010/table.jsp 2>/dev/null || echo "")
+        if echo "${hb_page}" | grep -q "weibo_sentiment"; then
             echo -e "    ${GREEN}●${NC} HBase 表 weibo_sentiment: 存在"
         else
             echo -e "    ${RED}●${NC} HBase 表 weibo_sentiment: 未找到"
             all_ok=false
         fi
-        # RegionServer 数量
+        # RegionServer 数量 (从 master-status 页面检测)
+        local rs_page
+        rs_page=$(timeout 10 docker exec "${hb_container}" wget -q -O - http://localhost:16010/master-status 2>/dev/null || echo "")
         local rs_count
-        rs_count=$(timeout 15 docker exec "${hb_container}" /hbase/bin/hbase shell <<< "status 'simple'" 2>/dev/null | grep -ci "regionserver" || echo "0")
-        echo -e "    ${GREEN}●${NC} RegionServer 数量: ${rs_count}"
+        rs_count=$(echo "${rs_page}" | grep -c "regionserver" || echo "0")
+        if [[ ${rs_count} -gt 0 ]]; then
+            echo -e "    ${GREEN}●${NC} RegionServer: 已注册"
+        else
+            echo -e "    ${YELLOW}●${NC} RegionServer: 未检测到"
+        fi
         echo ""
     fi
 

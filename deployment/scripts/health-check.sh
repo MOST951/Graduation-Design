@@ -289,16 +289,24 @@ section "6.6 HBase 状态"
 HB_CONTAINER="weibo_sentiment_hbase_master"
 hb_running=$(docker inspect --format='{{.State.Status}}' "${HB_CONTAINER}" 2>/dev/null || echo "not_found")
 if [[ "${hb_running}" == "running" ]]; then
-    hb_tables=$(docker exec "${HB_CONTAINER}" /hbase/bin/hbase shell <<< "list" 2>/dev/null || echo "error")
-    if echo "${hb_tables}" | grep -q "weibo_sentiment"; then
+    # 通过 Web UI 检测表 (避免 hbase shell JVM 启动慢)
+    hb_page=$(timeout 10 docker exec "${HB_CONTAINER}" wget -q -O - http://localhost:16010/table.jsp 2>/dev/null || echo "")
+    if echo "${hb_page}" | grep -q "weibo_sentiment"; then
         pass "HBase 表 weibo_sentiment 存在"
     else
         fail "HBase 表 weibo_sentiment 不存在"
     fi
-    if echo "${hb_tables}" | grep -q "weibo_raw_index"; then
+    if echo "${hb_page}" | grep -q "weibo_raw_index"; then
         pass "HBase 表 weibo_raw_index 存在"
     else
         warn "HBase 表 weibo_raw_index 不存在"
+    fi
+    # RegionServer 检测
+    rs_page=$(timeout 10 docker exec "${HB_CONTAINER}" wget -q -O - http://localhost:16010/master-status 2>/dev/null || echo "")
+    if echo "${rs_page}" | grep -qi "regionserver"; then
+        pass "RegionServer 已注册"
+    else
+        warn "RegionServer 未检测到"
     fi
 else
     warn "HBase Master 未运行 (with-bigdata profile 未启用?)"
