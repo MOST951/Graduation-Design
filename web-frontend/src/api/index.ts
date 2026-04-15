@@ -91,8 +91,11 @@ apiClient.interceptors.response.use(
           message = serverMsg || '没有权限访问该资源';
           break;
         case 404:
-          message = '正在努力加载中，请稍后再试';
-          break;
+          // 404 静默处理：不弹全局错误，由各组件自行决定提示
+          if (isDev) {
+            console.debug(`[API 404] ${error.config?.url} — 正在努力加载中`);
+          }
+          return Promise.reject(error);
         case 500:
           message = serverMsg || '服务器内部错误';
           break;

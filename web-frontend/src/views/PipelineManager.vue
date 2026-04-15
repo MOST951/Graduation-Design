@@ -405,15 +405,37 @@ const pipelineStatus = reactive({
   batch_id: '',
 });
 
-const dbStats = ref([
+// 缓存恢复
+const PIPELINE_CACHE_KEY = 'pipeline_manager_cache';
+const restorePipelineCache = () => {
+  try {
+    const cached = localStorage.getItem(PIPELINE_CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+  } catch { /* ignore */ }
+  return null;
+};
+const cachedPipeline = restorePipelineCache();
+
+const dbStats = ref(cachedPipeline?.dbStats || [
   { table: 'weibo_core_data', label: '微博原始数据', count: 0 },
   { table: 'sentiment_analysis_results', label: '情感分析结果', count: 0 },
   { table: 'dual_dimension_ranking', label: '双维度排序', count: 0 },
   { table: 'crawl_batch_log', label: '采集批次日志', count: 0 },
 ]);
 
-const rankingData = ref<any[]>([]);
-const historyRecords = ref<any[]>([]);
+const rankingData = ref<any[]>(cachedPipeline?.rankingData || []);
+const historyRecords = ref<any[]>(cachedPipeline?.historyRecords || []);
+
+const savePipelineCache = () => {
+  try {
+    localStorage.setItem(PIPELINE_CACHE_KEY, JSON.stringify({
+      dbStats: dbStats.value,
+      rankingData: rankingData.value,
+      historyRecords: historyRecords.value,
+      timestamp: Date.now()
+    }));
+  } catch { /* quota exceeded */ }
+};
 
 // 
 const showCronHelper = ref(false);
@@ -543,9 +565,12 @@ const loadDatabaseStats = async () => {
           }
         });
       }
+      savePipelineCache();
     }
-  } catch (e) {
-    // silent
+  } catch (e: any) {
+    if (e.response?.status === 404) {
+      console.debug('[Pipeline] stats 接口尚未就绪，使用缓存数据');
+    }
   } finally {
     loadingStats.value = false;
   }
@@ -558,9 +583,12 @@ const loadRanking = async () => {
     const response = await apiClient.get('/pipeline/ranking', { params: { limit: 20 } });
     if (response.data.code === 200) {
       rankingData.value = response.data.data.items || [];
+      savePipelineCache();
     }
-  } catch (e) {
-    // silent
+  } catch (e: any) {
+    if (e.response?.status === 404) {
+      console.debug('[Pipeline] ranking 接口尚未就绪，使用缓存数据');
+    }
   } finally {
     loadingRanking.value = false;
   }
