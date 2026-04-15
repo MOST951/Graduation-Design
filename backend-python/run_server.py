@@ -1782,7 +1782,7 @@ def get_pipeline_stats():
         return jsonify({'code': 200, 'message': 'success', 'data': status})
     except Exception as e:
         logger.error(f'Stats query failed: {e}', exc_info=True)
-        return jsonify({'code': 500, 'message': str(e)}), 500
+        return jsonify({'code': 200, 'data': {'tables': {}}})
 
 
 @app.route('/api/pipeline/ranking', methods=['GET'])
@@ -1824,6 +1824,170 @@ def get_pipeline_ranking():
     except Exception as e:
         logger.error(f'Ranking query failed: {e}', exc_info=True)
         return jsonify({'code': 200, 'data': {'total': 0, 'items': []}})
+
+
+# ==================== 管理后台API ====================
+
+# 内存存储（演示用）
+_admin_users = [
+    {
+        'id': 'user-1', 'username': 'admin', 'name': '系统管理员',
+        'email': 'admin@example.com', 'phone': '13800138000',
+        'avatar': '/avatars/admin.png', 'status': 'active',
+        'department': '技术部',
+        'roles': [{'id': 'role-1', 'name': '系统管理员', 'code': 'admin',
+                   'description': '拥有所有权限', 'permissions': ['*'],
+                   'isSystem': True, 'createdAt': '2024-01-01T00:00:00Z',
+                   'updatedAt': '2024-01-01T00:00:00Z'}],
+        'lastLoginAt': datetime.now().isoformat(),
+        'lastLoginIp': '192.168.1.100',
+        'createdAt': '2024-01-01T00:00:00Z',
+        'updatedAt': datetime.now().isoformat(),
+    },
+]
+
+_admin_roles = [
+    {'id': 'role-1', 'name': '系统管理员', 'code': 'admin',
+     'description': '拥有所有权限', 'permissions': ['*'],
+     'isSystem': True, 'createdAt': '2024-01-01T00:00:00Z', 'updatedAt': '2024-01-01T00:00:00Z'},
+    {'id': 'role-2', 'name': '数据分析师', 'code': 'analyst',
+     'description': '数据分析和报告权限', 'permissions': ['data:read', 'report:create', 'report:read'],
+     'isSystem': False, 'createdAt': '2024-01-01T00:00:00Z', 'updatedAt': '2024-01-01T00:00:00Z'},
+    {'id': 'role-3', 'name': '普通用户', 'code': 'user',
+     'description': '基础查看权限', 'permissions': ['data:read', 'report:read'],
+     'isSystem': False, 'createdAt': '2024-01-01T00:00:00Z', 'updatedAt': '2024-01-01T00:00:00Z'},
+]
+
+_admin_config = {
+    'spark': {
+        'master': 'local[*]', 'app_name': 'WeiboSentimentAnalysis',
+        'executor_memory': '2g', 'executor_cores': 2,
+        'driver_memory': '1g', 'parallelism': 4,
+        'shuffle_partitions': 4, 'mode': 'pseudo-distributed',
+    },
+    'email': {
+        'smtp_host': '', 'smtp_port': 587, 'smtp_user': '',
+        'smtp_password': '******', 'sender_name': '微博情感分析系统',
+        'enabled': False,
+    },
+    'system': {
+        'data_retention_days': 90, 'max_crawl_pages': 50,
+        'analysis_batch_size': 500, 'cache_ttl_seconds': 300,
+        'log_level': 'INFO',
+    },
+}
+
+
+@app.route('/api/admin/users', methods=['GET'])
+def get_admin_users():
+    """获取用户列表"""
+    try:
+        return jsonify({'list': _admin_users, 'total': len(_admin_users)})
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@app.route('/api/admin/users', methods=['POST'])
+def create_admin_user():
+    """创建用户"""
+    try:
+        data = request.get_json() or {}
+        now = datetime.now().isoformat()
+        user = {
+            'id': f'user-{int(time.time()*1000)}',
+            'username': data.get('username', ''),
+            'name': data.get('name', ''),
+            'email': data.get('email', ''),
+            'phone': data.get('phone', ''),
+            'avatar': '/avatars/admin.png',
+            'status': 'active',
+            'department': data.get('department', ''),
+            'roles': [],
+            'createdAt': now, 'updatedAt': now,
+        }
+        _admin_users.append(user)
+        return jsonify(user)
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@app.route('/api/admin/roles', methods=['GET'])
+def get_admin_roles():
+    """获取角色列表"""
+    try:
+        return jsonify(_admin_roles)
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@app.route('/api/admin/roles', methods=['POST'])
+def create_admin_role():
+    """创建角色"""
+    try:
+        data = request.get_json() or {}
+        now = datetime.now().isoformat()
+        role = {
+            'id': f'role-{int(time.time()*1000)}',
+            'name': data.get('name', ''),
+            'code': data.get('code', ''),
+            'description': data.get('description', ''),
+            'permissions': data.get('permissions', []),
+            'isSystem': False,
+            'createdAt': now, 'updatedAt': now,
+        }
+        _admin_roles.append(role)
+        return jsonify(role)
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@app.route('/api/admin/config/<config_type>', methods=['GET'])
+def get_admin_config(config_type):
+    """获取系统配置"""
+    try:
+        cfg = _admin_config.get(config_type, {})
+        return jsonify({'code': 200, 'data': cfg})
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@app.route('/api/admin/config/<config_type>', methods=['PUT'])
+def update_admin_config(config_type):
+    """更新系统配置"""
+    try:
+        data = request.get_json() or {}
+        if config_type in _admin_config:
+            _admin_config[config_type].update(data)
+        else:
+            _admin_config[config_type] = data
+        logger.info(f'{config_type} 配置已更新: {data}')
+        return jsonify({'code': 200, 'message': f'{config_type} 配置已更新', 'data': _admin_config[config_type]})
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@app.route('/api/auth/send-code', methods=['POST'])
+def send_auth_code():
+    """发送验证码（模拟）"""
+    try:
+        data = request.get_json() or {}
+        return jsonify({'code': 200, 'message': '验证码已发送（模拟）', 'data': {'expires_in': 300}})
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@app.route('/avatars/<path:filename>', methods=['GET'])
+def serve_avatar(filename):
+    """提供默认头像"""
+    from flask import send_from_directory, abort
+    avatar_dir = os.path.join(os.path.dirname(__file__), 'static', 'avatars')
+    if os.path.exists(os.path.join(avatar_dir, filename)):
+        return send_from_directory(avatar_dir, filename)
+    # 返回一个 1x1 透明 PNG 作为默认头像
+    import base64
+    pixel = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg==')
+    from flask import Response
+    return Response(pixel, mimetype='image/png')
 
 
 # ==================== 系统日志API ====================

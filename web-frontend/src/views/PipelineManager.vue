@@ -694,7 +694,8 @@ const connectWebSocket = () => {
   }
 
   try {
-    const wsUrl = `ws://localhost:8000/ws/pipeline`;
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/pipeline`;
     websocket = new WebSocket(wsUrl);
 
     websocket.onopen = () => {
