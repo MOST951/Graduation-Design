@@ -130,7 +130,7 @@ def index():
 def not_found(error):
     return jsonify({
         'code': 404,
-        'message': '接口不存在',
+        'message': '正在努力加载中，请稍后再试',
     }), 404
 
 @app.errorhandler(500)

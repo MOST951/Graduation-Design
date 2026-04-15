@@ -493,9 +493,21 @@ const savingConfig = ref(false);
 // 预警记录(从后端)
 const alertRecords = ref<any[]>([]);
 
-// 数据流
-const dataStream = ref<any[]>([]);
-const dataSource = ref('');
+// 数据流 (优先从缓存恢复)
+const CACHE_KEY = 'realtime_monitor_cache';
+const restoreCache = () => {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      return { items: parsed.items || [], source: parsed.source || '' };
+    }
+  } catch { /* ignore */ }
+  return { items: [], source: '' };
+};
+const cachedData = restoreCache();
+const dataStream = ref<any[]>(cachedData.items);
+const dataSource = ref(cachedData.source);
 
 // 计算情感分类数量
 const positiveCount = computed(() => dataStream.value.filter(item => item.sentiment === 'positive').length);
@@ -631,13 +643,22 @@ const fetchRealtimeData = async (refresh = false) => {
         likes: item.likes || item.attitudes_count || 0,
       }));
       
+      // 缓存数据到 localStorage
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          items: dataStream.value,
+          source: dataSource.value,
+          timestamp: Date.now()
+        }));
+      } catch { /* quota exceeded, ignore */ }
+      
       if (refresh) {
         ElMessage.success(`已刷新 ${dataStream.value.length} 条实时微博数据`);
       }
     }
   } catch (error: any) {
     console.error('获取实时数据失败:', error);
-    // 失败时不显示错误，保持现有数据
+    // 失败时不显示错误，保持现有数据（含缓存）
   } finally {
     loading.value = false;
   }
@@ -665,8 +686,10 @@ const loadKeywords = async () => {
     if (res.data.code === 200) {
       monitorKeywords.value = res.data.data.keywords || [];
     }
-  } catch (e) {
-    // silent
+  } catch (e: any) {
+    if (e.response?.status === 404) {
+      console.debug('[Monitor] keywords 接口尚未就绪');
+    }
   } finally {
     loadingKeywords.value = false;
   }
@@ -708,8 +731,10 @@ const loadAlertConfig = async () => {
     if (res.data.code === 200) {
       Object.assign(alertConfig, res.data.data);
     }
-  } catch (e) {
-    // silent
+  } catch (e: any) {
+    if (e.response?.status === 404) {
+      console.debug('[Monitor] alert-config 接口尚未就绪，使用默认配置');
+    }
   }
 };
 
@@ -755,8 +780,10 @@ const loadAlertRecords = async () => {
     if (res.data.code === 200) {
       alertRecords.value = res.data.data.alerts || [];
     }
-  } catch (e) {
-    // silent
+  } catch (e: any) {
+    if (e.response?.status === 404) {
+      console.debug('[Monitor] alerts 接口尚未就绪');
+    }
   }
 };
 

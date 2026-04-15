@@ -91,7 +91,7 @@ apiClient.interceptors.response.use(
           message = serverMsg || '没有权限访问该资源';
           break;
         case 404:
-          message = serverMsg || '请求的资源不存在';
+          message = '正在努力加载中，请稍后再试';
           break;
         case 500:
           message = serverMsg || '服务器内部错误';
