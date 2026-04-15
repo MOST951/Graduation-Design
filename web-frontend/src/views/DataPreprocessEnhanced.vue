@@ -821,6 +821,35 @@ const getSeverityType = (severity: string) => {
   return types[severity] || 'info';
 };
 
+const updateQualityMetrics = () => {
+  const total = rawData.value.length;
+  if (total === 0) return;
+
+  // 完整性：非空text字段比例
+  const nonEmpty = rawData.value.filter(d => d.text && d.text.trim().length > 0).length;
+  completeness.value = Math.round((nonEmpty / total) * 100);
+
+  // 重复检测
+  const textSet = new Set(rawData.value.map(d => d.text));
+  const duplicates = total - textSet.size;
+  qualityIssues.value[0].count = duplicates;
+
+  // 空值检测
+  const nullCount = rawData.value.filter(d => !d.text || !d.user?.screen_name).length;
+  qualityIssues.value[1].count = nullCount;
+
+  // 格式异常
+  const formatIssues = rawData.value.filter(d => d.created_at && isNaN(Date.parse(d.created_at))).length;
+  qualityIssues.value[2].count = formatIssues;
+
+  // 准确性 & 一致性
+  accuracy.value = Math.round(((total - nullCount) / total) * 100);
+  consistency.value = Math.round(((total - formatIssues) / total) * 100);
+
+  // 综合质量分
+  qualityScore.value = Math.round((completeness.value + accuracy.value + consistency.value) / 3);
+};
+
 const getQualityColor = (score: number) => {
   if (score >= 80) return SUCCESS;
   if (score >= 60) return WARNING;
