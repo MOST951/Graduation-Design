@@ -831,7 +831,7 @@ const handleSaveUser = async () => {
     }
     showUserDialog.value = false;
   } catch (e) {
-    ElMessage.error('操作失败');
+    ElMessage.warning('操作失败');
   } finally {
     isSaving.value = false;
   }
@@ -919,7 +919,7 @@ const handleSaveSparkConfig = async () => {
       }
     }
   } catch (error) {
-    ElMessage.error('Failed to save Spark configuration');
+    ElMessage.warning('Failed to save Spark configuration');
     console.error('Spark config save error:', error);
   } finally {
     isSavingConfig.value = false;
@@ -955,7 +955,7 @@ const handleRestartSparkCluster = async () => {
       setTimeout(checkRestartStatus, 30000); // Start checking after 30 seconds
     }
   } catch (error) {
-    ElMessage.error('Failed to restart Spark cluster');
+    ElMessage.warning('Failed to restart Spark cluster');
     console.error('Spark restart error:', error);
   } finally {
     isRestartingSpark.value = false;
@@ -997,7 +997,7 @@ const handleSaveEmailConfig = async () => {
       ElMessage.success('Email configuration saved successfully');
     }
   } catch (error) {
-    ElMessage.error('Failed to save email configuration');
+    ElMessage.warning('Failed to save email configuration');
     console.error('Email config save error:', error);
   } finally {
     isSavingConfig.value = false;
@@ -1017,7 +1017,7 @@ const handleTestEmail = async () => {
       ElMessage.success('Test email sent successfully');
     }
   } catch (error) {
-    ElMessage.error('Failed to send test email');
+    ElMessage.warning('Failed to send test email');
     console.error('Test email error:', error);
   }
 };
@@ -1033,7 +1033,7 @@ const handleSaveSystemParams = async () => {
       ElMessage.success('System parameters saved successfully');
     }
   } catch (error) {
-    ElMessage.error('Failed to save system parameters');
+    ElMessage.warning('Failed to save system parameters');
     console.error('System params save error:', error);
   } finally {
     isSavingConfig.value = false;

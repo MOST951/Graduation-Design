@@ -386,7 +386,7 @@ const handleProcess = async () => {
   } catch (error: any) {
     console.error('处理失败:', error);
     clearInterval(progressTimer);
-    ElMessage.error('数据处理失败: ' + (error.message || '未知错误'));
+    ElMessage.warning('数据处理失败: ' + (error.message || '未知错误'));
   } finally {
     processing.value = false;
   }

@@ -223,7 +223,7 @@ const testMySQLConnection = async () => {
       ElMessage.success('MySQL connection successful')
     } else {
       mysqlTestResult.value = 'failed'
-      ElMessage.error('MySQL connection failed: Connection timeout')
+      ElMessage.warning('MySQL connection failed: Connection timeout')
     }
   } catch (error) {
     console.error('Validation failed:', error)
@@ -249,7 +249,7 @@ const testHBaseConnection = async () => {
       ElMessage.success('HBase connection successful')
     } else {
       hbaseTestResult.value = 'failed'
-      ElMessage.error('HBase connection failed: Zookeeper not reachable')
+      ElMessage.warning('HBase connection failed: Zookeeper not reachable')
     }
   } catch (error) {
     console.error('Validation failed:', error)

@@ -932,7 +932,7 @@ const loadTaskData = async () => {
     updateQualityMetrics();
   } catch (e: any) {
     console.error('加载任务数据失败:', e);
-    ElMessage.error('加载任务数据失败: ' + (e.message || '未知错误'));
+    ElMessage.warning('加载任务数据失败: ' + (e.message || '未知错误'));
   } finally {
     isLoading.value = false;
   }
@@ -1060,7 +1060,7 @@ const handleFileUpload = (file: any) => {
       ElMessage.success(`成功导入 ${rawData.value.length} 条数据`);
       updateQualityMetrics();
     } catch (err) {
-      ElMessage.error('文件解析失败');
+      ElMessage.warning('文件解析失败');
     }
   };
   reader.readAsText(file.raw);
@@ -1083,7 +1083,7 @@ const handleDictUpload = async (file: any) => {
       throw new Error('Upload failed');
     }
   } catch (error) {
-    ElMessage.error('Failed to upload dictionary');
+    ElMessage.warning('Failed to upload dictionary');
     console.error('Dictionary upload error:', error);
   }
 };
@@ -1140,7 +1140,7 @@ const handleProcess = async () => {
           initCharts();
         } else if (status.status === 'failed') {
           processing.value = false;
-          ElMessage.error(`Processing failed: ${status.error || 'Unknown error'}`);
+          ElMessage.warning(`Processing failed: ${status.error || 'Unknown error'}`);
         } else {
           // 
           setTimeout(pollProgress, 1000);
@@ -1156,7 +1156,7 @@ const handleProcess = async () => {
     
   } catch (error) {
     processing.value = false;
-    ElMessage.error('Failed to start processing');
+    ElMessage.warning('Failed to start processing');
     console.error('Processing error:', error);
   }
 };
@@ -1191,7 +1191,7 @@ const handleStopWordFileUpload = (file: any) => {
       
       ElMessage.success(`Imported ${newWords.length} stop words`);
     } catch (err) {
-      ElMessage.error('File parsing failed');
+      ElMessage.warning('File parsing failed');
     }
   };
   reader.readAsText(file.raw);
@@ -1220,7 +1220,7 @@ const saveStopWords = async () => {
     ElMessage.success('Stop words saved successfully');
     showStopWordDialog.value = false;
   } catch (error) {
-    ElMessage.error('Failed to save stop words');
+    ElMessage.warning('Failed to save stop words');
   }
 };
 

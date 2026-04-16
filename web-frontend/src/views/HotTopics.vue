@@ -209,7 +209,7 @@ const loadHotSearch = async () => {
     }
   } catch (error: any) {
     console.error('加载热搜失败:', error);
-    ElMessage.error('获取热搜失败: ' + (error.message || '请检查后端服务是否启动'));
+    ElMessage.warning('获取热搜失败: ' + (error.message || '请检查后端服务是否启动'));
   }
 };
 
@@ -390,7 +390,7 @@ const doRefreshHotSearch = async () => {
     ElMessage.success('热搜已刷新');
   } catch (error: any) {
     console.error('刷新热搜失败:', error);
-    ElMessage.error('刷新失败: ' + (error.message || '请检查后端服务'));
+    ElMessage.warning('刷新失败: ' + (error.message || '请检查后端服务'));
   }
 };
 

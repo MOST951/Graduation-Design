@@ -140,17 +140,17 @@ export function useApiRequest<T = any>() {
       const errorMsg = getErrorMessage(err, opts.errorMessage);
       error.value = errorMsg;
 
-      // 显示错误提示
+      // 显示错误提示（使用柔和的 warning 风格，避免爆红弹窗）
       if (opts.showError) {
         ElNotification({
-          title: '操作失败',
+          title: '提示',
           message: errorMsg,
-          type: 'error',
-          duration: 4000,
+          type: 'warning',
+          duration: 3000,
         });
       }
 
-      console.error('[API Error]', err);
+      if (import.meta.env.DEV) console.debug('[API Request]', err?.config?.url, err?.message);
       return null;
     } finally {
       loading.value = false;
@@ -234,12 +234,12 @@ export function showSuccess(message: string, title: string = '成功') {
 /**
  * 快捷方法：显示错误通知
  */
-export function showError(message: string, title: string = '错误') {
+export function showError(message: string, title: string = '提示') {
   ElNotification({
     title,
     message,
-    type: 'error',
-    duration: 4000,
+    type: 'warning',
+    duration: 3000,
   });
 }
 

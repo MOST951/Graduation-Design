@@ -245,20 +245,20 @@ export class ErrorHandler {
         
       case ErrorSeverity.HIGH:
         ElNotification({
-          title: 'Error',
+          title: '提示',
           message,
-          type: 'error',
-          duration: 0,
+          type: 'warning',
+          duration: 5000,
           description: error.action
         })
         break
         
       case ErrorSeverity.CRITICAL:
         ElNotification({
-          title: 'Critical Error',
+          title: '系统提示',
           message,
-          type: 'error',
-          duration: 0,
+          type: 'warning',
+          duration: 8000,
           description: `Action: ${error.action}`
         })
         break

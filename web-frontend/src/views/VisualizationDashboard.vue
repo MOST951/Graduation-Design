@@ -1175,7 +1175,7 @@ const loadPropagationNetwork = async (weiboId: number) => {
     
     ElMessage.success('已加载传播网络');
   } catch (error) {
-    ElMessage.error('加载传播网络失败');
+    ElMessage.warning('加载传播网络失败');
   } finally {
     propagationLoading.value = false;
   }
@@ -1187,7 +1187,7 @@ const exportDashboardAsImage = async () => {
     
     const dashboard = document.querySelector('.visualization-dashboard') as HTMLElement;
     if (!dashboard) {
-      ElMessage.error('无法找到仪表板元素');
+      ElMessage.warning('无法找到仪表板元素');
       return;
     }
     
@@ -1205,7 +1205,7 @@ const exportDashboardAsImage = async () => {
     
     ElMessage.success('已导出仪表板图片');
   } catch (error) {
-    ElMessage.error('导出仪表板图片失败');
+    ElMessage.warning('导出仪表板图片失败');
     exportAllChartsPNG();
   }
 };

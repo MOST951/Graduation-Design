@@ -86,38 +86,33 @@ apiClient.interceptors.response.use(
             authStore.logout();
             router.replace({ name: 'Login', query: { redirect: router.currentRoute.value.fullPath } });
           }
+          // 仅401显示提示
+          ElMessage.warning({ message, duration: 3000, showClose: true });
           break;
         case 403:
           message = serverMsg || '没有权限访问该资源';
+          ElMessage.warning({ message, duration: 3000, showClose: true });
           break;
         case 404:
-          // 404 静默处理：不弹全局错误，由各组件自行决定提示
-          if (isDev) {
-            console.debug(`[API 404] ${error.config?.url} — 正在努力加载中`);
-          }
-          return Promise.reject(error);
         case 500:
-          message = serverMsg || '服务器内部错误';
-          break;
+        case 502:
+        case 503:
         default:
-          message = serverMsg || `请求错误 (${status})`;
+          // 静默处理：不弹全局错误，由各组件自行决定提示
+          if (isDev) {
+            console.debug(`[API ${status}] ${error.config?.url} — 静默处理`);
+          }
+          break;
       }
     } else if (error.request) {
-      message = '无法连接到服务器，请检查网络';
+      // 网络不可达 — 静默处理，不弹红色错误
+      if (isDev) {
+        console.debug('[API] 网络不可达:', error.config?.url);
+      }
     } else {
-      message = error.message || '网络错误';
-    }
-
-    // 统一弹出错误提示
-    ElMessage.error({ message, duration: 3000, showClose: true });
-
-    // 仅在开发环境打印详细错误
-    if (isDev) {
-      console.error('[API Error]', {
-        url: error.config?.url,
-        status: error.response?.status,
-        message: error.message,
-      });
+      if (isDev) {
+        console.debug('[API] 请求配置错误:', error.message);
+      }
     }
 
     return Promise.reject(error);

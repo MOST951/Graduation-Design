@@ -85,11 +85,11 @@ const loadNetwork = async () => {
       renderChart(network);
       ElMessage.success('传播网络加载成功');
     } else {
-      ElMessage.error(response.data.message || '加载失败');
+      ElMessage.warning(response.data.message || '加载失败');
     }
   } catch (error: any) {
     console.error('加载传播网络失败:', error);
-    ElMessage.error('加载传播网络失败，请检查后端服务');
+    ElMessage.warning('加载传播网络失败，请检查后端服务');
     // 使用演示数据
     renderDemoChart();
   } finally {

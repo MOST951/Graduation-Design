@@ -526,12 +526,35 @@ h4 { font-size: var(--font-size-medium); }
   }
 }
 
-// 消息
+// 消息 — 柔和动画
 .el-message {
   border-radius: $border-radius-medium !important;
   box-shadow: $shadow-md;
   border: none !important;
   padding: $spacing-sm $spacing-lg;
+  animation: msgSlideIn 0.35s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@keyframes msgSlideIn {
+  from { opacity: 0; transform: translateY(-16px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+// 通知 — 柔和入场
+.el-notification {
+  border-radius: $border-radius-large !important;
+  box-shadow: $shadow-lg !important;
+  animation: notifySlideIn 0.4s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@keyframes notifySlideIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+// 对话框遮罩 — 柔和淡入
+.el-overlay {
+  transition: opacity 0.3s cubic-bezier(0.23, 1, 0.32, 1) !important;
 }
 
 // 输入框

@@ -585,7 +585,7 @@ function handleImport() {
         linkageStore.importConfig(e.target?.result as string);
         ElMessage.success('导入成功');
       } catch {
-        ElMessage.error('导入失败：无效的配置文件');
+        ElMessage.warning('导入失败：无效的配置文件');
       }
     };
     reader.readAsText(file);

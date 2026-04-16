@@ -508,10 +508,10 @@ const runPipeline = async (mode: 'sync' | 'async') => {
         addHistoryRecord(data);
       }
     } else {
-      ElMessage.error(response.data.message || '执行失败');
+      ElMessage.warning(response.data.message || '执行失败');
     }
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '流水线执行失败');
+    ElMessage.warning(error.response?.data?.message || '流水线执行失败');
   } finally {
     if (!pollTimer) running.value = false;
   }
@@ -781,7 +781,7 @@ const handleWebSocketMessage = (data: any) => {
       loadDatabaseStats();
     } else if (data.status.status === 'failed') {
       running.value = false;
-      ElMessage.error(`Pipeline failed: ${data.status.error || 'Unknown error'}`);
+      ElMessage.warning(`Pipeline failed: ${data.status.error || 'Unknown error'}`);
     }
   } else if (data.type === 'stage_progress') {
     const stage = stages.value.find(s => s.key === data.stage);
@@ -845,10 +845,10 @@ const saveAdvancedConfig = async () => {
       ElMessage.success(' ');
       showAdvancedConfig.value = false;
     } else {
-      ElMessage.error(response.data.message || ' ');
+      ElMessage.warning(response.data.message || ' ');
     }
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || ' ');
+    ElMessage.warning(error.response?.data?.message || ' ');
   } finally {
     savingConfig.value = false;
   }
@@ -872,7 +872,7 @@ const loadDefaultConfig = async () => {
       ElMessage.success(' ');
     }
   } catch (error: any) {
-    ElMessage.error(' ');
+    ElMessage.warning(' ');
   }
 };
 

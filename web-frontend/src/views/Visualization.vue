@@ -972,7 +972,7 @@ async function handleSave() {
     await store.saveCurrentLayout();
     ElMessage.success('保存成功');
   } catch {
-    ElMessage.error('保存失败');
+    ElMessage.warning('保存失败');
   }
 }
 
@@ -1038,7 +1038,7 @@ async function handleShare() {
     shareInfo.value = result;
     showShareDialog.value = true;
   } catch {
-    ElMessage.error('生成分享链接失败');
+    ElMessage.warning('生成分享链接失败');
   }
 }
 

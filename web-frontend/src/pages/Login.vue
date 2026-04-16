@@ -217,7 +217,7 @@ const handleLogin = async () => {
       ElMessage.success('登录成功！');
       router.push('/dashboard');
     } else {
-      ElMessage.error(response.data.message || '登录失败');
+      ElMessage.warning(response.data.message || '登录失败');
     }
   } catch (error: any) {
     // 后端未启动时，使用模拟登录
@@ -225,7 +225,7 @@ const handleLogin = async () => {
       ElMessage.success('登录成功！');
       router.push('/dashboard');
     } else {
-      ElMessage.error('用户名或密码错误');
+      ElMessage.warning('用户名或密码错误');
     }
   } finally {
     loading.value = false;

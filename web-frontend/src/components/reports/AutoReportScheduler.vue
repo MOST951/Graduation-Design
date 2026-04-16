@@ -732,7 +732,7 @@ async function handleSaveTask() {
     showCreateDialog.value = false;
     editingTask.value = null;
   } catch {
-    ElMessage.error('请检查表单填写');
+    ElMessage.warning('请检查表单填写');
   }
 }
 

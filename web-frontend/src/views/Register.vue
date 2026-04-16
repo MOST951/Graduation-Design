@@ -291,11 +291,11 @@ const sendCode = async () => {
         }
       }, 1000);
     } else {
-      ElMessage.error(response.data.message || '发送失败');
+      ElMessage.warning(response.data.message || '发送失败');
     }
   } catch (error: any) {
     const msg = error.response?.data?.message || '发送验证码失败';
-    ElMessage.error(msg);
+    ElMessage.warning(msg);
   } finally {
     sendingCode.value = false;
   }
@@ -327,11 +327,11 @@ const handleRegister = () => {
           
           router.push('/dashboard');
         } else {
-          ElMessage.error(response.data.message || '注册失败');
+          ElMessage.warning(response.data.message || '注册失败');
         }
       } catch (error: any) {
         const msg = error.response?.data?.message || '注册失败';
-        ElMessage.error(msg);
+        ElMessage.warning(msg);
       } finally {
         loading.value = false;
       }

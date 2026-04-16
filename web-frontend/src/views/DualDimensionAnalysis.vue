@@ -1093,12 +1093,12 @@ const exportData = () => {
       ElMessage.success(` ${fileName}`);
     }).catch(error => {
       console.error('Excel export failed:', error);
-      ElMessage.error('Excel , CSV');
+      ElMessage.warning('Excel , CSV');
       exportCSV();
     });
   } catch (error) {
     console.error('Export failed:', error);
-    ElMessage.error(' , CSV');
+    ElMessage.warning(' , CSV');
     exportCSV();
   }
 };

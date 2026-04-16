@@ -778,7 +778,7 @@ const addKeyword = async () => {
     newKeyword.value = '';
     ElMessage.success(`已添加关键词: ${kw}`);
   } catch (e) {
-    ElMessage.error('添加失败');
+    ElMessage.warning('添加失败');
   }
 };
 
@@ -789,7 +789,7 @@ const removeKeyword = async (kw: string) => {
     monitorKeywords.value = updated;
     ElMessage.success(`已移除关键词: ${kw}`);
   } catch (e) {
-    ElMessage.error('移除失败');
+    ElMessage.warning('移除失败');
   }
 };
 
@@ -813,7 +813,7 @@ const saveAlertConfig = async () => {
     await apiClient.post('/monitor/alert-config', alertConfig);
     ElMessage.success('预警配置已保存');
   } catch (e) {
-    ElMessage.error('保存失败');
+    ElMessage.warning('保存失败');
   } finally {
     savingConfig.value = false;
   }

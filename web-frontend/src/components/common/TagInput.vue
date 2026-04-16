@@ -104,7 +104,7 @@ const addTag = () => {
   }
   
   if (!props.validateTag(value)) {
-    ElMessage.error('Invalid tag format')
+    ElMessage.warning('Invalid tag format')
     return
   }
   

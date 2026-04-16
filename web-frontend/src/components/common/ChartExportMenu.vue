@@ -49,7 +49,7 @@ const emit = defineEmits<{
 // Methods
 const handleCommand = async (command: string) => {
   if (!props.chartInstance) {
-    ElMessage.error('Chart not available for export')
+    ElMessage.warning('Chart not available for export')
     return
   }
 
@@ -71,7 +71,7 @@ const handleCommand = async (command: string) => {
   } catch (error) {
     console.error('Export failed:', error)
     emit('export-error', `Failed to export as ${command}`)
-    ElMessage.error(`Failed to export as ${command}`)
+    ElMessage.warning(`Failed to export as ${command}`)
   }
 }
 

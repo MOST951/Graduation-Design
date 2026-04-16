@@ -771,7 +771,7 @@ const analyzeText = async () => {
     testResult.value = result;
     ElMessage.success('分析完成');
   } catch (error: any) {
-    ElMessage.error('分析失败: ' + error.message);
+    ElMessage.warning('分析失败: ' + error.message);
   } finally {
     testLoading.value = false;
   }
@@ -971,7 +971,7 @@ const startAnalysis = async () => {
     }
   } catch (error: any) {
     console.error('分析失败:', error);
-    ElMessage.error('分析失败: ' + error.message);
+    ElMessage.warning('分析失败: ' + error.message);
     loadMockData();
   } finally {
     analyzing.value = false;
@@ -1202,7 +1202,7 @@ const recalculateCascade = async () => {
     
     ElMessage.success(`Cascade recalculated with threshold ${confidenceThreshold.value}`);
   } catch (error: any) {
-    ElMessage.error('Recalculation failed: ' + error.message);
+    ElMessage.warning('Recalculation failed: ' + error.message);
   } finally {
     recalculating.value = false;
   }
@@ -1225,7 +1225,7 @@ const stopAnalysis = async () => {
     
     ElMessage.success('Analysis stopped successfully');
   } catch (error: any) {
-    ElMessage.error('Failed to stop analysis: ' + error.message);
+    ElMessage.warning('Failed to stop analysis: ' + error.message);
   } finally {
     stopping.value = false;
     globalStopFlag.value = false;

@@ -404,7 +404,7 @@ const handleGenerate = async () => {
       generatedAt: new Date().toLocaleString(),
     });
   } catch (error: any) {
-    ElMessage.error('生成失败: ' + (error.message || '请重试'));
+    ElMessage.warning('生成失败: ' + (error.message || '请重试'));
   } finally {
     generating.value = false;
   }

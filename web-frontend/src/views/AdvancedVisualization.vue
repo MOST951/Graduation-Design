@@ -541,7 +541,7 @@ const refreshData = async () => {
     updateAllCharts();
     ElMessage.success('数据已刷新');
   } catch (error) {
-    ElMessage.error('刷新失败');
+    ElMessage.warning('刷新失败');
   } finally {
     loading.value = false;
   }

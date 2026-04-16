@@ -219,7 +219,7 @@ const loadRankedTopics = async () => {
     ElMessage.success(`加载了 ${rankedTopics.value.length} 个话题`);
   } catch (error: any) {
     console.error('加载话题失败:', error);
-    ElMessage.error('加载失败: ' + (error.message || '请检查后端服务'));
+    ElMessage.warning('加载失败: ' + (error.message || '请检查后端服务'));
   }
 };
 
@@ -243,7 +243,7 @@ const saveConfig = async () => {
     emit('config-change', dualDimensionConfig.value);
     updateCharts();
   } catch (error: any) {
-    ElMessage.error('保存失败: ' + error.message);
+    ElMessage.warning('保存失败: ' + error.message);
   }
 };
 
