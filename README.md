@@ -183,6 +183,55 @@ weibo-sentiment-analysis/
 
 ---
 
+## ⚡ 技术栈详情
+
+### 前端技术栈
+- **Vue 3.2.37** - 渐进式 JavaScript 框架
+- **TypeScript 4.6.4** - 类型安全的 JavaScript
+- **Vite 3.1.0** - 现代化前端构建工具
+- **Element Plus 2.2.17** - Vue 3 UI 组件库
+- **ECharts 5.3.3** - 数据可视化图表库
+- **Pinia 2.0.22** - Vue 状态管理
+- **Axios 0.27.2** - HTTP 客户端
+- **SCSS** - CSS 预处理器
+
+### 后端技术栈
+- **Flask 2.3.3** - Python Web 框架
+- **Spring Boot 3.x** - Java 企业级框架
+- **Apache Spark 3.5.0** - 大数据处理引擎
+- **MySQL 8.0** - 关系型数据库
+- **Redis 7.0** - 内存数据库/缓存
+- **HBase** - 列式存储数据库（大数据）
+- **Gunicorn** - Python WSGI 服务器
+- **Nginx** - 反向代理/静态文件服务
+
+### AI/NLP 技术栈
+- **Jieba 0.42.1** - 中文分词
+- **ChineseBERT** - 中文预训练模型
+- **情感词典** - 知网 Hownet + 清华大学
+- **级联分析策略** - 词典 + BERT 融合
+
+---
+
+## 🎨 前端特色功能
+
+### 1. 优雅的错误处理
+- **无红弹窗设计**: 全局拦截 404/500/网络错误，静默处理
+- **柔和提示**: 所有错误提示改为 `warning` 类型，避免视觉冲击
+- **平滑动画**: 消息/通知采用滑入动画，提升用户体验
+
+### 2. 响应式设计
+- **移动端适配**: 完整响应式布局，支持手机/平板访问
+- **暗色主题**: 支持明暗主题切换（开发中）
+- **无障碍支持**: 符合 WCAG 2.1 AA 标准
+
+### 3. 数据可视化
+- **6 大仪表盘**: 实时监控、情感分布、热点话题、传播网络
+- **交互式图表**: ECharts 实现的动态图表，支持钻取和导出
+- **词云图**: 基于 echarts-wordcloud 的动态词云
+
+---
+
 ## ⚡ Spark 性能优化
 
 | 优化项 | 技术手段 | 提升幅度 |
@@ -197,6 +246,32 @@ weibo-sentiment-analysis/
 | 特征提取 | 8.5s | 3.2s | **62%** |
 | 情感分析 | 12.3s | 4.5s | **63%** |
 | 内存占用 | 2.1GB | 1.4GB | **33%** |
+
+---
+
+## 🔧 开发环境搭建
+
+### 前端开发
+```bash
+cd web-frontend
+npm install
+npm run dev    # 开发服务器 :3000
+npm run build  # 生产构建
+```
+
+### Python 后端开发
+```bash
+cd backend-python
+pip install -r requirements.txt
+python app.py  # 开发服务器 :5000
+```
+
+### Java 后端开发
+```bash
+cd web-backend
+mvn clean install
+mvn spring-boot:run  # 开发服务器 :8081
+```
 
 ---
 
@@ -223,4 +298,3 @@ weibo-sentiment-analysis/
 ## 📝 License
 
 MIT License
-
