@@ -74,11 +74,11 @@ class DatabaseService:
     
     # 默认配置
     DEFAULT_CONFIG = {
-        'host': 'localhost',
-        'port': 3306,
-        'user': 'root',
-        'password': '123456',
-        'database': 'weibo_sentiment_graduation',
+        'host': os.getenv('DB_HOST', 'localhost'),
+        'port': int(os.getenv('DB_PORT', '3306')),
+        'user': os.getenv('DB_USER', os.getenv('DB_USERNAME', 'root')),
+        'password': os.getenv('DB_PASSWORD', '123456'),
+        'database': os.getenv('DB_NAME', 'weibo_sentiment'),
         'charset': 'utf8mb4',
         'max_connections': 20,
         'min_cached': 5,

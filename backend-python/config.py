@@ -15,9 +15,9 @@ class DatabaseConfig:
     """Database configuration"""
     host: str = 'localhost'
     port: int = 3306
-    database: str = 'weibo_prod'
-    username: str = 'prod_user'
-    password: str = ''
+    database: str = 'weibo_sentiment'
+    username: str = 'root'
+    password: str = '123456'
     charset: str = 'utf8mb4'
     pool_size: int = 10
     max_overflow: int = 20
@@ -29,9 +29,9 @@ class DatabaseConfig:
         return cls(
             host=os.getenv('DB_HOST', 'localhost'),
             port=int(os.getenv('DB_PORT', '3306')),
-            database=os.getenv('DB_NAME', 'weibo_prod'),
-            username=os.getenv('DB_USER', 'prod_user'),
-            password=os.getenv('DB_PASSWORD', ''),
+            database=os.getenv('DB_NAME', 'weibo_sentiment'),
+            username=os.getenv('DB_USER', os.getenv('DB_USERNAME', 'root')),
+            password=os.getenv('DB_PASSWORD', '123456'),
             charset=os.getenv('DB_CHARSET', 'utf8mb4'),
             pool_size=int(os.getenv('DB_POOL_SIZE', '10')),
             max_overflow=int(os.getenv('DB_MAX_OVERFLOW', '20')),

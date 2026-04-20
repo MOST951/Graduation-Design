@@ -77,7 +77,7 @@ class StorageConfig:
     # MySQL
     mysql_host: str = ENV_CONFIG.get('DB_HOST', 'localhost')
     mysql_port: int = int(ENV_CONFIG.get('DB_PORT', '3306'))
-    mysql_database: str = ENV_CONFIG.get('DB_NAME', 'weibo_prod')
+    mysql_database: str = ENV_CONFIG.get('DB_NAME', 'weibo_sentiment')
     mysql_user: str = ENV_CONFIG.get('DB_USERNAME', 'root')
     mysql_password: str = ENV_CONFIG.get('DB_PASSWORD', '')
     

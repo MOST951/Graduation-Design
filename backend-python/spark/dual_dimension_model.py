@@ -225,7 +225,7 @@ class DualDimensionConfig:
                 port=mysql_config.get('port', 3306),
                 user=mysql_config.get('user', 'root'),
                 password=mysql_config.get('password', ''),
-                database=mysql_config.get('database', 'weibo_sentiment_graduation'),
+                database=mysql_config.get('database', 'weibo_sentiment'),
                 charset='utf8mb4',
                 cursorclass=pymysql.cursors.DictCursor
             )
