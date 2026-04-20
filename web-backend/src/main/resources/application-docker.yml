@@ -3,15 +3,25 @@
 spring:
   # MySQL Database Configuration (via Docker Compose environment variables)
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://db:3306/weibo_sentiment?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://db:3306/weibo_sentiment?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
-    hikari:
-      connection-timeout: ${SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT:30000}
-      validation-timeout: ${SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT:5000}
-      maximum-pool-size: 10
-      minimum-idle: 5
+    type: com.alibaba.druid.pool.DruidDataSource
+    druid:
+      initial-size: 5
+      min-idle: 5
+      max-active: 20
+      max-wait: 60000
+      time-between-eviction-runs-millis: 60000
+      min-evictable-idle-time-millis: 300000
+      validation-query: SELECT 1
+      test-while-idle: true
+      test-on-borrow: false
+      test-on-return: false
+      connection-error-retry-attempts: 3
+      break-after-acquire-failure: true
+      fail-fast: true
 
   # JPA Configuration
   jpa:
@@ -38,9 +48,10 @@ logging:
   level:
     root: INFO
     com.weibo: INFO
-    org.springframework: WARN
-    org.hibernate: WARN
+    org.springframework: INFO
     org.springframework.boot: INFO
+    org.hibernate: WARN
+    com.alibaba.druid: DEBUG
   file:
     name: /app/logs/weibo-sentiment-analysis.log
   pattern:
