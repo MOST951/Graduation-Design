@@ -64,4 +64,5 @@ ENTRYPOINT ["java", \
     "-Xmx256m", "-Xms128m", \
     "-Dfile.encoding=UTF-8", \
     "-Duser.timezone=Asia/Shanghai", \
+    "-Djava.security.egd=file:/dev/./urandom", \
     "-jar", "app.jar"]
