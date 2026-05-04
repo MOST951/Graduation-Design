@@ -16,7 +16,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    TZ=Asia/Shanghai
+    TZ=Asia/Shanghai \
+    JAVA_HOME=/usr/lib/jvm/default-java
 
 # 安装系统依赖 (含 MySQL 客户端库, 时区数据)
 RUN apt-get update \
@@ -24,6 +25,8 @@ RUN apt-get update \
         gcc \
         g++ \
         curl \
+        procps \
+        default-jre-headless \
         default-libmysqlclient-dev \
         pkg-config \
         tzdata \
@@ -43,7 +46,6 @@ RUN pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ --trust
         --extra-index-url https://download.pytorch.org/whl/cpu \
     && pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
     && pip install gunicorn -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
-    && pip cache purge \
     && rm -rf /root/.cache/pip
 
 # 复制应用代码
