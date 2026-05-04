@@ -35,9 +35,16 @@ RUN apt-get update \
 COPY backend-python/requirements.txt .
 
 # 安装 Python 依赖 (国内镜像加速)
+# 关键: 先安装 PyTorch CPU 版 (~200MB), 避免默认拉取 ~2.5GB 的 NVIDIA CUDA 库
+# CPU 版本对部署在无 GPU 的 VM/服务器是必需的, 否则磁盘极易撑爆
 RUN pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
+    && pip install torch --index-url https://mirrors.aliyun.com/pytorch-wheels/cpu/ \
+        || pip install torch -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
     && pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
-    && pip install gunicorn -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+    && pip install gunicorn -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
+    && pip cache purge \
+    && rm -rf /root/.cache/pip
 
 # 复制应用代码
 COPY backend-python/ ./backend/
