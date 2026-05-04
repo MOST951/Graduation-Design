@@ -6,6 +6,10 @@
 > **核心创新**: 情感-热度三维度排序模型  
 > **部署环境**: Ubuntu 20.04 + Docker Compose v2 + 1Panel
 
+[![HuggingFace Model](https://img.shields.io/badge/🤗%20HuggingFace-senlou/weibo--sentiment--chinese--bert-yellow)](https://huggingface.co/senlou/weibo-sentiment-chinese-bert)
+[![Accuracy](https://img.shields.io/badge/Accuracy-87.79%25-brightgreen)](https://huggingface.co/senlou/weibo-sentiment-chinese-bert)
+[![Macro F1](https://img.shields.io/badge/Macro%20F1-0.8783-brightgreen)](https://huggingface.co/senlou/weibo-sentiment-chinese-bert)
+
 ---
 
 ## 🚀 一键部署 (Ubuntu Docker)
@@ -263,8 +267,15 @@ npm run build  # 生产构建
 ```bash
 cd backend-python
 pip install -r requirements.txt
+
+# 下载已微调好的三分类情感模型 (~410 MB, 来自 HuggingFace Hub)
+huggingface-cli download senlou/weibo-sentiment-chinese-bert \
+    --local-dir ./models/chinese-bert-wwm-ext
+
 python app.py  # 开发服务器 :5000
 ```
+
+> 完整模型下载 / 微调说明见 [`backend-python/models/README.md`](backend-python/models/README.md)
 
 ### Java 后端开发
 ```bash
