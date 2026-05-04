@@ -2,7 +2,7 @@
 分析流水线API
 ==============
 
-整合数据采集、清洗、情感分析和双维度排序的完整API
+整合数据采集、清洗、情感分析和三维度排序的完整API
 
 功能：
 1. 一站式微博数据分析
@@ -49,15 +49,15 @@ except ImportError:
     logger.warning("混合情感分析器不可用")
 
 try:
-    from spark.enhanced_dual_dimension import (
-        EnhancedDualDimensionModel, 
-        EnhancedDualDimensionConfig,
+    from spark.enhanced_tri_dimension import (
+        EnhancedTriDimensionModel, 
+        EnhancedTriDimensionConfig,
         rank_weibo_enhanced
     )
     RANKING_AVAILABLE = True
 except ImportError:
     RANKING_AVAILABLE = False
-    logger.warning("增强型双维度排序模型不可用")
+    logger.warning("增强型三维度排序模型不可用")
 
 
 # 创建蓝图（使用唯一名称避免冲突）
@@ -91,7 +91,7 @@ class AnalysisResult:
     sentiment_distribution: Dict[str, int]
     sentiment_stats: Dict[str, float]
     
-    # 双维度排序结果
+    # 三维度排序结果
     top_weibos: List[Dict]
     quadrant_distribution: Dict[str, int]
     
@@ -371,7 +371,7 @@ def quick_analysis():
                 'confidence': 0.5,
             })
     
-    # 双维度排序
+    # 三维度排序
     if data.get('enable_ranking', True) and RANKING_AVAILABLE:
         # 构建排序数据
         ranking_data = [
@@ -390,7 +390,7 @@ def quick_analysis():
         # 合并排序结果
         for r, ranked_item in zip(results, ranked):
             r['rank'] = ranked_item['rank']
-            r['dual_score'] = ranked_item['dual_score']
+            r['tri_score'] = ranked_item['tri_score']
             r['quadrant'] = ranked_item['quadrant']
     
     # 统计
@@ -473,7 +473,7 @@ def analyze_single_text():
 @handle_errors
 def rank_weibos():
     """
-    微博双维度排序
+    微博三维度排序
     
     请求体:
     {
@@ -612,9 +612,9 @@ def run_analysis(task_id: str):
                         message=f'情感分析中... ({i}/{len(all_data)})'
                     )
         
-        # 阶段3: 双维度排序
+        # 阶段3: 三维度排序
         task_manager.update_task(task_id, status='ranking', progress=80,
-                                message='正在进行双维度排序...')
+                                message='正在进行三维度排序...')
         
         ranked_data = []
         if config.get('enable_ranking', True) and RANKING_AVAILABLE and all_data:
@@ -715,7 +715,7 @@ def generate_analysis_report(data: List[Dict], config: Dict) -> Dict:
                 'id': w.get('id', ''),
                 'text': w.get('text', '')[:200],
                 'rank': w.get('rank', 0),
-                'dual_score': w.get('dual_score', 0),
+                'tri_score': w.get('tri_score', 0),
                 'sentiment': w.get('sentiment', 'neutral'),
                 'sentiment_score': w.get('sentiment_score', 0),
                 'quadrant': w.get('quadrant', ''),
@@ -754,7 +754,7 @@ if __name__ == '__main__':
     print("  GET  /api/analysis/task/<id>/result - 任务结果")
     print("  POST /api/analysis/quick - 快速分析")
     print("  POST /api/analysis/sentiment - 单文本分析")
-    print("  POST /api/analysis/ranking - 双维度排序")
+    print("  POST /api/analysis/ranking - 三维度排序")
     
     app.run(debug=True, port=5001)
 

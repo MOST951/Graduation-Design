@@ -1,8 +1,8 @@
 <template>
-  <div class="dual-dimension-config">
+  <div class="tri-dimension-config">
     <!-- 公式展示 -->
     <div class="formula-display">
-      <div class="formula-title">双维度排序公式</div>
+      <div class="formula-title">三维度排序公式</div>
       <div class="formula-content">
         <span class="formula-text">S = </span>
         <span class="formula-alpha">{{ config.alpha.toFixed(2) }}</span>
@@ -402,7 +402,7 @@ const savePreset = () => {
   });
   
   // 保存到localStorage
-  localStorage.setItem('dual_dimension_presets', JSON.stringify(presets.value));
+  localStorage.setItem('tri_dimension_presets', JSON.stringify(presets.value));
   
   ElMessage.success(`预设 "${newPresetName.value}" 已保存`);
   newPresetName.value = '';
@@ -447,7 +447,7 @@ const saveToBackend = async () => {
     }
   } catch (error) {
     // 保存到localStorage作为备份
-    localStorage.setItem('dual_dimension_config', JSON.stringify(config));
+    localStorage.setItem('tri_dimension_config', JSON.stringify(config));
     ElMessage.warning('服务器保存失败，已保存到本地');
   } finally {
     saving.value = false;
@@ -491,7 +491,7 @@ const generateMockPreview = () => {
     score: 100 - i * 8 + Math.random() * 5
   })).sort((a, b) => b.score - a.score);
   
-  // 生成调整后数据（按双维度排序）
+  // 生成调整后数据（按三维度排序）
   previewData.after = topics.map((topic) => {
     const sentiment = Math.random() * 2 - 1; // -1 to 1
     const heat = Math.random() * 100;
@@ -513,13 +513,13 @@ const debouncedPreview = debounce(() => {
 // 监听配置变化
 watch(config, () => {
   // 保存到localStorage
-  localStorage.setItem('dual_dimension_config', JSON.stringify(config));
+  localStorage.setItem('tri_dimension_config', JSON.stringify(config));
 }, { deep: true });
 
 // 初始化
 onMounted(() => {
   // 从localStorage加载配置
-  const savedConfig = localStorage.getItem('dual_dimension_config');
+  const savedConfig = localStorage.getItem('tri_dimension_config');
   if (savedConfig) {
     try {
       Object.assign(config, JSON.parse(savedConfig));
@@ -529,7 +529,7 @@ onMounted(() => {
   }
   
   // 加载自定义预设
-  const savedPresets = localStorage.getItem('dual_dimension_presets');
+  const savedPresets = localStorage.getItem('tri_dimension_presets');
   if (savedPresets) {
     try {
       presets.value = JSON.parse(savedPresets);
@@ -546,7 +546,7 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.dual-dimension-config {
+.tri-dimension-config {
   padding: 20px;
 }
 

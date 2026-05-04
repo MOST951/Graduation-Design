@@ -30,7 +30,10 @@ logging.basicConfig(
 class TrainConfig:
     # --- Paths and Data --- #
     data_path = '../data/weibo_senti_100k.csv'  # Assumes CSV with 'review' and 'label' columns
-    model_name = 'hfl/chinese-bert-wwm-ext'
+    model_name = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        'backend-python', 'models', 'chinese-bert-wwm-ext'
+    )
     output_dir = '../models/bert_sentiment_model'
     log_dir = '../logs/bert_sentiment_runs'
 

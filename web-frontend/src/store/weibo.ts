@@ -11,11 +11,13 @@ import {
   stopHotSearchService,
   startCrawlTask,
   getCrawlTaskStatus,
+  getCrawlTasks,
   startDataflowTask,
   getDataflowTaskStatus,
   getDataflowOverview,
   type LiveHotSearchResponse,
   type LiveHotSearchItem,
+  type CrawlTask,
   type DataflowTask,
   type DataflowOverview,
 } from '@/api/weibo';
@@ -44,7 +46,7 @@ export interface HotSearchItem {
 export interface CollectionTask {
   id: string;
   keyword: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'interrupted' | 'paused';
   progress: number;
   count: number;
   startTime: string;
@@ -233,9 +235,10 @@ export const useWeiboStore = defineStore('weibo', () => {
     keywords: string[];
     pages?: number;
     crawlHot?: boolean;
+    dateRange?: [string, string] | null;
   }) {
     try {
-      const result = await startCrawlTask(params.keywords, params.pages || 3, params.crawlHot || false);
+      const result = await startCrawlTask(params.keywords, params.pages || 3, params.crawlHot || false, params.dateRange);
       
       // 兼容后端返回的 id 或 task_id 字段
       const taskId = result.task_id || result.id;
@@ -340,6 +343,100 @@ export const useWeiboStore = defineStore('weibo', () => {
     }
   }
   
+  // ==================== 任务轮询（store级别，切换页面不中断） ====================
+  
+  let _pollTimer: ReturnType<typeof setInterval> | null = null;
+  let _dataflowPollTimer: ReturnType<typeof setInterval> | null = null;
+  
+  /**
+   * 启动采集任务轮询（在store层面运行，不受组件生命周期影响）
+   */
+  function startTaskPolling(taskId: string) {
+    stopTaskPolling();
+    _pollTimer = setInterval(async () => {
+      try {
+        const status = await getCrawlTaskStatus(taskId);
+        const idx = collectionTasks.value.findIndex(t => t.id === taskId);
+        if (idx !== -1) {
+          collectionTasks.value[idx] = {
+            ...collectionTasks.value[idx],
+            status: status.status as CollectionTask['status'],
+            progress: status.progress || 0,
+            count: status.collected || 0,
+            endTime: status.end_time || undefined,
+            error: status.error || undefined,
+          };
+        }
+        if (status.status === 'completed' || status.status === 'failed') {
+          stopTaskPolling();
+        }
+      } catch {
+        // 静默处理
+      }
+    }, 2000);
+  }
+  
+  function stopTaskPolling() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  }
+  
+  /**
+   * 启动数据流轮询
+   */
+  function startDataflowPolling() {
+    stopDataflowPolling();
+    _dataflowPollTimer = setInterval(async () => {
+      try {
+        const status = await getDataflowTaskStatus(dataflowTaskId.value);
+        dataflowTask.value = status;
+        if (status.status === 'completed' || status.status === 'failed') {
+          stopDataflowPolling();
+        }
+      } catch {
+        // 静默处理
+      }
+    }, 2000);
+  }
+  
+  function stopDataflowPolling() {
+    if (_dataflowPollTimer) { clearInterval(_dataflowPollTimer); _dataflowPollTimer = null; }
+  }
+  
+  /**
+   * 从后端加载历史任务列表（登录后调用，上次登录的数据仍在）
+   */
+  async function loadTaskHistory() {
+    try {
+      const resp = await getCrawlTasks();
+      const remoteTasks = resp.tasks || [];
+      
+      // 合并到本地任务列表（以后端为准，避免重复）
+      const localIds = new Set(collectionTasks.value.map(t => t.id));
+      for (const rt of remoteTasks) {
+        if (!localIds.has(rt.id)) {
+          collectionTasks.value.push({
+            id: rt.id,
+            keyword: (rt.keywords || []).join(', '),
+            status: rt.status as CollectionTask['status'],
+            progress: rt.progress || 0,
+            count: rt.collected || 0,
+            startTime: rt.start_time || '',
+            endTime: rt.end_time || undefined,
+            error: rt.error || undefined,
+          });
+        }
+      }
+      
+      // 如果有正在运行的任务，自动恢复轮询
+      const running = collectionTasks.value.find(t => t.status === 'running');
+      if (running) {
+        startTaskPolling(running.id);
+      }
+    } catch {
+      // 后端不可用时静默处理
+    }
+  }
+  
   /**
    * 清除错误
    */
@@ -351,6 +448,8 @@ export const useWeiboStore = defineStore('weibo', () => {
    * 重置Store
    */
   function $reset() {
+    stopTaskPolling();
+    stopDataflowPolling();
     hotSearches.value = [];
     hotSearchSummary.value = {};
     lastRefreshTime.value = '';
@@ -397,6 +496,11 @@ export const useWeiboStore = defineStore('weibo', () => {
     startDataflow,
     getDataflowStatus,
     fetchDataflowOverview,
+    loadTaskHistory,
+    startTaskPolling,
+    stopTaskPolling,
+    startDataflowPolling,
+    stopDataflowPolling,
     clearError,
     $reset,
   };

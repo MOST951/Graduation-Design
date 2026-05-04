@@ -1,12 +1,24 @@
 #!/bin/bash
-
-# Exit on error
+# ====================================================================
+# 微博情感分析系统 — 手动构建 Docker 镜像
+# ====================================================================
+# 用法: 在项目根目录执行 bash deployment/scripts/build-images.sh
+# ====================================================================
 set -e
 
-# Build and push the backend image
-docker build -t your-repo/weibo-backend:latest -f deployment/docker/Dockerfile.backend .
-docker push your-repo/weibo-backend:latest
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+cd "${PROJECT_ROOT}"
 
-# Build and push the frontend image
-docker build -t your-repo/weibo-frontend:latest -f deployment/docker/Dockerfile.frontend .
-docker push your-repo/weibo-frontend:latest
+echo "=== 构建 Flask 后端镜像 ==="
+docker build -t weibo-sentiment/flask-backend:latest -f deployment/docker/Dockerfile .
+
+echo "=== 构建 Java 后端镜像 ==="
+docker build -t weibo-sentiment/java-backend:latest -f deployment/docker/Dockerfile.web-backend .
+
+echo "=== 构建前端镜像 ==="
+docker build -t weibo-sentiment/frontend:latest -f deployment/docker/Dockerfile.frontend .
+
+echo ""
+echo "=== 构建完成 ==="
+docker images | grep weibo-sentiment

@@ -111,14 +111,53 @@ checkpoints/
 spark-events/
 
 # ====== Models (large files) ======
+# 模型权重过大 (单文件 >100MB), 不上传到 GitHub
+# 用户需自行从 HuggingFace 下载: hfl/chinese-bert-wwm-ext
+*.safetensors
+*.msgpack
+*.h5
+*.mdl
+*.msc
+*.mv
 models/*.pkl
-models/*.h5
 models/*.bin
 models/*.pt
 models/*.onnx
 *.weights
 model_cache/
+model_cache_ms/
 backend-python/model_cache/
+backend-python/model_cache_ms/
+# HuggingFace 模型本地副本 (保留 README 占位)
+backend-python/models/chinese-bert-wwm-ext/
+backend-python/models/chinese-bert-wwm-ext-baseline/
+backend-python/models/chinese-bert-wwm-ext-v2/
+backend-python/models/chinese-bert-wwm-ext-v3/
+
+# ====== 运行时数据缓存 (爬取/预处理产物, 不上传) ======
+backend-python/data/crawl_result_*.json
+backend-python/data/processed_*.json
+backend-python/data/hotsearch_cache.json
+backend-python/data/metadata_*.json
+backend-python/data/spark_jobs.json
+backend-python/data/weibo_raw/
+backend-python/data/output/
+backend-python/data/processed/
+# 训练数据集 (大文件, 用户自行下载)
+backend-python/data/*.csv
+backend-python/data/weibo_senti_100k_backup_*.csv
+
+# ====== 评估脚本生成的输出文本 (保留 *_results.json 作为成果证据) ======
+backend-python/scripts/*_output.txt
+backend-python/scripts/*_output_*.txt
+backend-python/scripts/chapter7_eval_output*.txt
+backend-python/scripts/spark_stage_perf_output*.txt
+backend-python/scripts/udf_benchmark_output*.txt
+
+# ====== 杂项 ======
+nul
+*副本*
+README - 副本.md
 
 # ====== Docker ======
 docker-data/

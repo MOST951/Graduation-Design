@@ -3,7 +3,7 @@ Spark作业触发服务
 ================
 
 负责触发和监控Spark作业，实现数据流连通：
-微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 双维度排序
+微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 三维度排序
 
 功能：
 1. 使用subprocess调用spark-submit
@@ -253,7 +253,7 @@ class SparkService:
                           crawl_task_id: str = '',
                           on_complete: Callable = None) -> SparkJob:
         """
-        提交双维度排序作业
+        提交三维度排序作业
         
         Args:
             crawl_task_id: 关联的采集任务ID
@@ -278,7 +278,7 @@ class SparkService:
         # 异步执行
         self.executor.submit(self._run_ranking_job, job)
         
-        logger.info(f"双维度排序作业已提交: {job_id}")
+        logger.info(f"三维度排序作业已提交: {job_id}")
         return job
     
     def submit_full_pipeline(self,
@@ -288,7 +288,7 @@ class SparkService:
         """
         提交完整数据处理流水线
         
-        流程：数据清洗 → 情感分析 → 双维度排序
+        流程：数据清洗 → 情感分析 → 三维度排序
         
         Args:
             input_path: 输入数据路径
@@ -370,7 +370,7 @@ class SparkService:
                     self._trigger_callbacks(job)
     
     def _run_ranking_job(self, job: SparkJob):
-        """执行双维度排序作业"""
+        """执行三维度排序作业"""
         retry_count = 0
         
         while retry_count <= self.config.max_retries:
@@ -380,7 +380,7 @@ class SparkService:
                 job.retry_count = retry_count
                 self.store.update(job)
                 
-                logger.info(f"开始执行双维度排序作业: {job.job_id}")
+                logger.info(f"开始执行三维度排序作业: {job.job_id}")
                 
                 # 构建spark-submit命令
                 cmd = self._build_spark_command(
@@ -397,7 +397,7 @@ class SparkService:
                     job.progress = 100
                     self.store.update(job)
                     
-                    logger.info(f"双维度排序作业完成: {job.job_id}")
+                    logger.info(f"三维度排序作业完成: {job.job_id}")
                     self._trigger_callbacks(job)
                     return
                 else:
@@ -459,8 +459,8 @@ class SparkService:
             job.progress = 80
             self.store.update(job)
             
-            # 阶段4: 双维度排序 (80-100%)
-            logger.info(f"[{job.job_id}] 阶段4: 双维度排序...")
+            # 阶段4: 三维度排序 (80-100%)
+            logger.info(f"[{job.job_id}] 阶段4: 三维度排序...")
             
             self._run_pipeline_stage(
                 job,
@@ -751,7 +751,7 @@ def trigger_cleaning_after_crawl(crawl_task_id: str, data_path: str) -> SparkJob
     
     def on_complete(job: SparkJob):
         if job.status == JobStatus.COMPLETED.value:
-            logger.info(f"清洗完成，触发双维度排序...")
+            logger.info(f"清洗完成，触发三维度排序...")
             trigger_ranking_after_cleaning(crawl_task_id)
         else:
             logger.error(f"清洗失败: {job.error_message}")
@@ -766,7 +766,7 @@ def trigger_cleaning_after_crawl(crawl_task_id: str, data_path: str) -> SparkJob
 
 def trigger_ranking_after_cleaning(crawl_task_id: str) -> SparkJob:
     """
-    清洗完成后触发双维度排序
+    清洗完成后触发三维度排序
     
     Args:
         crawl_task_id: 采集任务ID
@@ -778,7 +778,7 @@ def trigger_ranking_after_cleaning(crawl_task_id: str) -> SparkJob:
     
     def on_complete(job: SparkJob):
         if job.status == JobStatus.COMPLETED.value:
-            logger.info(f"双维度排序完成，数据流处理结束")
+            logger.info(f"三维度排序完成，数据流处理结束")
         else:
             logger.error(f"排序失败: {job.error_message}")
     

@@ -17,6 +17,7 @@
 5. 事务管理（保证数据一致性）
 """
 
+import os
 import pymysql
 from pymysql.cursors import DictCursor
 from contextlib import contextmanager
@@ -114,11 +115,12 @@ class DatabaseService:
         self.required_tables = [
             'weibo_core_data',
             'sentiment_analysis_results', 
-            'dual_dimension_ranking',
+            'tri_dimension_ranking',
             'crawl_batch_log',
             'crawl_request_log',
             'data_quality_log',
-            'system_configs'
+            'system_configs',
+            'crawl_tasks'
         ]
         
         # 初始化数据库和表
@@ -222,7 +224,7 @@ class DatabaseService:
                     `keyword` VARCHAR(128) COMMENT '采集关键词',
                     `batch_id` VARCHAR(64) COMMENT '采集批次ID',
                     `is_processed` TINYINT DEFAULT 0 COMMENT '是否已情感分析',
-                    `is_ranked` TINYINT DEFAULT 0 COMMENT '是否已双维度排序',
+                    `is_ranked` TINYINT DEFAULT 0 COMMENT '是否已三维度排序',
                     `graduation_batch` TINYINT DEFAULT 1 COMMENT '毕业设计批次标记',
                     `student_id` VARCHAR(20) DEFAULT '2022407443' COMMENT '学号',
                     `update_count` INT DEFAULT 0 COMMENT '更新次数',
@@ -266,8 +268,8 @@ class DatabaseService:
                 COMMENT='情感分析结果表 - 毕业设计'
             """,
             
-            'dual_dimension_ranking': """
-                CREATE TABLE IF NOT EXISTS `dual_dimension_ranking` (
+            'tri_dimension_ranking': """
+                CREATE TABLE IF NOT EXISTS `tri_dimension_ranking` (
                     `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
                     `weibo_id` BIGINT NOT NULL COMMENT '微博ID',
                     `sentiment_score` DECIMAL(5,4) DEFAULT 0 COMMENT '情感得分',
@@ -278,9 +280,10 @@ class DatabaseService:
                     `raw_popularity` DECIMAL(10,4) DEFAULT 0 COMMENT '原始热度(log平滑后)',
                     `popularity_score` DECIMAL(10,4) DEFAULT 0 COMMENT '归一化热度得分',
                     `popularity_class` ENUM('high','medium','low') DEFAULT 'low' COMMENT '热度等级',
-                    `time_decay` DECIMAL(5,4) DEFAULT 1 COMMENT '时间衰减因子γ(t)',
+                    `time_decay` DECIMAL(5,4) DEFAULT 1 COMMENT '时间衰减因子γ(Δt)',
                     `alpha_weight` DECIMAL(3,2) DEFAULT 0.40 COMMENT '情感权重ω₁',
                     `beta_weight` DECIMAL(3,2) DEFAULT 0.40 COMMENT '热度权重ω₂',
+                    `gamma_weight` DECIMAL(3,2) DEFAULT 0.20 COMMENT '时效性权重ω₃',
                     `composite_score` DECIMAL(10,4) DEFAULT 0 COMMENT '综合排序得分',
                     `ranking_position` INT DEFAULT 0 COMMENT '排名位置',
                     `batch_id` VARCHAR(64) COMMENT '计算批次ID',
@@ -294,7 +297,7 @@ class DatabaseService:
                     INDEX `idx_calculation_time` (`calculation_time`),
                     INDEX `idx_graduation` (`graduation_flag`, `student_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                COMMENT='双维度排序结果表 - 毕业设计核心创新点'
+                COMMENT='三维度排序结果表 - 毕业设计核心创新点'
             """,
             
             'crawl_batch_log': """
@@ -354,6 +357,30 @@ class DatabaseService:
                     INDEX `idx_check_time` (`check_time`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 COMMENT='数据质量日志表'
+            """,
+            
+            'crawl_tasks': """
+                CREATE TABLE IF NOT EXISTS `crawl_tasks` (
+                    `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
+                    `task_id` VARCHAR(64) NOT NULL COMMENT '任务ID',
+                    `sys_user_id` VARCHAR(64) DEFAULT '' COMMENT '系统用户标识',
+                    `keywords` JSON COMMENT '采集关键词列表',
+                    `pages` INT DEFAULT 3 COMMENT '采集页数',
+                    `crawl_hot` TINYINT DEFAULT 0 COMMENT '是否爬取热搜',
+                    `status` VARCHAR(20) DEFAULT 'pending' COMMENT '任务状态',
+                    `progress` INT DEFAULT 0 COMMENT '进度百分比',
+                    `collected` INT DEFAULT 0 COMMENT '已采集条数',
+                    `start_time` DATETIME COMMENT '开始时间',
+                    `end_time` DATETIME COMMENT '结束时间',
+                    `error` TEXT COMMENT '错误信息',
+                    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                    `updated_at` DATETIME ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                    UNIQUE KEY `uk_task_id` (`task_id`),
+                    INDEX `idx_sys_user_id` (`sys_user_id`),
+                    INDEX `idx_status` (`status`),
+                    INDEX `idx_created_at` (`created_at`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                COMMENT='采集任务持久化表（按用户隔离）'
             """,
             
             'system_configs': """
@@ -767,12 +794,12 @@ class DatabaseService:
         return result
     
     @retry_on_error(max_retries=3, delay=1.0)
-    def save_dual_dimension_results(self, results: List[Dict], batch_id: str = None) -> Dict:
+    def save_tri_dimension_results(self, results: List[Dict], batch_id: str = None) -> Dict:
         """
-        保存双维度排序结果
+        保存三维度排序结果
         
         Args:
-            results: 双维度排序结果列表
+            results: 三维度排序结果列表
             batch_id: 批次ID
             
         Returns:
@@ -784,14 +811,14 @@ class DatabaseService:
         batch_id = batch_id or f"ranking_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
         sql = """
-        INSERT INTO dual_dimension_ranking 
+        INSERT INTO tri_dimension_ranking 
         (weibo_id, sentiment_score, sentiment_category,
          reposts_count, comments_count, attitudes_count,
          raw_popularity, popularity_score, popularity_class,
-         time_decay, alpha_weight, beta_weight, composite_score,
+         time_decay, alpha_weight, beta_weight, gamma_weight, composite_score,
          ranking_position, batch_id, calculation_time, algorithm_version,
          graduation_flag, student_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE 
         sentiment_score = VALUES(sentiment_score),
         popularity_score = VALUES(popularity_score),
@@ -839,8 +866,9 @@ class DatabaseService:
                     popularity_score,
                     r.get('popularity_class', popularity_class),
                     r.get('time_decay', 1.0),
-                    r.get('alpha_weight', 0.6),
+                    r.get('alpha_weight', 0.4),
                     r.get('beta_weight', 0.4),
+                    r.get('gamma_weight', 0.2),
                     float(r.get('composite_score', 0)),
                     r.get('ranking_position', idx + 1),
                     batch_id,
@@ -865,7 +893,7 @@ class DatabaseService:
             self._update_weibo_ranked_status(weibo_ids)
         
         self.graduation_stats['total_inserts'] += result['saved']
-        logger.info(f"保存双维度排序结果: {result['saved']} 条")
+        logger.info(f"保存三维度排序结果: {result['saved']} 条")
         
         return result
     
@@ -1001,7 +1029,7 @@ class DatabaseService:
                 tables = [
                     'weibo_core_data', 
                     'sentiment_analysis_results', 
-                    'dual_dimension_ranking', 
+                    'tri_dimension_ranking', 
                     'crawl_batch_log'
                 ]
                 

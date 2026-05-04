@@ -47,6 +47,10 @@
         <div class="realtime-stream">
           <transition-group name="stream-list" tag="div">
             <div v-for="item in realtimeData" :key="item.id" class="stream-item">
+              <div class="stream-author" v-if="item.author">
+                <el-icon :size="12"><User /></el-icon>
+                <span>{{ item.author }}</span>
+              </div>
               <div class="stream-content">
                 <span class="stream-text">{{ item.content }}</span>
                 <el-tag
@@ -91,6 +95,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue';
 import * as echarts from 'echarts';
 import { getDashboardData } from '@/api/dashboard';
 import { formatTime, formatNumber } from '@/utils/formatter';
+import { User } from '@element-plus/icons-vue';
 
 // --- 类型定义 ---
 interface OverviewCard {
@@ -109,6 +114,7 @@ interface RealtimeItem {
   sentiment: number;
   time: string | Date;
   source: string;
+  author: string;
 }
 
 // --- Refs ---
@@ -520,6 +526,18 @@ watch(trendDateRange, loadDashboardData);
     padding-right: 12px;
     border-radius: 8px;
   }
+}
+
+.stream-author {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: $font-weight-medium;
+  color: $primary-color;
+  margin-bottom: 4px;
+
+  .el-icon { color: $text-secondary; }
 }
 
 .stream-content {

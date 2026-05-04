@@ -7,7 +7,7 @@
           <el-icon><Bell /></el-icon>
           舆情预警中心
         </h3>
-        <p class="header-desc">基于双维度排序模型的智能舆情预警系统</p>
+        <p class="header-desc">基于三维度排序模型的智能舆情预警系统</p>
       </div>
       <div class="header-actions">
         <el-tag :type="monitorEnabled ? 'success' : 'info'" effect="dark" size="large">
@@ -123,11 +123,11 @@
       </div>
     </div>
 
-    <!-- 双维度预警规则说明 -->
+    <!-- 三维度预警规则说明 -->
     <el-card class="rule-card" shadow="never">
       <template #header>
         <div class="card-header">
-          <span><el-icon><TrendCharts /></el-icon> 双维度预警规则</span>
+          <span><el-icon><TrendCharts /></el-icon> 三维度预警规则</span>
           <el-tag type="success" effect="plain" size="small">核心创新点</el-tag>
         </div>
       </template>

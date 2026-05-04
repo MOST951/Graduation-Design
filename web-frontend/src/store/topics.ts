@@ -17,15 +17,15 @@ import {
   removeMonitorKeyword,
   updateMonitorConfig,
   getRankedTopics,
-  getDualDimensionConfig,
-  updateDualDimensionConfig,
+  getTriDimensionConfig,
+  updateTriDimensionConfig,
   type WordData,
   type TopicData,
   type TopicDetail,
   type HotSearchData,
   type TimelineWordCloud,
   type RankedTopic,
-  type DualDimensionConfig,
+  type TriDimensionConfig,
 } from '@/api/topics';
 
 export const useTopicsStore = defineStore('topics', () => {
@@ -52,11 +52,11 @@ export const useTopicsStore = defineStore('topics', () => {
   /** 监控关键词 */
   const monitorKeywords = ref<{ id: number; keyword: string; alertEnabled: boolean; alertThreshold: number }[]>([]);
   
-  /** 双维度排序话题 */
+  /** 三维度排序话题 */
   const rankedTopics = ref<RankedTopic[]>([]);
   
-  /** 双维度排序配置 */
-  const dualDimensionConfig = ref<DualDimensionConfig>({
+  /** 三维度排序配置 */
+  const triDimensionConfig = ref<TriDimensionConfig>({
     sentiment_weight: 0.6,
     popularity_weight: 0.4,
     time_decay_hours: 24,
@@ -115,7 +115,7 @@ export const useTopicsStore = defineStore('topics', () => {
     return { total, positive, negative, neutral, totalValue, avgValue };
   });
   
-  /** 双维度排序Top5 */
+  /** 三维度排序Top5 */
   const topRankedTopics = computed(() => rankedTopics.value.slice(0, 5));
   
   /** 正面排序话题 */
@@ -334,7 +334,7 @@ export const useTopicsStore = defineStore('topics', () => {
   }
   
   /**
-   * 获取双维度排序话题
+   * 获取三维度排序话题
    */
   async function fetchRankedTopics() {
     isLoadingRankedTopics.value = true;
@@ -342,7 +342,7 @@ export const useTopicsStore = defineStore('topics', () => {
       rankedTopics.value = await getRankedTopics();
       return rankedTopics.value;
     } catch (error) {
-      console.error('获取双维度排序话题失败:', error);
+      console.error('获取三维度排序话题失败:', error);
       throw error;
     } finally {
       isLoadingRankedTopics.value = false;
@@ -350,33 +350,33 @@ export const useTopicsStore = defineStore('topics', () => {
   }
   
   /**
-   * 获取双维度排序配置
+   * 获取三维度排序配置
    */
-  async function fetchDualDimensionConfig() {
+  async function fetchTriDimensionConfig() {
     try {
-      const config = await getDualDimensionConfig();
-      dualDimensionConfig.value = config;
+      const config = await getTriDimensionConfig();
+      triDimensionConfig.value = config;
       return config;
     } catch (error) {
-      console.warn('获取双维度配置失败，使用默认值:', error);
+      console.warn('获取三维度配置失败，使用默认值:', error);
       // 使用默认配置
-      return dualDimensionConfig.value;
+      return triDimensionConfig.value;
     }
   }
   
   /**
-   * 更新双维度排序配置
+   * 更新三维度排序配置
    */
-  async function saveDualDimensionConfig(config: Partial<DualDimensionConfig>) {
+  async function saveTriDimensionConfig(config: Partial<TriDimensionConfig>) {
     isSavingConfig.value = true;
     try {
-      const updatedConfig = await updateDualDimensionConfig(config);
-      dualDimensionConfig.value = updatedConfig;
+      const updatedConfig = await updateTriDimensionConfig(config);
+      triDimensionConfig.value = updatedConfig;
       // 配置更新后重新获取排序结果
       await fetchRankedTopics();
       return updatedConfig;
     } catch (error) {
-      console.error('更新双维度配置失败:', error);
+      console.error('更新三维度配置失败:', error);
       throw error;
     } finally {
       isSavingConfig.value = false;
@@ -416,7 +416,7 @@ export const useTopicsStore = defineStore('topics', () => {
     hotSearch.value = [];
     monitorKeywords.value = [];
     rankedTopics.value = [];
-    dualDimensionConfig.value = {
+    triDimensionConfig.value = {
       sentiment_weight: 0.6,
       popularity_weight: 0.4,
       time_decay_hours: 24,
@@ -441,7 +441,7 @@ export const useTopicsStore = defineStore('topics', () => {
     hotSearch,
     monitorKeywords,
     rankedTopics,
-    dualDimensionConfig,
+    triDimensionConfig,
     selectedWord,
     wordDetail,
     isLoading,
@@ -476,8 +476,8 @@ export const useTopicsStore = defineStore('topics', () => {
     removeKeywordFromMonitor,
     updateKeywordMonitorConfig,
     fetchRankedTopics,
-    fetchDualDimensionConfig,
-    saveDualDimensionConfig,
+    fetchTriDimensionConfig,
+    saveTriDimensionConfig,
     selectWord,
     clearSelection,
     $reset,

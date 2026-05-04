@@ -110,7 +110,9 @@ except ImportError:
 class BertModelConfig:
     """BERT模型配置"""
     # 模型选择
-    model_name: str = "bert-base-chinese"
+    model_name: str = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models', 'chinese-bert-wwm-ext'
+    )
     
     # 备选模型列表
     AVAILABLE_MODELS = [
@@ -124,7 +126,7 @@ class BertModelConfig:
     # 推理配置
     max_length: int = 128
     batch_size: int = 32
-    num_labels: int = 3  # positive, neutral, negative
+    num_labels: int = 2  # 0=negative, 1=positive (二分类)
     
     # 设备配置
     device: str = "auto"  # auto, cuda, cpu
@@ -344,15 +346,21 @@ class ChineseBertSentimentAnalyzer:
             # 设置设备
             self.device = self._setup_device()
             
-            # 创建缓存目录
-            cache_dir = os.environ.get("TRANSFORMERS_CACHE", self.config.cache_dir)
-            os.makedirs(cache_dir, exist_ok=True)
+            # 判断是否为本地模型路径
+            is_local = os.path.isdir(self.config.model_name)
+            if is_local:
+                load_kwargs = {"local_files_only": True}
+                logger.info(f"使用本地模型目录: {self.config.model_name}")
+            else:
+                cache_dir = os.environ.get("TRANSFORMERS_CACHE", self.config.cache_dir)
+                os.makedirs(cache_dir, exist_ok=True)
+                load_kwargs = {"cache_dir": cache_dir}
             
             # 加载tokenizer
             logger.info("加载Tokenizer...")
             self.tokenizer = AutoTokenizer.from_pretrained(
                 self.config.model_name,
-                cache_dir=cache_dir,
+                **load_kwargs,
             )
             
             # 加载模型
@@ -361,13 +369,13 @@ class ChineseBertSentimentAnalyzer:
                 self.model = AutoModelForSequenceClassification.from_pretrained(
                     self.config.model_name,
                     num_labels=self.config.num_labels,
-                    cache_dir=cache_dir,
+                    **load_kwargs,
                 )
             except Exception as e:
                 logger.warning(f"加载分类模型失败: {e}，尝试加载基础模型")
                 base_model = BertModel.from_pretrained(
                     self.config.model_name,
-                    cache_dir=cache_dir,
+                    **load_kwargs,
                 )
                 self.model = BertForSequenceClassificationCustom(
                     base_model, 
@@ -616,7 +624,7 @@ if TORCH_AVAILABLE:
     class BertForSequenceClassificationCustom(nn.Module):
         """自定义BERT分类模型"""
         
-        def __init__(self, bert_model, num_labels: int = 3, dropout: float = 0.1):
+        def __init__(self, bert_model, num_labels: int = 2, dropout: float = 0.1):
             super().__init__()
             self.bert = bert_model
             self.dropout = nn.Dropout(dropout)

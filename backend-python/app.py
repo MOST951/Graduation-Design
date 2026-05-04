@@ -18,12 +18,13 @@ from api.monitor import monitor_bp
 from api.auth import auth_bp
 from api.dashboard import dashboard_bp
 from api.weibo_api import weibo_bp
-from api.dual_dimension_api import dual_bp
+from api.tri_dimension_api import tri_bp
 from api.evaluation import evaluation_bp
 from api.preprocess import preprocess_bp
 from api.propagation import propagation_bp
 from api.crawler import crawler_bp
 from api.pipeline_api import pipeline_bp
+from api.admin import admin_bp
 from routes.analysis_routes import analysis_bp
 from models.model_manager import preload_models_on_startup, ModelManager
 
@@ -51,7 +52,7 @@ CORS(app, resources={
     r"/api/*": {
         "origins": cors_origins,
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"],
+        "allow_headers": ["Content-Type", "Authorization", "X-User-Role"],
     }
 })
 
@@ -66,12 +67,13 @@ app.register_blueprint(monitor_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(weibo_bp)
-app.register_blueprint(dual_bp)
+app.register_blueprint(tri_bp)
 app.register_blueprint(evaluation_bp)
 app.register_blueprint(preprocess_bp)
 app.register_blueprint(propagation_bp)
 app.register_blueprint(crawler_bp)
 app.register_blueprint(pipeline_bp)
+app.register_blueprint(admin_bp)
 app.register_blueprint(analysis_bp)
 
 # 注册统一API（v2版本）
@@ -95,7 +97,7 @@ def index():
             '微博数据采集与清洗',
             '基于Spark的分布式处理',
             '词典+ChineseBERT混合情感分析',
-            '情感-热度双维度排序模型',
+            '情感-热度三维度排序模型',
             '实时可视化监控',
         ],
         'endpoints': {
@@ -106,7 +108,7 @@ def index():
                 'behavior': '/api/behavior',
                 'monitor': '/api/monitor',
                 'weibo': '/api/weibo',
-                'dual_dimension': '/api/dual',
+                'tri_dimension': '/api/tri-dimension',
                 'evaluation': '/api/evaluation',
                 'analysis': '/api/analysis',
             },
@@ -114,7 +116,7 @@ def index():
                 'unified': '/api/v2',
                 'crawl': '/api/v2/crawl/start',
                 'sentiment': '/api/v2/sentiment/analyze',
-                'ranking': '/api/v2/ranking/dual-dimension',
+                'ranking': '/api/v2/ranking/tri-dimension',
                 'stats': '/api/v2/stats/overview',
                 'health': '/api/v2/health',
             }

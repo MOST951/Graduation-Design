@@ -11,6 +11,8 @@
               <el-checkbox label="removeStopwords">过滤停用词</el-checkbox>
               <el-checkbox label="removeEmoji">去除表情</el-checkbox>
               <el-checkbox label="removeUrl">去除URL</el-checkbox>
+              <el-checkbox label="traditionalToSimplified">繁体转简体</el-checkbox>
+              <el-checkbox label="fullwidthToHalfwidth">全角转半角</el-checkbox>
             </el-checkbox-group>
           </el-form-item>
           
@@ -59,11 +61,25 @@
           </el-button>
           
           <el-progress
-            v-if="processing"
+            v-if="processing || progress === 100"
             :percentage="progress"
             :status="progress === 100 ? 'success' : undefined"
             style="margin-top: 16px"
           />
+          
+          <div v-if="progressSteps.length > 0" class="progress-steps">
+            <div
+              v-for="(step, idx) in progressSteps"
+              :key="idx"
+              class="progress-step"
+              :class="{ done: step.done }"
+            >
+              <el-icon v-if="step.done" color="#67c23a"><CircleCheck /></el-icon>
+              <el-icon v-else-if="processing && !step.done && (idx === 0 || progressSteps[idx-1].done)" class="rotating"><Operation /></el-icon>
+              <span v-else class="step-dot"></span>
+              <span class="step-label">{{ step.label }}</span>
+            </div>
+          </div>
         </el-form>
       </el-card>
       
@@ -89,18 +105,24 @@
           
           <!-- 处理对比 -->
           <el-tab-pane label="处理对比" name="compare">
-            <el-row :gutter="16">
-              <el-col :span="12">
-                <el-card header="处理前">
-                  <div class="compare-text">{{ compareOriginal }}</div>
-                </el-card>
-              </el-col>
-              <el-col :span="12">
-                <el-card header="处理后">
-                  <div class="compare-text">{{ compareProcessed }}</div>
-                </el-card>
-              </el-col>
-            </el-row>
+            <el-card header="清洗差异对比">
+              <div v-if="diffItems.length === 0" class="compare-text">处理后将在此展示清洗前后差异</div>
+              <div v-else class="diff-list">
+                <div v-for="(item, idx) in diffItems" :key="idx" class="diff-item">
+                  <div class="diff-label">#{{ idx + 1 }}</div>
+                  <div class="diff-content">
+                    <div class="diff-original">
+                      <span class="diff-tag">原文</span>
+                      <span v-html="highlightRemoved(item.original, item.cleaned)"></span>
+                    </div>
+                    <div class="diff-cleaned">
+                      <span class="diff-tag success">清洗后</span>
+                      <span>{{ item.cleaned }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </el-card>
           </el-tab-pane>
           
           <!-- 分词结果 -->
@@ -230,7 +252,7 @@ import {
   Upload, Operation, TrendCharts, CircleCheck, Select, Connection,
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { createPreprocessTask, getPreprocessTasks, type PreprocessTask } from '@/api/weibo';
+import { createPreprocessTask, getPreprocessTasks, getPreprocessData, type PreprocessTask, type PreprocessedItem } from '@/api/weibo';
 
 const cleanRules = ref(['removeDuplicates', 'removeSpecial']);
 const segmentTool = ref('jieba');
@@ -260,6 +282,12 @@ const originalTexts = ref([
 
 const compareOriginal = ref('今天天气真好，心情也很不错！😊 #开心 http://example.com');
 const compareProcessed = ref('今天 天气 真 好 心情 也 很 不错');
+
+// 差异对比数据
+const diffItems = ref<{ original: string; cleaned: string }[]>([]);
+
+// 进度步骤
+const progressSteps = ref<{ label: string; done: boolean }[]>([]);
 
 const segmentWords = ref([
   '今天', '天气', '真', '好', '心情', '也', '很', '不错',
@@ -323,6 +351,54 @@ const handleDictUpload = (file: any) => {
   ElMessage.success(`词典文件 ${file.name} 上传成功`);
 };
 
+// 繁体→简体映射表（常用字）
+const traditionalToSimplifiedMap: Record<string, string> = {
+  '國': '国', '學': '学', '書': '书', '東': '东', '車': '车', '門': '门',
+  '馬': '马', '魚': '鱼', '鳥': '鸟', '龍': '龙', '風': '风', '雲': '云',
+  '電': '电', '長': '长', '開': '开', '關': '关', '聽': '听', '說': '说',
+  '讀': '读', '寫': '写', '買': '买', '賣': '卖', '銀': '银', '錢': '钱',
+  '鐵': '铁', '機': '机', '區': '区', '場': '场', '報': '报', '華': '华',
+  '園': '园', '夢': '梦', '廣': '广', '應': '应', '從': '从', '復': '复',
+  '樂': '乐', '實': '实', '經': '经', '濟': '济', '進': '进', '連': '连',
+  '遠': '远', '選': '选', '達': '达', '還': '还', '這': '这', '邊': '边',
+  '過': '过', '運': '运', '線': '线', '練': '练', '組': '组', '織': '织',
+  '結': '结', '給': '给', '細': '细', '統': '统', '終': '终', '綠': '绿',
+  '網': '网', '義': '义', '議': '议', '護': '护', '歡': '欢', '對': '对',
+  '觀': '观', '見': '见', '視': '视', '覺': '觉', '計': '计', '記': '记',
+  '許': '许', '論': '论', '設': '设', '試': '试', '語': '语', '課': '课',
+  '調': '调', '談': '谈', '請': '请', '諸': '诸', '變': '变', '讓': '让',
+  '號': '号', '點': '点', '黨': '党', '齊': '齐', '歲': '岁', '歷': '历',
+  '歸': '归', '殘': '残', '無': '无', '熱': '热', '愛': '爱', '態': '态',
+  '質': '质', '貨': '货', '費': '费', '資': '资', '賽': '赛', '離': '离',
+  '難': '难', '響': '响', '頭': '头', '題': '题', '類': '类', '體': '体',
+  '戰': '战', '聯': '联', '極': '极', '條': '条', '產': '产', '個': '个',
+  '億': '亿', '僅': '仅', '優': '优', '傳': '传', '價': '价', '創': '创',
+  '動': '动', '務': '务', '區': '区', '醫': '医', '壓': '压', '發': '发',
+};
+
+// 差异高亮：红色标记被删除的部分，蓝色标记繁体→简体转换的字符
+const highlightRemoved = (original: string, cleaned: string): string => {
+  if (!original || !cleaned) return original || '';
+  let result = '';
+  let ci = 0; // cleaned index
+  for (let i = 0; i < original.length; i++) {
+    if (ci < cleaned.length && original[i] === cleaned[ci]) {
+      result += original[i];
+      ci++;
+    } else if (
+      ci < cleaned.length &&
+      traditionalToSimplifiedMap[original[i]] === cleaned[ci]
+    ) {
+      // 繁体→简体转换：蓝色高亮
+      result += `<span class="diff-converted" title="繁→简: ${original[i]}→${cleaned[ci]}">${original[i]}</span>`;
+      ci++;
+    } else {
+      result += `<span class="diff-removed">${original[i]}</span>`;
+    }
+  }
+  return result;
+};
+
 // 加载已有的预处理任务
 const loadPreprocessTasks = async () => {
   try {
@@ -336,18 +412,21 @@ const loadPreprocessTasks = async () => {
 const handleProcess = async () => {
   processing.value = true;
   progress.value = 0;
+  diffItems.value = [];
+  progressSteps.value = [
+    { label: '数据加载', done: false },
+    { label: '清洗规则应用', done: false },
+    { label: '分词处理', done: false },
+    { label: '结果入库', done: false },
+  ];
   
-  // 模拟进度
-  const progressTimer = setInterval(() => {
-    if (progress.value < 80) {
-      progress.value += 10;
-    }
-  }, 200);
+  const updateStep = (index: number) => {
+    progressSteps.value[index].done = true;
+    progress.value = Math.min(100, Math.round(((index + 1) / progressSteps.value.length) * 100));
+  };
   
   try {
-    console.log('开始创建预处理任务...');
-    
-    // 准备要处理的数据
+    // Step 1: 准备数据
     const dataToProcess = originalTexts.value.map((text, idx) => ({
       id: `data_${Date.now()}_${idx}`,
       content: text,
@@ -359,33 +438,47 @@ const handleProcess = async () => {
       shares: Math.floor(Math.random() * 20),
       timestamp: new Date().toISOString(),
     }));
+    updateStep(0);
     
-    console.log('准备处理的数据:', dataToProcess.length, '条');
-    
-    // 调用后端API创建预处理任务
+    // Step 2: 调用后端API
     const task = await createPreprocessTask({
       name: taskName.value || `预处理任务_${new Date().toLocaleString('zh-CN')}`,
       data: dataToProcess,
       cleanRules: cleanRules.value,
       segmentTool: segmentTool.value,
     });
+    updateStep(1);
     
-    console.log('任务创建成功:', task);
+    // Step 3: 获取处理结果并生成差异对比
+    try {
+      const result = await getPreprocessData(task.id);
+      if (result.list && result.list.length > 0) {
+        diffItems.value = result.list.slice(0, 10).map(item => ({
+          original: item.original_text,
+          cleaned: item.cleaned_text,
+        }));
+        segmentWords.value = result.list.flatMap(item => item.words || []).slice(0, 60);
+      }
+    } catch {
+      // 如果获取详细数据失败，用本地模拟
+      diffItems.value = originalTexts.value.slice(0, 5).map(text => ({
+        original: text,
+        cleaned: text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}]/gu, '')
+                      .replace(/http[s]?:\/\/[^\s]+/g, '')
+                      .replace(/#[^#\s]+/g, '')
+                      .trim(),
+      }));
+    }
+    updateStep(2);
     
-    clearInterval(progressTimer);
-    progress.value = 100;
-    
-    // 更新任务列表
+    // Step 4: 完成
     await loadPreprocessTasks();
+    updateStep(3);
     
     ElMessage.success(`预处理任务创建成功！处理了 ${task.processedCount} 条数据`);
-    
-    // 更新预览数据
-    compareProcessed.value = '数据已清洗并分词处理完成';
+    activePreview.value = 'compare';
     
   } catch (error: any) {
-    console.error('处理失败:', error);
-    clearInterval(progressTimer);
     ElMessage.warning('数据处理失败: ' + (error.message || '未知错误'));
   } finally {
     processing.value = false;
@@ -485,5 +578,135 @@ onMounted(() => {
   pre {
     margin: 0;
   }
+}
+
+// 进度步骤样式
+.progress-steps {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progress-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #909399;
+  transition: color 0.3s;
+  
+  &.done {
+    color: #67c23a;
+  }
+  
+  .step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #dcdfe6;
+    display: inline-block;
+  }
+  
+  .step-label {
+    font-size: 12px;
+  }
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.rotating {
+  animation: rotate 1s linear infinite;
+}
+
+// 差异对比样式
+.diff-list {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.diff-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid #ebeef5;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.diff-label {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #409eff;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.diff-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diff-original,
+.diff-cleaned {
+  padding: 8px 12px;
+  border-radius: 4px;
+  line-height: 1.8;
+  font-size: 14px;
+}
+
+.diff-original {
+  background: #fef0f0;
+  border-left: 3px solid #f56c6c;
+}
+
+.diff-cleaned {
+  background: #f0f9eb;
+  border-left: 3px solid #67c23a;
+}
+
+.diff-tag {
+  display: inline-block;
+  padding: 0 6px;
+  margin-right: 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  background: #f56c6c;
+  color: #fff;
+  
+  &.success {
+    background: #67c23a;
+  }
+}
+
+:deep(.diff-removed) {
+  color: #f56c6c;
+  text-decoration: line-through;
+  background: rgba(245, 108, 108, 0.1);
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
+:deep(.diff-converted) {
+  color: #409eff;
+  font-weight: bold;
+  background: rgba(64, 158, 255, 0.12);
+  padding: 0 2px;
+  border-radius: 2px;
+  border-bottom: 2px solid #409eff;
+  cursor: help;
 }
 </style>

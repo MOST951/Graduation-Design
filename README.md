@@ -1,9 +1,9 @@
-# 微博舆情情感分析系统
+﻿# 微博舆情情感分析系统
 
 > **项目类型**: 本科毕业设计  
 > **作者**: 罗森 | 学号: 2022407443  
 > **技术栈**: Flask + Spring Boot + Vue 3 + Spark + ChineseBERT + ECharts  
-> **核心创新**: 情感-热度双维度排序模型  
+> **核心创新**: 情感-热度三维度排序模型  
 > **部署环境**: Ubuntu 20.04 + Docker Compose v2 + 1Panel
 
 ---
@@ -82,7 +82,7 @@ bash deployment/scripts/health-check.sh
 
 | 后端 | 技术 | 端口 | 职责 |
 |------|------|------|------|
-| **backend-python** | Flask + Gunicorn | :5000 | 核心业务：爬虫、NLP 情感分析、双维度排序、数据可视化 |
+| **backend-python** | Flask + Gunicorn | :5000 | 核心业务：爬虫、NLP 情感分析、三维度排序、数据可视化 |
 | **web-backend** | Spring Boot | :8081 | 企业级功能：JWT 认证、Spark 调度、WebSocket 通信 |
 
 ```
@@ -108,7 +108,7 @@ bash deployment/scripts/health-check.sh
 
 ---
 
-## 🔥 核心创新点：情感-热度双维度排序模型
+## 🔥 核心创新点：情感-热度三维度排序模型
 
 | 公式编号 | 公式 | 说明 |
 |---------|------|------|
@@ -119,7 +119,7 @@ bash deployment/scripts/health-check.sh
 | 4-6 | `γ(t) = 2^(-Δt / H)` | 时间衰减因子，半衰期 H=12h |
 | 4-7 | `Score = ω₁·N(S) + ω₂·H_norm + ω₃·γ(t)` | 综合评分，ω₁=0.4, ω₂=0.4, ω₃=0.2 |
 
-- **级联情感分析准确率**: 88.6%
+- **级联情感分析准确率**: 86.2%
 
 ---
 
@@ -130,7 +130,7 @@ bash deployment/scripts/health-check.sh
 | 1 | 数据采集 | `/collection` | `DataCollection.vue` | 爬虫配置、采集速率图表、增量去重 |
 | 2 | 数据预处理 | `/preprocess` | `DataPreprocessEnhanced.vue` | 清洗规则、繁简转换、分词可视化 |
 | 3 | 情感分析 | `/sentiment` | `SentimentAnalysis.vue` | 词典+BERT 级联策略、批量分析 |
-| 4 | 双维度排序 | `/dual-dimension` | `DualDimensionAnalysis.vue` | 三维权重联动、散点/热力图 |
+| 4 | 三维度排序 | `/tri-dimension` | `TriDimensionAnalysis.vue` | 三维权重联动、散点/热力图 |
 | 5 | 实时监控 | `/realtime` | `RealTimeMonitor.vue` | 关键词订阅、舆情预警 |
 | 6 | 流水线管理 | `/pipeline` | `PipelineManager.vue` | 全链路编排、任务调度 |
 | 7 | 可视化展示 | `/visualization` | `VisualizationDashboard.vue` | 6 大仪表盘、图表导出 |
@@ -145,7 +145,7 @@ weibo-sentiment-analysis/
 ├── backend-python/                # Python 后端 (Flask :5000)
 │   ├── api/                       #   API 接口层 (15+ 蓝图)
 │   ├── services/                  #   业务服务层
-│   ├── spark/                     #   Spark 处理模块 + 双维度模型
+│   ├── spark/                     #   Spark 处理模块 + 三维度模型
 │   ├── crawler/                   #   微博爬虫
 │   ├── models/                    #   数据模型
 │   ├── resources/                 #   情感词典资源

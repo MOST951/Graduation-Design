@@ -1,0 +1,113 @@
+{
+  "dataset": {
+    "total_samples": 200,
+    "positive_samples": 100,
+    "negative_samples": 100
+  },
+  "cascade_config": {
+    "threshold": 0.7
+  },
+  "lexicon_only": {
+    "accuracy": 0.785,
+    "precision": {
+      "负面": 0.7209302325581395,
+      "正面": 0.9014084507042254
+    },
+    "recall": {
+      "负面": 0.93,
+      "正面": 0.64
+    },
+    "f1": {
+      "负面": 0.8122270742358079,
+      "正面": 0.7485380116959065
+    },
+    "macro_precision": 0.8111693416311825,
+    "macro_recall": 0.785,
+    "macro_f1": 0.7803825429658572,
+    "confusion_matrix": [
+      [
+        93,
+        7
+      ],
+      [
+        36,
+        64
+      ]
+    ],
+    "total_samples": 200,
+    "correct": 157,
+    "avg_time_ms": 3.3955624997906853
+  },
+  "bert_only": {
+    "accuracy": 0.91,
+    "precision": {
+      "负面": 0.91,
+      "正面": 0.91
+    },
+    "recall": {
+      "负面": 0.91,
+      "正面": 0.91
+    },
+    "f1": {
+      "负面": 0.91,
+      "正面": 0.91
+    },
+    "macro_precision": 0.91,
+    "macro_recall": 0.91,
+    "macro_f1": 0.91,
+    "confusion_matrix": [
+      [
+        91,
+        9
+      ],
+      [
+        9,
+        91
+      ]
+    ],
+    "total_samples": 200,
+    "correct": 182,
+    "avg_time_ms": 20.855820499818947
+  },
+  "cascade": {
+    "accuracy": 0.85,
+    "precision": {
+      "负面": 0.8240740740740741,
+      "正面": 0.8804347826086957
+    },
+    "recall": {
+      "负面": 0.89,
+      "正面": 0.81
+    },
+    "f1": {
+      "负面": 0.8557692307692307,
+      "正面": 0.84375
+    },
+    "macro_precision": 0.8522544283413849,
+    "macro_recall": 0.8500000000000001,
+    "macro_f1": 0.8497596153846154,
+    "confusion_matrix": [
+      [
+        89,
+        11
+      ],
+      [
+        19,
+        81
+      ]
+    ],
+    "total_samples": 200,
+    "correct": 170,
+    "avg_time_ms": 4.317562000032922,
+    "lexicon_path_ratio": 0.76,
+    "bert_path_ratio": 0.24,
+    "lexicon_path_accuracy": 0.8552631578947368,
+    "bert_path_accuracy": 0.8333333333333334,
+    "lexicon_path_samples": 152,
+    "bert_path_samples": 48
+  },
+  "verification": {
+    "cascade_accuracy_formula": "76.0% × 0.8553 + 24.0% × 0.8333 = 0.8500"
+  },
+  "timestamp": "2026-04-30 16:37:23"
+}

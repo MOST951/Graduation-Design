@@ -1,0 +1,62 @@
+[
+  {
+    "approach": "A_regular_udf",
+    "clean": 8.585907400003634,
+    "tokenize": 6.5661309999995865,
+    "sentiment": 6.9861683000053745,
+    "total": 22.138206700008595,
+    "rows": 9970,
+    "run": 1
+  },
+  {
+    "approach": "B_mapPartitions",
+    "clean": 5.15499660000205,
+    "tokenize": 7.236336300004041,
+    "sentiment": 5.641232499998296,
+    "total": 18.032565400004387,
+    "rows": 9970,
+    "run": 1
+  },
+  {
+    "approach": "C1_sql_native",
+    "clean": 2.749485000007553,
+    "rows": 9972,
+    "run": 1
+  },
+  {
+    "approach": "C2_sql_hybrid",
+    "clean": 5.0001588000159245,
+    "rows": 9970,
+    "run": 1
+  },
+  {
+    "approach": "A_regular_udf",
+    "clean": 6.619400600000517,
+    "tokenize": 6.572064900014084,
+    "sentiment": 6.569202899991069,
+    "total": 19.76066840000567,
+    "rows": 9970,
+    "run": 2
+  },
+  {
+    "approach": "B_mapPartitions",
+    "clean": 4.866154799994547,
+    "tokenize": 7.250056700024288,
+    "sentiment": 5.795382600015728,
+    "total": 17.911594100034563,
+    "rows": 9970,
+    "run": 2
+  },
+  {
+    "approach": "C1_sql_native",
+    "clean": 2.4291266000072937,
+    "rows": 9972,
+    "run": 2
+  },
+  {
+    "approach": "C2_sql_hybrid",
+    "clean": 5.089301999978488,
+    "rows": 9970,
+    "run": 2
+  }
+]

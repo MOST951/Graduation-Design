@@ -89,9 +89,12 @@ class SentimentResult:
 class SentimentModelConfig:
     """情感模型配置"""
     # 预训练模型名称
-    MODEL_NAME = "bert-base-chinese"
+    MODEL_NAME = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models', 'chinese-bert-wwm-ext'
+    )
     # 备选模型
     ALTERNATIVE_MODELS = [
+        "bert-base-chinese",
         "hfl/chinese-bert-wwm-ext",
         "uer/roberta-base-finetuned-chinanews-chinese",
         "IDEA-CCNL/Erlangshen-Roberta-110M-Sentiment",
@@ -187,9 +190,12 @@ class ChineseBERTSentimentAnalyzer:
         try:
             logger.info(f"正在加载模型: {self.model_name}")
             cache_dir = os.environ.get("TRANSFORMERS_CACHE", "./model_cache")
+            is_local = os.path.isdir(self.model_name)
+            load_kwargs = {"local_files_only": True} if is_local else {"cache_dir": cache_dir}
             
             # 尝试使用pipeline（更简单）
             try:
+                pipe_kwargs = {"cache_dir": cache_dir} if not is_local else {}
                 self.pipeline = pipeline(
                     "sentiment-analysis",
                     model=self.model_name,
@@ -197,18 +203,18 @@ class ChineseBERTSentimentAnalyzer:
                     device=0 if self.device == "cuda" else -1,
                     max_length=SentimentModelConfig.MAX_LENGTH,
                     truncation=True,
-                    model_kwargs={"cache_dir": cache_dir},
+                    model_kwargs=pipe_kwargs,
                 )
                 logger.info("Pipeline模式初始化成功")
             except Exception as e:
                 logger.warning(f"Pipeline初始化失败: {e}，尝试手动加载")
                 
                 # 手动加载模型
-                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, cache_dir=cache_dir)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, **load_kwargs)
                 self.model = AutoModelForSequenceClassification.from_pretrained(
                     self.model_name,
-                    num_labels=3,
-                    cache_dir=cache_dir,
+                    num_labels=2,
+                    **load_kwargs,
                 )
                 self.model.to(self.device)
                 self.model.eval()

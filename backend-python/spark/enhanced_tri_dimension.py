@@ -1,5 +1,5 @@
 """
-增强型情感-热度双维度排序模型
+增强型情感-热度三维度排序模型
 ==============================
 
 创新点：
@@ -27,7 +27,7 @@ import json
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('DualDimensionModel')
+logger = logging.getLogger('TriDimensionModel')
 
 # Spark导入
 try:
@@ -61,22 +61,22 @@ class SentimentPolarity(Enum):
 # ==================== 配置类 ====================
 
 @dataclass
-class EnhancedDualDimensionConfig:
-    """增强型双维度配置"""
+class EnhancedTriDimensionConfig:
+    """增强型三维度配置"""
     
-    # 基础权重（需满足总和为1）
-    sentiment_weight: float = 0.35
-    heat_weight: float = 0.35
-    timeliness_weight: float = 0.15
-    influence_weight: float = 0.15
+    # 基础权重（需满足总和为1）- 论文4.2.2
+    sentiment_weight: float = 0.4
+    heat_weight: float = 0.4
+    timeliness_weight: float = 0.2
+    influence_weight: float = 0.0
     
     # 热度计算参数
     repost_factor: float = 1.0
     comment_factor: float = 2.0
     like_factor: float = 1.0
     
-    # 时间衰减参数
-    decay_half_life_hours: float = 24.0
+    # 时间衰减参数 - 论文4.2.2 H=12
+    decay_half_life_hours: float = 12.0
     
     # 情感强度参数
     sentiment_amplify: float = 1.5
@@ -128,7 +128,7 @@ class WeiboScore:
     sentiment_intensity: float = 0.0
     
     # 综合得分
-    dual_score: float = 0.0
+    tri_score: float = 0.0
     rank: int = 0
     quadrant: str = ""
     
@@ -141,7 +141,7 @@ class RankingExplanation:
     """排序解释"""
     rank: int
     weibo_id: str
-    dual_score: float
+    tri_score: float
     quadrant: str
     
     # 得分分解
@@ -160,12 +160,12 @@ class RankingExplanation:
 
 # ==================== 核心模型 ====================
 
-class EnhancedDualDimensionModel:
+class EnhancedTriDimensionModel:
     """
-    增强型情感-热度双维度排序模型
+    增强型情感-热度三维度排序模型
     
     核心公式:
-    DualScore = α·S(sentiment) + β·H(heat) + γ·T(timeliness) + δ·I(influence)
+    TriScore = α·S(sentiment) + β·H(heat) + γ·T(timeliness) + δ·I(influence)
     
     其中：
     - S(): 情感强度评分函数，考虑极性和强度
@@ -175,8 +175,8 @@ class EnhancedDualDimensionModel:
     - α,β,γ,δ: 可配置权重，满足 α+β+γ+δ=1
     """
     
-    def __init__(self, config: EnhancedDualDimensionConfig = None):
-        self.config = config or EnhancedDualDimensionConfig()
+    def __init__(self, config: EnhancedTriDimensionConfig = None):
+        self.config = config or EnhancedTriDimensionConfig()
         self.config.validate_weights()
         
         # 统计信息
@@ -186,7 +186,7 @@ class EnhancedDualDimensionModel:
             'avg_scores': {},
         }
         
-        logger.info("EnhancedDualDimensionModel初始化完成")
+        logger.info("EnhancedTriDimensionModel初始化完成")
         logger.info(f"权重配置: sentiment={self.config.sentiment_weight:.2f}, "
                    f"heat={self.config.heat_weight:.2f}, "
                    f"timeliness={self.config.timeliness_weight:.2f}, "
@@ -278,11 +278,11 @@ class EnhancedDualDimensionModel:
         
         return followers_score
     
-    def calculate_dual_score(self, weibo: WeiboScore) -> float:
+    def calculate_tri_score(self, weibo: WeiboScore) -> float:
         """
-        计算双维度综合得分
+        计算三维度综合得分
         
-        DualScore = α·S + β·H_norm + γ·T + δ·I
+        TriScore = α·S + β·H_norm + γ·T + δ·I
         """
         # 计算各维度得分
         sentiment = self.calculate_sentiment_intensity(weibo.sentiment_score)
@@ -304,14 +304,14 @@ class EnhancedDualDimensionModel:
         weibo.influence_score = influence
         
         # 加权综合
-        dual_score = (
+        tri_score = (
             self.config.sentiment_weight * sentiment +
             self.config.heat_weight * heat_normalized +
             self.config.timeliness_weight * timeliness +
             self.config.influence_weight * influence
         )
         
-        return dual_score
+        return tri_score
     
     # ==================== 四象限分类 ====================
     
@@ -345,7 +345,7 @@ class EnhancedDualDimensionModel:
         top_k: int = None
     ) -> List[WeiboScore]:
         """
-        对微博列表进行双维度排序
+        对微博列表进行三维度排序
         
         Args:
             items: 微博数据列表
@@ -360,11 +360,11 @@ class EnhancedDualDimensionModel:
         
         # 计算每个item的得分
         for item in items:
-            item.dual_score = self.calculate_dual_score(item)
+            item.tri_score = self.calculate_tri_score(item)
             item.quadrant = self.classify_quadrant(item).value
         
         # 排序
-        sorted_items = sorted(items, key=lambda x: x.dual_score, reverse=True)
+        sorted_items = sorted(items, key=lambda x: x.tri_score, reverse=True)
         
         # 分配排名
         for i, item in enumerate(sorted_items):
@@ -409,7 +409,7 @@ class EnhancedDualDimensionModel:
         explanation = RankingExplanation(
             rank=weibo.rank,
             weibo_id=weibo.weibo_id,
-            dual_score=round(weibo.dual_score, 4),
+            tri_score=round(weibo.tri_score, 4),
             quadrant=weibo.quadrant,
             sentiment_contribution=round(sentiment_contribution, 4),
             heat_contribution=round(heat_contribution, 4),
@@ -443,7 +443,7 @@ class EnhancedDualDimensionModel:
         # 平均得分
         if items:
             self.stats['avg_scores'] = {
-                'dual_score': sum(i.dual_score for i in items) / len(items),
+                'tri_score': sum(i.tri_score for i in items) / len(items),
                 'heat_score': sum(i.heat_score for i in items) / len(items),
                 'sentiment_intensity': sum(i.sentiment_intensity for i in items) / len(items),
             }
@@ -455,9 +455,9 @@ class EnhancedDualDimensionModel:
 
 # ==================== Spark分布式处理器 ====================
 
-class SparkDualDimensionProcessor:
+class SparkTriDimensionProcessor:
     """
-    基于Spark的双维度排序处理器
+    基于Spark的三维度排序处理器
     
     支持大规模数据的分布式计算
     """
@@ -465,9 +465,9 @@ class SparkDualDimensionProcessor:
     def __init__(
         self, 
         spark: 'SparkSession' = None,
-        config: EnhancedDualDimensionConfig = None
+        config: EnhancedTriDimensionConfig = None
     ):
-        self.config = config or EnhancedDualDimensionConfig()
+        self.config = config or EnhancedTriDimensionConfig()
         self.config.validate_weights()
         
         if spark:
@@ -485,7 +485,7 @@ class SparkDualDimensionProcessor:
         reference_time: datetime = None
     ) -> 'DataFrame':
         """
-        处理DataFrame，计算双维度得分
+        处理DataFrame，计算三维度得分
         
         Args:
             df: 输入DataFrame，需包含以下列：
@@ -569,7 +569,7 @@ class SparkDualDimensionProcessor:
         
         # 5. 计算综合得分
         df = df.withColumn(
-            "dual_score",
+            "tri_score",
             config.sentiment_weight * F.col("sentiment_intensity") +
             config.heat_weight * F.col("heat_normalized") +
             config.timeliness_weight * F.col("timeliness_score") +
@@ -597,20 +597,20 @@ class SparkDualDimensionProcessor:
         )
         
         # 7. 添加排名
-        window = Window.orderBy(F.desc("dual_score"))
+        window = Window.orderBy(F.desc("tri_score"))
         df = df.withColumn("rank", F.row_number().over(window))
         
         return df
     
     def get_top_k(self, df: 'DataFrame', k: int) -> 'DataFrame':
         """获取Top-K结果"""
-        return df.orderBy(F.desc("dual_score")).limit(k)
+        return df.orderBy(F.desc("tri_score")).limit(k)
     
     def get_quadrant_stats(self, df: 'DataFrame') -> Dict:
         """获取四象限统计"""
         stats = df.groupBy("quadrant").agg(
             F.count("*").alias("count"),
-            F.avg("dual_score").alias("avg_score"),
+            F.avg("tri_score").alias("avg_score"),
             F.avg("sentiment_intensity").alias("avg_sentiment"),
             F.avg("heat_normalized").alias("avg_heat"),
         ).collect()
@@ -630,13 +630,13 @@ class SparkDualDimensionProcessor:
 
 def rank_weibo_enhanced(
     data: List[Dict],
-    sentiment_weight: float = 0.35,
-    heat_weight: float = 0.35,
-    timeliness_weight: float = 0.15,
-    influence_weight: float = 0.15
+    sentiment_weight: float = 0.4,
+    heat_weight: float = 0.4,
+    timeliness_weight: float = 0.2,
+    influence_weight: float = 0.0
 ) -> List[Dict]:
     """
-    增强型微博双维度排序
+    增强型微博三维度排序
     
     Args:
         data: 微博数据列表
@@ -648,14 +648,14 @@ def rank_weibo_enhanced(
     Returns:
         排序后的数据列表，包含得分和解释
     """
-    config = EnhancedDualDimensionConfig(
+    config = EnhancedTriDimensionConfig(
         sentiment_weight=sentiment_weight,
         heat_weight=heat_weight,
         timeliness_weight=timeliness_weight,
         influence_weight=influence_weight,
     )
     
-    model = EnhancedDualDimensionModel(config)
+    model = EnhancedTriDimensionModel(config)
     
     # 转换数据
     items = []
@@ -694,7 +694,7 @@ def rank_weibo_enhanced(
             'id': item.weibo_id,
             'text': item.text,
             'rank': item.rank,
-            'dual_score': round(item.dual_score, 4),
+            'tri_score': round(item.tri_score, 4),
             'quadrant': item.quadrant,
             'scores': {
                 'sentiment_intensity': round(item.sentiment_intensity, 4),
@@ -727,7 +727,7 @@ def rank_weibo_enhanced(
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("增强型情感-热度双维度排序模型测试")
+    print("增强型情感-热度三维度排序模型测试")
     print("=" * 60)
     
     # 测试数据
@@ -782,7 +782,7 @@ if __name__ == '__main__':
     
     for item in results:
         print(f"\n排名 {item['rank']}: {item['text'][:30]}...")
-        print(f"  综合得分: {item['dual_score']:.4f}")
+        print(f"  综合得分: {item['tri_score']:.4f}")
         print(f"  象限: {item['quadrant']}")
         print(f"  得分分解:")
         for name, value in item['contributions'].items():

@@ -1,5 +1,5 @@
 <template>
-  <div class="dual-dimension-module">
+  <div class="tri-dimension-module">
     <!-- 顶部操作栏 -->
     <div class="action-bar">
       <el-button-group>
@@ -30,7 +30,7 @@
         <!-- 论文公式卡片 -->
         <el-card shadow="hover" class="formula-card">
           <template #header>
-            <div class="card-hdr"><span>双维度排序公式</span><el-tag size="small" type="warning">公式4-7</el-tag></div>
+            <div class="card-hdr"><span>三维度排序公式</span><el-tag size="small" type="warning">公式4-7</el-tag></div>
           </template>
           <div class="formula-display">
             <div class="formula-tex">Score = ω₁·N(S) + ω₂·H<sub>norm</sub> + ω₃·γ(t)</div>
@@ -128,7 +128,7 @@
         <el-card shadow="hover">
           <template #header>
             <div class="chart-header">
-              <span>情感-热度双维度散点图</span>
+              <span>情感-热度三维度散点图</span>
               <el-radio-group v-model="chartMode" size="small">
                 <el-radio-button label="scatter">散点图</el-radio-button>
                 <el-radio-button label="heatmap">热力图</el-radio-button>
@@ -166,7 +166,7 @@
         <el-card shadow="hover">
           <template #header>
             <div class="rank-header">
-              <span>双维度排名 Top {{ rankList.length }}</span>
+              <span>三维度排名 Top {{ rankList.length }}</span>
               <el-select v-model="rankFilter" size="small" style="width: 100px">
                 <el-option label="全部" value="all" />
                 <el-option label="高情感高热" value="high_sentiment_high_heat" />
@@ -194,7 +194,7 @@
                   <el-tag :type="getSentimentType(item.sentiment?.polarity)" size="small">
                     {{ getSentimentLabel(item.sentiment?.polarity) }}
                   </el-tag>
-                  <span class="score">得分: {{ item.dual_score }}</span>
+                  <span class="score">得分: {{ item.tri_score }}</span>
                 </div>
               </div>
             </div>
@@ -210,8 +210,8 @@
           <el-descriptions-item label="排名">
             <el-tag type="primary">第 {{ selectedItem.rank }} 名</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="双维度得分">
-            <span class="highlight">{{ selectedItem.dual_score }}</span>
+          <el-descriptions-item label="三维度得分">
+            <span class="highlight">{{ selectedItem.tri_score }}</span>
           </el-descriptions-item>
           <el-descriptions-item label="情感极性">
             <el-tag :type="getSentimentType(selectedItem.sentiment?.polarity)">
@@ -492,7 +492,7 @@ const runAnalysis = async () => {
     }
     
     // 2. 转换为分析格式
-    // 热搜数据只有标题和热度值，我们需要基于此构建符合双维度模型的数据结构
+    // 热搜数据只有标题和热度值，我们需要基于此构建符合三维度模型的数据结构
     const analysisData = hotList.map((item: HotSearchItem) => {
       // 基于热度值估算互动数据 (仅作演示转换)
       const baseCount = Math.floor(item.hot_value / 100); 
@@ -517,10 +517,10 @@ const runAnalysis = async () => {
       };
     });
 
-    ElMessage.info(`获取到 ${analysisData.length} 条热搜，开始双维度分析...`);
+    ElMessage.info(`获取到 ${analysisData.length} 条热搜，开始三维度分析...`);
 
-    // 3. 调用后端双维度分析接口
-    const response = await apiClient.post('/weibo/rank/dual', {
+    // 3. 调用后端三维度分析接口
+    const response = await apiClient.post('/weibo/rank/tri', {
       data: analysisData,
       sentiment_weight: config.sentiment_weight,
       heat_weight: config.heat_weight,
@@ -539,7 +539,7 @@ const runAnalysis = async () => {
         // 映射得分到 0-100 区间用于展示
         x: Math.min(100, Math.max(0, item.heat.score * 100)), 
         y: Math.min(100, Math.max(0, (parseFloat(item.sentiment.score) + 1) * 50)),
-        value: parseFloat(item.dual_score) * 100,
+        value: parseFloat(item.tri_score) * 100,
         quadrant: item.quadrant,
         text: item.text
       }));
@@ -598,7 +598,7 @@ const generateMockData = () => {
   for (let i = 0; i < 100; i++) {
     data.push({
       id: `${i + 1}`,
-      text: `这是第${i + 1}条测试微博内容，用于展示双维度分析效果...`,
+      text: `这是第${i + 1}条测试微博内容，用于展示三维度分析效果...`,
       reposts_count: Math.floor(Math.random() * 10000),
       comments_count: Math.floor(Math.random() * 5000),
       attitudes_count: Math.floor(Math.random() * 20000),
@@ -623,7 +623,7 @@ const loadMockResults = () => {
       id: `${i + 1}`,
       text: `这是第${i + 1}条微博，情感${sentimentScore > 0 ? '正面' : '负面'}，热度${heatScore > 0.5 ? '高' : '低'}`,
       rank: i + 1,
-      dual_score: (0.5 * Math.abs(sentimentScore) + 0.5 * heatScore).toFixed(4),
+      tri_score: (0.5 * Math.abs(sentimentScore) + 0.5 * heatScore).toFixed(4),
       sentiment: {
         polarity: sentimentScore > 0.2 ? 'positive' : sentimentScore < -0.2 ? 'negative' : 'neutral',
         score: sentimentScore.toFixed(4),
@@ -650,7 +650,7 @@ const loadMockResults = () => {
     id: item.id,
     x: parseFloat(item.heat.score) * 10,
     y: (parseFloat(item.sentiment.score) + 1) * 50,
-    value: parseFloat(item.dual_score) * 100,
+    value: parseFloat(item.tri_score) * 100,
     quadrant: item.quadrant,
     text: item.text.slice(0, 30),
   }));
@@ -911,7 +911,7 @@ const recalculateTimeDecay = () => {
       const heatNormalized = parseFloat(item.heat?.score || 0);
       const timeDecay = item.heat.time_decay;
       
-      item.dual_score = (
+      item.tri_score = (
         config.sentiment_weight * sentimentNormalized +
         config.heat_weight * heatNormalized +
         config.timeliness_weight * timeDecay
@@ -920,7 +920,7 @@ const recalculateTimeDecay = () => {
   });
   
   // 
-  rankList.value.sort((a, b) => parseFloat(b.dual_score) - parseFloat(a.dual_score));
+  rankList.value.sort((a, b) => parseFloat(b.tri_score) - parseFloat(a.tri_score));
   rankList.value.forEach((item, index) => {
     item.rank = index + 1;
   });
@@ -1074,7 +1074,7 @@ const exportData = () => {
         '情感': getSentimentLabel(item.sentiment?.polarity),
         '情感得分': item.sentiment?.score,
         '热度得分': item.heat?.score,
-        '综合得分': item.dual_score,
+        '综合得分': item.tri_score,
         '象限': quadrantInfo[item.quadrant]?.label,
         '转发': item.interactions?.reposts,
         '评论': item.interactions?.comments,
@@ -1116,7 +1116,7 @@ const exportCSV = () => {
     getSentimentLabel(item.sentiment?.polarity),
     item.sentiment?.score,
     item.heat?.score,
-    item.dual_score,
+    item.tri_score,
     quadrantInfo[item.quadrant]?.label,
     item.interactions?.reposts,
     item.interactions?.comments,
@@ -1189,7 +1189,7 @@ onMounted(() => {
 <style scoped lang="scss">
 @use '@/styles/variables.scss' as *;
 
-.dual-dimension-module {
+.tri-dimension-module {
   padding: $spacing-md;
 }
 

@@ -45,7 +45,7 @@
                   <path d="M7 14l4-4 4 4 5-5" />
                 </svg>
               </div>
-              <span>情感-热度双维度分析</span>
+              <span>情感-热度三维度分析</span>
             </div>
             <div class="feature-item">
               <div class="feature-icon">

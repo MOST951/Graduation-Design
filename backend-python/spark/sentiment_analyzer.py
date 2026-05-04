@@ -153,6 +153,141 @@ class SentimentLexicon:
             
         return sentiment, round(score, 4)
 
+    # ---- 负面情绪 emoji/标记 (用于辅助判别) ----
+    NEG_EMOJI_MARKERS = {
+        '[泪]', '[衰]', '[抓狂]', '[怒]', '[哭]', '[失望]', '[囧]',
+        '[委屈]', '[悲伤]', '[崩溃]', '[汗]', '[困]', '[可怜]',
+        '[鄙视]', '[吐]', '[怒骂]', '[生病]', '[悲催]', '[泪奔]',
+        '[生气]', '[拜拜]',
+    }
+    POS_EMOJI_MARKERS = {
+        '[哈哈]', '[嘻嘻]', '[爱你]', '[心]', '[鼓掌]', '[赞]',
+        '[good]', '[给力]', '[威武]', '[偷笑]', '[花心]', '[太开心]',
+        '[耶]', '[微笑]', '[doge]', '[抱抱]', '[笑哈哈]', '[亲亲]',
+        '[害羞]', '[奥特曼]',
+    }
+    # 中性/无意义标记 (出现时既非正也非负)
+    NEUTRAL_EMOJI_MARKERS = {
+        '[思考]', '[疑问]', '[吃惊]', '[黑线]', '[晕]', '[挖鼻屎]',
+    }
+
+    # 噪声模式 (预编译正则)
+    _URL_RE = None
+    _MENTION_RE = None
+    _HASHTAG_RE = None
+    _EMOJI_BRACKET_RE = None
+
+    @classmethod
+    def _get_noise_patterns(cls):
+        import re
+        if cls._URL_RE is None:
+            cls._URL_RE = re.compile(r'https?://\S+|www\.\S+|\S+\.(?:com|cn|net|org)\S*')
+            cls._MENTION_RE = re.compile(r'@[\w\u4e00-\u9fff\-]+')
+            cls._HASHTAG_RE = re.compile(r'#[^#]+#')
+            cls._EMOJI_BRACKET_RE = re.compile(r'\[[^\[\]]{1,10}\]')
+        return cls._URL_RE, cls._MENTION_RE, cls._HASHTAG_RE, cls._EMOJI_BRACKET_RE
+
+    @classmethod
+    def analyze_3class(cls, text: str) -> Tuple[int, float, bool]:
+        """
+        三分类级联专用接口 (v3 — 严格规则版)
+
+        设计原则:
+          - 宁可漏判 (返回 high_confidence=False 让 BERT 处理),
+            也不要误判 (避免错误的词典直出)
+          - 规则按优先级排列, 命中即返回
+          - 目标: 词典直出路径准确率 ≥ 85%
+
+        Returns:
+            (label_id, confidence, high_confidence)
+        """
+        import re
+
+        if not text or not text.strip():
+            return 2, 0.95, True  # 空文本 → 中性
+
+        url_re, mention_re, hashtag_re, emoji_re = cls._get_noise_patterns()
+        text_low = text.lower()
+        stripped = text.strip()
+
+        # ---- 预处理: 剥离噪声 (URL / @ / #topic# / emoji 括号 / 数字标点) ----
+        cleaned = url_re.sub('', stripped)
+        cleaned = mention_re.sub('', cleaned)
+        cleaned = hashtag_re.sub('', cleaned)
+        cleaned_no_emoji = emoji_re.sub('', cleaned)
+        cleaned_semantic = re.sub(r'[\d\s\W_]+', '', cleaned_no_emoji, flags=re.UNICODE)
+        # cleaned_semantic 仅保留实义字符 (中文/英文字母)
+
+        # ---- 计数 ----
+        pos_count = sum(1 for w in cls.POSITIVE_WORDS if w in text_low)
+        neg_count = sum(1 for w in cls.NEGATIVE_WORDS if w in text_low)
+        pos_emoji = sum(1 for e in cls.POS_EMOJI_MARKERS if e in text)
+        neg_emoji = sum(1 for e in cls.NEG_EMOJI_MARKERS if e in text)
+
+        # 否定词
+        has_negation = any(p in text_low for p in
+                           ['不好', '不行', '不喜欢', '不爱', '不满', '不开心',
+                            '没用', '不值', '不是', '没有'])
+
+        total_pos = pos_count + pos_emoji
+        total_neg = neg_count + neg_emoji
+
+        # ================ 决策规则 (按优先级) ================
+
+        # Rule 0: 极短文本 (去噪后 < 2 实义字符) → 中性 (高置信, 真的无内容)
+        if len(cleaned_semantic) < 2:
+            return 2, 0.92, True
+
+        # Rule 1: 纯噪声文本 (只有 URL/@/# 或纯数字) → 中性
+        if len(cleaned_no_emoji.strip()) < 3 and total_pos == 0 and total_neg == 0:
+            return 2, 0.9, True
+
+        # Rule 2: 无情感词 → 不标高置信, 交给 BERT 判别
+        # (因为许多正/负文本使用的情感词不在词表中, 直接判中性会错)
+        # 例外: 去噪后语义内容 < 3 字 → 确实是纯噪声 → 中性高置信
+        if total_pos == 0 and total_neg == 0:
+            if len(cleaned_semantic) < 3:
+                return 2, 0.88, True
+            return 2, 0.5, False  # 其余全部交给 BERT
+
+        # Rule 3: 强正面 — 需 ≥3 正面信号 + 无负面 + 无否定 + 足够长度
+        if total_pos >= 3 and total_neg == 0 and not has_negation \
+                and len(cleaned_semantic) >= 4:
+            return 1, min(0.82 + 0.03 * total_pos, 0.97), True
+
+        # Rule 4: 强负面 — 需 ≥3 负面信号 + 无正面 + 无否定 + 足够长度
+        if total_neg >= 3 and total_pos == 0 and not has_negation \
+                and len(cleaned_semantic) >= 4:
+            return 0, min(0.82 + 0.03 * total_neg, 0.97), True
+
+        # Rule 5: 负面 emoji 密集 (≥3) 且无正面词 → 负面
+        if neg_emoji >= 3 and total_pos == 0:
+            return 0, 0.88, True
+
+        # Rule 6: 正面 emoji 密集 (≥3) 且无负面词 → 正面
+        if pos_emoji >= 3 and total_neg == 0 and not has_negation:
+            return 1, 0.88, True
+
+        # Rule 7: 2 正面词 + 同向 emoji 辅助 + 无负面 → 正面 (中等置信)
+        if pos_count >= 2 and neg_count == 0 and pos_emoji >= 1 \
+                and neg_emoji == 0 and not has_negation:
+            return 1, 0.83, True
+
+        # Rule 8: 2 负面词 + 同向 emoji 辅助 + 无正面 → 负面 (中等置信)
+        if neg_count >= 2 and pos_count == 0 and neg_emoji >= 1 \
+                and pos_emoji == 0 and not has_negation:
+            return 0, 0.83, True
+
+        # ================ 其他歧义情形 → BERT 处理 ================
+        # 给出试探性预测 (不标记高置信)
+        if total_pos > total_neg:
+            tentative = 1
+        elif total_neg > total_pos:
+            tentative = 0
+        else:
+            tentative = 2
+        return tentative, 0.45, False
+
 
 class SparkSentimentAnalyzer:
     """

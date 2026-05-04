@@ -2,9 +2,9 @@
 热点话题模块API
 ===============
 
-提供情感-热度双维度排序的热点话题接口
-核心创新点：composite_score = 0.6 * sentiment_score + 0.4 * popularity_score
-基于真实微博热搜数据
+提供情感-热度-时效三维度排序的热点话题接口
+核心公式(4-3): Score = ω₁×Intensity + ω₂×H_norm + ω₃×γ(Δt)
+其中 ω₁=0.4, ω₂=0.4, ω₃=0.2, γ(Δt)=2^(-Δt/H), H=12h
 """
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timedelta
@@ -332,28 +332,35 @@ def health_check():
     return jsonify({'code': 200, 'message': 'Topics service is running'})
 
 
-# ==================== 情感-热度双维度排序 API ====================
+# ==================== 情感-热度三维度排序 API ====================
 
-# 双维度排序配置
-DUAL_DIMENSION_CONFIG = {
-    'sentiment_weight': 0.6,      # 情感权重
-    'popularity_weight': 0.4,     # 热度权重
-    'time_decay_hours': 24.0,     # 时间衰减半衰期（小时）
+# 三维度排序配置 - 论文4.2.2
+TRI_DIMENSION_CONFIG = {
+    'sentiment_weight': 0.4,      # 情感强度权重 ω₁
+    'heat_weight': 0.4,           # 互动热度权重 ω₂
+    'timeliness_weight': 0.2,     # 时效性权重 ω₃
+    'decay_half_life_hours': 12.0,# 半衰期 H=12小时
 }
 
 
-def calculate_popularity_score(reposts: int, comments: int, likes: int, 
-                                timestamp: datetime) -> float:
+def calculate_popularity_score(reposts: int, comments: int, likes: int) -> float:
     """
-    计算传播热度得分
+    计算互动热度得分 H_norm
     
-    公式: popularity_score = log(1 + reposts + 2*comments + likes) * timeDecay
-    timeDecay = 1 / (1 + Δt/24h)
+    公式(4-5): H_raw = log10(1 + reposts + 2*comments + likes)
+                H_norm = H_raw / max_H_raw  (假设 max ≈ 11.5)
     """
-    # 原始热度值
     raw_popularity = math.log(1 + reposts + 2 * comments + likes)
+    normalized = min(1.0, raw_popularity / 11.5)
+    return normalized
+
+
+def calculate_time_decay(timestamp: datetime) -> float:
+    """
+    计算时效性衰减因子 γ(Δt)
     
-    # 时间衰减
+    公式(4-6): γ(Δt) = 2^(-Δt / H),  H = decay_half_life_hours
+    """
     now = datetime.now()
     if isinstance(timestamp, str):
         try:
@@ -361,34 +368,32 @@ def calculate_popularity_score(reposts: int, comments: int, likes: int,
         except:
             timestamp = now
     
-    time_diff_hours = (now - timestamp).total_seconds() / 3600
-    time_decay = 1.0 / (1.0 + time_diff_hours / DUAL_DIMENSION_CONFIG['time_decay_hours'])
-    
-    # 归一化到 0-1（假设最大热度 log(1+100000) ≈ 11.5）
-    normalized = min(1.0, (raw_popularity * time_decay) / 11.5)
-    
-    return normalized
+    time_diff_hours = max(0, (now - timestamp).total_seconds() / 3600)
+    half_life = TRI_DIMENSION_CONFIG['decay_half_life_hours']
+    return 2 ** (-time_diff_hours / half_life)
 
 
-def calculate_composite_score(sentiment_score: float, popularity_score: float) -> float:
+def calculate_composite_score(sentiment_score: float, popularity_score: float,
+                              time_decay: float = 1.0) -> float:
     """
-    计算双维度综合得分
+    计算三维度综合得分
     
-    公式: composite_score = 0.6 * |sentiment_score| + 0.4 * popularity_score
+    公式(4-3): Score = ω₁×Intensity + ω₂×H_norm + ω₃×γ(Δt)
     """
-    sentiment_intensity = abs(sentiment_score)
+    sentiment_intensity = (abs(sentiment_score) + 1) / 2
     
     composite = (
-        DUAL_DIMENSION_CONFIG['sentiment_weight'] * sentiment_intensity +
-        DUAL_DIMENSION_CONFIG['popularity_weight'] * popularity_score
+        TRI_DIMENSION_CONFIG['sentiment_weight'] * sentiment_intensity +
+        TRI_DIMENSION_CONFIG['heat_weight'] * popularity_score +
+        TRI_DIMENSION_CONFIG['timeliness_weight'] * time_decay
     )
     
     return round(composite, 4)
 
 
-def rank_topics_dual_dimension(topics: List[Dict]) -> List[Dict]:
+def rank_topics_tri_dimension(topics: List[Dict]) -> List[Dict]:
     """
-    对话题列表进行双维度排序
+    对话题列表进行三维度排序
     """
     for topic in topics:
         # 获取互动数据
@@ -399,8 +404,9 @@ def rank_topics_dual_dimension(topics: List[Dict]) -> List[Dict]:
         sentiment = topic.get('sentiment_score', 0.0)
         
         # 计算得分
-        popularity = calculate_popularity_score(reposts, comments, likes, timestamp)
-        composite = calculate_composite_score(sentiment, popularity)
+        popularity = calculate_popularity_score(reposts, comments, likes)
+        time_decay = calculate_time_decay(timestamp)
+        composite = calculate_composite_score(sentiment, popularity, time_decay)
         
         # 添加得分字段
         topic['popularity_score'] = round(popularity, 4)
@@ -419,7 +425,7 @@ def rank_topics_dual_dimension(topics: List[Dict]) -> List[Dict]:
 @topics_bp.route('/ranked', methods=['GET'])
 def get_ranked_topics():
     """
-    获取情感-热度双维度排序后的热点话题
+    获取情感-热度三维度排序后的热点话题
     
     Response:
     [
@@ -440,8 +446,8 @@ def get_ranked_topics():
         if not raw_topics:
             raw_topics = generate_mock_topics()
         
-        # 双维度排序
-        ranked_topics = rank_topics_dual_dimension(raw_topics)
+        # 三维度排序
+        ranked_topics = rank_topics_tri_dimension(raw_topics)
         
         # 格式化输出
         result = []
@@ -520,34 +526,39 @@ def generate_mock_topics() -> List[Dict]:
     return mock_data
 
 
-@topics_bp.route('/dual-dimension/config', methods=['GET', 'POST'])
-def dual_dimension_config():
-    """获取或更新双维度排序配置"""
-    global DUAL_DIMENSION_CONFIG
+@topics_bp.route('/tri-dimension/config', methods=['GET', 'POST'])
+def tri_dimension_config():
+    """获取或更新三维度排序配置"""
+    global TRI_DIMENSION_CONFIG
     
     if request.method == 'GET':
         return jsonify({
             'code': 200,
-            'data': DUAL_DIMENSION_CONFIG
+            'data': TRI_DIMENSION_CONFIG
         })
     
     # POST: 更新配置
     data = request.get_json()
     if 'sentiment_weight' in data:
-        DUAL_DIMENSION_CONFIG['sentiment_weight'] = float(data['sentiment_weight'])
-    if 'popularity_weight' in data:
-        DUAL_DIMENSION_CONFIG['popularity_weight'] = float(data['popularity_weight'])
-    if 'time_decay_hours' in data:
-        DUAL_DIMENSION_CONFIG['time_decay_hours'] = float(data['time_decay_hours'])
+        TRI_DIMENSION_CONFIG['sentiment_weight'] = float(data['sentiment_weight'])
+    if 'heat_weight' in data:
+        TRI_DIMENSION_CONFIG['heat_weight'] = float(data['heat_weight'])
+    if 'timeliness_weight' in data:
+        TRI_DIMENSION_CONFIG['timeliness_weight'] = float(data['timeliness_weight'])
+    if 'decay_half_life_hours' in data:
+        TRI_DIMENSION_CONFIG['decay_half_life_hours'] = float(data['decay_half_life_hours'])
     
     # 确保权重和为1
-    total = DUAL_DIMENSION_CONFIG['sentiment_weight'] + DUAL_DIMENSION_CONFIG['popularity_weight']
+    total = (TRI_DIMENSION_CONFIG['sentiment_weight'] +
+             TRI_DIMENSION_CONFIG['heat_weight'] +
+             TRI_DIMENSION_CONFIG['timeliness_weight'])
     if abs(total - 1.0) > 0.001:
-        DUAL_DIMENSION_CONFIG['sentiment_weight'] /= total
-        DUAL_DIMENSION_CONFIG['popularity_weight'] /= total
+        TRI_DIMENSION_CONFIG['sentiment_weight'] /= total
+        TRI_DIMENSION_CONFIG['heat_weight'] /= total
+        TRI_DIMENSION_CONFIG['timeliness_weight'] /= total
     
     return jsonify({
         'code': 200,
         'message': '配置更新成功',
-        'data': DUAL_DIMENSION_CONFIG
+        'data': TRI_DIMENSION_CONFIG
     })

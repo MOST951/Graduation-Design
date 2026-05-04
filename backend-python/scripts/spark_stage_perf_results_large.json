@@ -1,0 +1,146 @@
+[
+  {
+    "mode": "baseline",
+    "run": 1,
+    "data_size": 50000,
+    "input_rows": 50000,
+    "output_rows": 49660,
+    "data_cleaning_seconds": 10.977498199994443,
+    "tokenization_seconds": 10.340129200019874,
+    "feature_extraction_seconds": 35.52754430001369,
+    "sentiment_analysis_seconds": 11.629974800016498,
+    "total_seconds": 78.92759450001176,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "false",
+      "spark.sql.adaptive.coalescePartitions.enabled": "false",
+      "spark.serializer": "org.apache.spark.serializer.JavaSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "-1"
+    }
+  },
+  {
+    "mode": "baseline",
+    "run": 2,
+    "data_size": 50000,
+    "input_rows": 50000,
+    "output_rows": 49660,
+    "data_cleaning_seconds": 10.818574600009015,
+    "tokenization_seconds": 10.598819599981653,
+    "feature_extraction_seconds": 34.910250899993116,
+    "sentiment_analysis_seconds": 10.450756800011732,
+    "total_seconds": 77.97380129998783,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "false",
+      "spark.sql.adaptive.coalescePartitions.enabled": "false",
+      "spark.serializer": "org.apache.spark.serializer.JavaSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "-1"
+    }
+  },
+  {
+    "mode": "optimized",
+    "run": 1,
+    "data_size": 50000,
+    "input_rows": 50000,
+    "output_rows": 49660,
+    "data_cleaning_seconds": 10.330115600023419,
+    "tokenization_seconds": 10.06772349998937,
+    "feature_extraction_seconds": 29.11644690000685,
+    "sentiment_analysis_seconds": 10.643480099999579,
+    "total_seconds": 71.05987349999486,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "true",
+      "spark.sql.adaptive.coalescePartitions.enabled": "true",
+      "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "10485760"
+    }
+  },
+  {
+    "mode": "optimized",
+    "run": 2,
+    "data_size": 50000,
+    "input_rows": 50000,
+    "output_rows": 49660,
+    "data_cleaning_seconds": 10.113256299984641,
+    "tokenization_seconds": 9.843249099998502,
+    "feature_extraction_seconds": 29.679149800009327,
+    "sentiment_analysis_seconds": 10.539421699999366,
+    "total_seconds": 70.55394390001311,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "true",
+      "spark.sql.adaptive.coalescePartitions.enabled": "true",
+      "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "10485760"
+    }
+  },
+  {
+    "mode": "baseline",
+    "run": 1,
+    "data_size": 99999,
+    "input_rows": 99999,
+    "output_rows": 99175,
+    "data_cleaning_seconds": 11.170136699976865,
+    "tokenization_seconds": 11.083050299988827,
+    "feature_extraction_seconds": 41.5538676000142,
+    "sentiment_analysis_seconds": 12.059107499982929,
+    "total_seconds": 86.99049840000225,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "false",
+      "spark.sql.adaptive.coalescePartitions.enabled": "false",
+      "spark.serializer": "org.apache.spark.serializer.JavaSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "-1"
+    }
+  },
+  {
+    "mode": "baseline",
+    "run": 2,
+    "data_size": 99999,
+    "input_rows": 99999,
+    "output_rows": 99175,
+    "data_cleaning_seconds": 11.315385199995944,
+    "tokenization_seconds": 11.123724700009916,
+    "feature_extraction_seconds": 42.46632179999142,
+    "sentiment_analysis_seconds": 10.933429899974726,
+    "total_seconds": 86.84367820000625,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "false",
+      "spark.sql.adaptive.coalescePartitions.enabled": "false",
+      "spark.serializer": "org.apache.spark.serializer.JavaSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "-1"
+    }
+  },
+  {
+    "mode": "optimized",
+    "run": 1,
+    "data_size": 99999,
+    "input_rows": 99999,
+    "output_rows": 99175,
+    "data_cleaning_seconds": 11.230042100010905,
+    "tokenization_seconds": 11.68796220002696,
+    "feature_extraction_seconds": 38.283037599991076,
+    "sentiment_analysis_seconds": 11.190608100005193,
+    "total_seconds": 83.40370450000046,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "true",
+      "spark.sql.adaptive.coalescePartitions.enabled": "true",
+      "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "10485760"
+    }
+  },
+  {
+    "mode": "optimized",
+    "run": 2,
+    "data_size": 99999,
+    "input_rows": 99999,
+    "output_rows": 99175,
+    "data_cleaning_seconds": 11.293850499991095,
+    "tokenization_seconds": 11.749242599995341,
+    "feature_extraction_seconds": 39.08536170001025,
+    "sentiment_analysis_seconds": 11.3866326000134,
+    "total_seconds": 84.62198570001055,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "true",
+      "spark.sql.adaptive.coalescePartitions.enabled": "true",
+      "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "10485760"
+    }
+  }
+]

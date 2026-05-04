@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 
 # Import config classes
-from config import DatabaseConfig, SparkConfig, EmailConfig, SystemConfig
+from config import DatabaseConfig, SparkConfig, SystemConfig
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 logger = logging.getLogger(__name__)
@@ -31,8 +31,21 @@ def require_admin(f):
     """Decorator to require admin privileges"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Get user from session/token (simplified for demo)
-        user_role = request.headers.get('X-User-Role', 'user')
+        # 1. 优先从前端发送的 X-User-Role header 获取角色
+        user_role = request.headers.get('X-User-Role', '')
+
+        # 2. 若 header 中无角色信息，尝试从 Bearer token 解析
+        #    mock token 格式: "token_admin_<timestamp>" / "mock-token-<timestamp>"
+        if not user_role:
+            auth_header = request.headers.get('Authorization', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]
+                if token.startswith('token_admin') or token.startswith('mock-token'):
+                    # mock 登录 token，从 localStorage 的 userRole 获取（前端应传递）
+                    # 兜底：token 中包含 'admin' 视为管理员
+                    if 'admin' in token:
+                        user_role = 'admin'
+
         if user_role != 'admin':
             return jsonify({
                 'code': 403,
@@ -323,6 +336,46 @@ def restart_spark_cluster():
             'message': f'Failed to restart Spark cluster: {str(e)}'
         }), 500
 
+@admin_bp.route('/spark/restart-internal', methods=['POST'])
+@log_admin_operation('restart_spark_internal')
+def restart_spark_internal():
+    """Internal Spark restart — localhost only, no auth required (for scripts)"""
+    remote = request.remote_addr
+    if remote not in ('127.0.0.1', '::1', 'localhost'):
+        return jsonify({'code': 403, 'message': 'Internal endpoint: localhost only'}), 403
+
+    confirm = request.json.get('confirm', False) if request.json else False
+    if not confirm:
+        return jsonify({'code': 400, 'message': 'Confirmation required'}), 400
+
+    def restart_spark():
+        try:
+            script_path = Path(__file__).parent.parent / 'scripts' / 'restart_spark.sh'
+            if script_path.exists():
+                result = subprocess.run(['bash', str(script_path)],
+                                        capture_output=True, text=True, timeout=60)
+                if result.returncode == 0:
+                    logger.info("Spark cluster restarted successfully (internal)")
+                else:
+                    logger.error(f"Spark restart failed: {result.stderr}")
+            else:
+                logger.warning("Spark restart script not found, simulating restart")
+                time.sleep(2)
+        except subprocess.TimeoutExpired:
+            logger.error("Spark restart timed out")
+        except Exception as e:
+            logger.error(f"Spark restart error: {e}")
+
+    thread = threading.Thread(target=restart_spark)
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({
+        'code': 200,
+        'message': 'Spark cluster restart initiated (internal).',
+        'status': 'restarting'
+    })
+
 @admin_bp.route('/logs/stream', methods=['GET'])
 @require_admin
 def stream_logs():
@@ -522,3 +575,167 @@ def update_user_role(user_id):
             'code': 500,
             'message': f'Failed to update user role: {str(e)}'
         }), 500
+
+
+# ==================== Email 配置 ====================
+
+# 内存中的邮件配置（生产环境应持久化到数据库）
+_email_config = {
+    'smtp_host': os.getenv('SMTP_HOST', ''),
+    'smtp_port': int(os.getenv('SMTP_PORT', '465')),
+    'smtp_user': os.getenv('SMTP_USER', ''),
+    'smtp_password': '',
+    'sender_name': os.getenv('SMTP_SENDER_NAME', '微博情感分析系统'),
+    'use_ssl': True,
+}
+
+@admin_bp.route('/config/email', methods=['GET'])
+@require_admin
+@log_admin_operation('get_email_config')
+def get_email_config():
+    """获取邮件配置（密码脱敏）"""
+    try:
+        safe = dict(_email_config)
+        if safe.get('smtp_password'):
+            safe['smtp_password'] = '******'
+        return jsonify({'code': 200, 'data': safe})
+    except Exception as e:
+        logger.error(f"Failed to get email config: {e}")
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+@admin_bp.route('/config/email', methods=['PUT'])
+@require_admin
+@log_admin_operation('update_email_config')
+def update_email_config():
+    """更新邮件配置"""
+    try:
+        data = request.json or {}
+        for key in ('smtp_host', 'smtp_port', 'smtp_user', 'sender_name', 'use_ssl'):
+            if key in data:
+                _email_config[key] = data[key]
+        # 密码仅在非脱敏值时更新
+        if data.get('smtp_password') and data['smtp_password'] != '******':
+            _email_config['smtp_password'] = data['smtp_password']
+        logger.info("Email configuration updated")
+        return jsonify({'code': 200, 'message': 'Email configuration saved'})
+    except Exception as e:
+        logger.error(f"Failed to update email config: {e}")
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+@admin_bp.route('/config/email/test', methods=['POST'])
+@require_admin
+@log_admin_operation('test_email')
+def test_email():
+    """测试邮件发送"""
+    try:
+        data = request.json or {}
+        to_addr = data.get('to', '')
+        if not to_addr:
+            return jsonify({'code': 400, 'message': '收件地址不能为空'}), 400
+
+        # 尝试发送测试邮件
+        import smtplib
+        from email.mime.text import MIMEText
+
+        host = _email_config.get('smtp_host', '')
+        if not host:
+            return jsonify({
+                'code': 200,
+                'message': '邮件服务未配置 SMTP 主机，跳过发送',
+                'data': {'sent': False}
+            })
+
+        msg = MIMEText(data.get('message', 'Test email'), 'plain', 'utf-8')
+        msg['Subject'] = data.get('subject', 'Test')
+        msg['From'] = _email_config.get('smtp_user', '')
+        msg['To'] = to_addr
+
+        if _email_config.get('use_ssl'):
+            server = smtplib.SMTP_SSL(host, _email_config.get('smtp_port', 465), timeout=10)
+        else:
+            server = smtplib.SMTP(host, _email_config.get('smtp_port', 25), timeout=10)
+        server.login(_email_config['smtp_user'], _email_config['smtp_password'])
+        server.sendmail(msg['From'], [to_addr], msg.as_string())
+        server.quit()
+
+        return jsonify({'code': 200, 'message': '测试邮件发送成功', 'data': {'sent': True}})
+    except Exception as e:
+        logger.error(f"Test email failed: {e}")
+        return jsonify({'code': 200, 'message': f'发送失败: {e}', 'data': {'sent': False}})
+
+
+# ==================== System 参数配置 ====================
+
+_system_params = {
+    'session_timeout': int(os.getenv('SESSION_TIMEOUT', '120')),
+    'data_retention': int(os.getenv('DATA_RETENTION', '30')),
+    'max_crawl_tasks': int(os.getenv('MAX_CRAWL_TASKS', '5')),
+    'auto_analysis': True,
+    'log_level': os.getenv('LOG_LEVEL', 'INFO'),
+}
+
+@admin_bp.route('/config/system', methods=['GET'])
+@require_admin
+@log_admin_operation('get_system_config')
+def get_system_config():
+    """获取系统参数配置"""
+    try:
+        return jsonify({'code': 200, 'data': _system_params})
+    except Exception as e:
+        logger.error(f"Failed to get system config: {e}")
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+@admin_bp.route('/config/system', methods=['PUT'])
+@require_admin
+@log_admin_operation('update_system_config')
+def update_system_config():
+    """更新系统参数配置"""
+    try:
+        data = request.json or {}
+        for key in _system_params:
+            if key in data:
+                _system_params[key] = data[key]
+        logger.info(f"System config updated: {data}")
+        return jsonify({'code': 200, 'message': 'System parameters saved'})
+    except Exception as e:
+        logger.error(f"Failed to update system config: {e}")
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+# ==================== 数据库连接测试 ====================
+
+@admin_bp.route('/config/database/test', methods=['POST'])
+@require_admin
+@log_admin_operation('test_database_connection')
+def test_database_connection():
+    """测试数据库连接"""
+    try:
+        data = request.json or {}
+        host = data.get('host', 'localhost')
+        port = int(data.get('port', 3306))
+        db_name = data.get('database', data.get('db_name', ''))
+        user = data.get('user', data.get('username', 'root'))
+        password = data.get('password', '')
+
+        import pymysql
+        start = time.time()
+        conn = pymysql.connect(
+            host=host, port=port, user=user,
+            password=password, database=db_name or None,
+            connect_timeout=5
+        )
+        latency_ms = round((time.time() - start) * 1000, 2)
+        conn.close()
+
+        return jsonify({
+            'code': 200,
+            'message': '数据库连接成功',
+            'data': {'connected': True, 'latency_ms': latency_ms}
+        })
+    except Exception as e:
+        logger.error(f"Database connection test failed: {e}")
+        return jsonify({
+            'code': 200,
+            'message': f'连接失败: {e}',
+            'data': {'connected': False, 'error': str(e)}
+        })

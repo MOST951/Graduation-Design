@@ -44,7 +44,10 @@
       
       <el-button-group size="small">
         <el-button :icon="Plus" type="primary" @click="addChart">添加图表</el-button>
+        <el-button type="warning" plain @click="addNetworkGraph">传播网络</el-button>
+        <el-button type="success" plain @click="showFullscreenWordcloud = true">全屏词云</el-button>
         <el-button :icon="Download" @click="exportDashboard">导出</el-button>
+        <el-button @click="exportToPDF">PDF导出</el-button>
         <el-button :icon="Share" @click="shareDashboard">分享</el-button>
       </el-button-group>
       
@@ -676,14 +679,26 @@
     >
       <LinkageVisualEditor style="height: calc(100vh - 120px)" />
     </el-dialog>
+    
+    <!-- 全屏词云对话框 -->
+    <el-dialog v-model="showFullscreenWordcloud" title="全屏词云" fullscreen :show-close="true">
+      <div ref="fullscreenWordcloudRef" style="width: 100%; height: calc(100vh - 100px)"></div>
+    </el-dialog>
+    
+    <!-- 传播网络图对话框 -->
+    <el-dialog v-model="showNetworkGraph" title="传播关系网络图" width="90%" :show-close="true">
+      <div ref="networkGraphRef" style="width: 100%; height: 600px"></div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, markRaw } from 'vue';
+import { ref, computed, onMounted, onUnmounted, markRaw, watch, nextTick } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import * as echarts from 'echarts';
+import 'echarts-wordcloud';
 import {
-  FolderOpened, DocumentAdd, Files, View, Download, Share,
+  FolderOpened, DocumentAdd, Files, View, Download, Share, Plus,
   RefreshLeft, RefreshRight, Delete, Search, Lock, Unlock,
   Top, Bottom, CaretTop, CaretBottom, CopyDocument, Hide, Grid,
   DArrowLeft, DArrowRight, Connection,
@@ -1122,6 +1137,156 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
+// ==================== 新增功能 ====================
+const showFullscreenWordcloud = ref(false);
+const showNetworkGraph = ref(false);
+const fullscreenWordcloudRef = ref<HTMLElement>();
+const networkGraphRef = ref<HTMLElement>();
+let fullscreenWC: echarts.ECharts | null = null;
+let networkChart: echarts.ECharts | null = null;
+
+// 添加传播网络图
+const addNetworkGraph = () => {
+  showNetworkGraph.value = true;
+};
+
+// 全屏词云渲染
+watch(showFullscreenWordcloud, (val) => {
+  if (val) {
+    nextTick(() => {
+      if (!fullscreenWordcloudRef.value) return;
+      if (fullscreenWC) fullscreenWC.dispose();
+      fullscreenWC = echarts.init(fullscreenWordcloudRef.value);
+      const words = Array.from({ length: 60 }, (_, i) => ({
+        name: ['微博', '热搜', '话题', '情感', '正面', '负面', '中性', '传播', '热度', '趋势',
+               '舆情', '分析', '网络', '数据', '用户', '评论', '转发', '点赞', '关注', '话题榜',
+               '实时', '监控', '预警', '排名', '可视化', '词云', '图表', '统计', '深度', '学习'][i % 30],
+        value: Math.floor(Math.random() * 800 + 100),
+      }));
+      fullscreenWC.setOption({
+        tooltip: { show: true },
+        series: [{
+          type: 'wordCloud', shape: 'circle',
+          left: 'center', top: 'center', width: '95%', height: '95%',
+          sizeRange: [18, 120], rotationRange: [-45, 45], gridSize: 12,
+          textStyle: {
+            fontFamily: 'PingFang SC, Microsoft YaHei',
+            fontWeight: 'bold',
+            color: () => {
+              const hue = Math.floor(Math.random() * 360);
+              return `hsl(${hue}, 70%, 50%)`;
+            },
+          },
+          data: words,
+        }],
+      });
+    });
+  }
+});
+
+// 传播网络图渲染
+watch(showNetworkGraph, (val) => {
+  if (val) {
+    nextTick(() => {
+      if (!networkGraphRef.value) return;
+      if (networkChart) networkChart.dispose();
+      networkChart = echarts.init(networkGraphRef.value);
+
+      // 情感标签映射
+      const sentimentLabels = ['正面', '中性', '负面'] as const;
+      const sentimentColors: Record<string, string> = { '正面': '#67C23A', '负面': '#F56C6C', '中性': '#909399' };
+
+      // 模拟节点数据：每个节点携带转发量、情感倾向、摘要
+      const nodes = Array.from({ length: 30 }, (_, i) => {
+        const repostCount = i === 0 ? 50000 : Math.floor(Math.random() * 10000);
+        const sentiment = i === 0 ? '负面' : sentimentLabels[Math.floor(Math.random() * 3)];
+        const content = i === 0
+          ? '原创微博内容：关于某热点事件的深度分析讨论，引发大量网友关注和转发...'
+          : `用户${i}的转发评论：这条微博说得很有道理，值得关注和思考讨论...`;
+        const nodeSize = Math.max(10, Math.min(60, Math.log10(1 + repostCount) * 15));
+        return {
+          id: String(i),
+          name: i === 0 ? '源头博主' : `用户${i}`,
+          symbolSize: nodeSize,
+          category: sentiment === '正面' ? 0 : sentiment === '负面' ? 1 : 2,
+          itemStyle: { color: sentimentColors[sentiment] },
+          // 附加数据用于 tooltip
+          repostCount,
+          sentiment,
+          content,
+        };
+      });
+
+      const links: { source: string; target: string }[] = [];
+      for (let i = 1; i < 30; i++) {
+        const source = i < 6 ? '0' : String(Math.floor(Math.random() * Math.min(i, 10)));
+        links.push({ source, target: String(i) });
+      }
+
+      networkChart.setOption({
+        title: { text: '微博传播关系网络', subtext: '节点颜色=情感倾向 · 节点大小=转发量', left: 'center' },
+        tooltip: {
+          formatter: (p: any) => {
+            const d = p.data;
+            if (!d || !d.name) return '';
+            const excerpt = d.content ? d.content.substring(0, 50) + (d.content.length > 50 ? '...' : '') : '';
+            return `<b>${d.name}</b><br/>`
+              + (excerpt ? `摘要：${excerpt}<br/>` : '')
+              + `转发量：${(d.repostCount ?? 0).toLocaleString()}<br/>`
+              + `情感：<span style="color:${sentimentColors[d.sentiment] || '#909399'};font-weight:bold">${d.sentiment || '-'}</span>`;
+          },
+        },
+        legend: { data: ['正面', '负面', '中性'], bottom: 10 },
+        series: [{
+          type: 'graph', layout: 'force',
+          roam: true, draggable: true,
+          categories: [
+            { name: '正面', itemStyle: { color: '#67C23A' } },
+            { name: '负面', itemStyle: { color: '#F56C6C' } },
+            { name: '中性', itemStyle: { color: '#909399' } },
+          ],
+          force: { repulsion: 200, gravity: 0.1, edgeLength: [80, 200] },
+          data: nodes,
+          links,
+          lineStyle: { color: 'source', curveness: 0.3, opacity: 0.6 },
+          label: { show: true, position: 'right', fontSize: 10 },
+          emphasis: { focus: 'adjacency', lineStyle: { width: 4 } },
+        }],
+      });
+    });
+  }
+});
+
+// PDF导出
+const exportToPDF = async () => {
+  ElMessage.info('正在生成PDF...');
+  try {
+    const { default: html2canvas } = await import('html2canvas');
+    const canvas = await html2canvas(document.querySelector('.visualization-module') as HTMLElement, {
+      scale: 2, useCORS: true, logging: false,
+    });
+    
+    const imgData = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = imgData;
+    link.download = `可视化大屏_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.png`;
+    link.click();
+    ElMessage.success('导出成功（PNG高清格式）');
+  } catch {
+    ElMessage.warning('导出失败，请确保html2canvas依赖已安装');
+  }
+};
+
+// Toolbar placeholder functions referenced in template
+const selectedChartType = ref('bar');
+const selectedDataSource = ref('sentiment');
+const dateRange = ref<[Date, Date] | null>(null);
+const showPropertyPanel = ref(true);
+const layout = ref([]);
+const addChart = () => store.addComponent('bar-chart', { x: 100, y: 100 });
+const exportDashboard = () => handleExport();
+const shareDashboard = () => handleShare();
+
 onMounted(() => {
   store.initialize();
   document.addEventListener('keydown', handleKeyDown);
@@ -1129,6 +1294,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown);
+  fullscreenWC?.dispose();
+  networkChart?.dispose();
 });
 </script>
 

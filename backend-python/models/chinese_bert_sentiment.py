@@ -85,8 +85,10 @@ except ImportError:
 @dataclass
 class ModelConfig:
     """模型配置"""
-    model_name: str = "hfl/chinese-bert-wwm-ext"
-    num_labels: int = 3  # positive, neutral, negative
+    model_name: str = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models', 'chinese-bert-wwm-ext'
+    )
+    num_labels: int = 3  # 0=negative, 1=positive, 2=neutral (三分类)
     max_length: int = 128
     dropout_rate: float = 0.1
     hidden_size: int = 768
@@ -94,13 +96,13 @@ class ModelConfig:
     # 标签映射
     label2id: Dict[str, int] = field(default_factory=lambda: {
         'negative': 0,
-        'neutral': 1,
-        'positive': 2
+        'positive': 1,
+        'neutral': 2,
     })
     id2label: Dict[int, str] = field(default_factory=lambda: {
         0: 'negative',
-        1: 'neutral',
-        2: 'positive'
+        1: 'positive',
+        2: 'neutral',
     })
 
 
@@ -564,8 +566,12 @@ class ChineseBertSentimentModel:
         logger.info(f"使用设备: {self.device}")
         
         # 加载分词器
-        cache_dir = os.environ.get("TRANSFORMERS_CACHE", "./model_cache")
-        self.tokenizer = BertTokenizer.from_pretrained(self.model_config.model_name, cache_dir=cache_dir)
+        is_local = os.path.isdir(self.model_config.model_name)
+        load_kwargs = {"local_files_only": True} if is_local else {
+            "cache_dir": os.environ.get("TRANSFORMERS_CACHE", "./model_cache")
+        }
+        self._load_kwargs = load_kwargs
+        self.tokenizer = BertTokenizer.from_pretrained(self.model_config.model_name, **load_kwargs)
         
         # 模型（延迟初始化）
         self.model = None
@@ -588,7 +594,8 @@ class ChineseBertSentimentModel:
                 self.model_config.model_name,
                 num_labels=self.model_config.num_labels,
                 id2label=self.model_config.id2label,
-                label2id=self.model_config.label2id
+                label2id=self.model_config.label2id,
+                **self._load_kwargs,
             )
             self.model.to(self.device)
     
@@ -918,7 +925,7 @@ class ChineseBertSentimentModel:
                 
                 # 计算情感得分 [-1, 1]
                 prob_values = probs[0].cpu().numpy()
-                score = prob_values[2] - prob_values[0]  # positive - negative
+                score = prob_values[1] - prob_values[0]  # positive - negative
                 
                 result = {
                     'text': text,
@@ -931,8 +938,8 @@ class ChineseBertSentimentModel:
                 if return_probs:
                     result['probabilities'] = {
                         'negative': float(prob_values[0]),
-                        'neutral': float(prob_values[1]),
-                        'positive': float(prob_values[2])
+                        'positive': float(prob_values[1]),
+                        'neutral': float(prob_values[2]),
                     }
                 
                 results.append(result)

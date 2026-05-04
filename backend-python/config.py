@@ -6,6 +6,16 @@ import os
 from typing import Optional, List
 from dataclasses import dataclass
 import logging
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+    # Load .env from backend-python directory
+    _env_path = Path(__file__).parent / '.env'
+    if _env_path.exists():
+        load_dotenv(_env_path, override=True)
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +261,9 @@ class CrawlerConfig:
 class ModelConfig:
     """Machine learning model configuration"""
     model_cache_dir: str = './model_cache'
-    default_sentiment_model: str = 'bert-base-chinese'
+    default_sentiment_model: str = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), 'models', 'chinese-bert-wwm-ext'
+    )
     confidence_threshold: float = 0.7
     batch_size: int = 32
     max_sequence_length: int = 512
@@ -261,7 +273,10 @@ class ModelConfig:
     def from_env(cls) -> 'ModelConfig':
         return cls(
             model_cache_dir=os.getenv('MODEL_CACHE_DIR', './model_cache'),
-            default_sentiment_model=os.getenv('DEFAULT_SENTIMENT_MODEL', 'bert-base-chinese'),
+            default_sentiment_model=os.getenv(
+                'DEFAULT_SENTIMENT_MODEL',
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models', 'chinese-bert-wwm-ext')
+            ),
             confidence_threshold=float(os.getenv('CONFIDENCE_THRESHOLD', '0.7')),
             batch_size=int(os.getenv('MODEL_BATCH_SIZE', '32')),
             max_sequence_length=int(os.getenv('MODEL_MAX_SEQUENCE_LENGTH', '512')),

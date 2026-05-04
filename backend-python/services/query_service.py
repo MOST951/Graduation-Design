@@ -168,7 +168,7 @@ class QueryService:
                d.composite_score, d.ranking_position, d.popularity_class
         FROM weibo_core_data w
         LEFT JOIN sentiment_analysis_results s ON w.weibo_id = s.weibo_id
-        LEFT JOIN dual_dimension_ranking d ON w.weibo_id = d.weibo_id
+        LEFT JOIN tri_dimension_ranking d ON w.weibo_id = d.weibo_id
         WHERE w.weibo_id = %s
         """
         
@@ -247,7 +247,7 @@ class QueryService:
                 SELECT COUNT(*) as total
                 FROM weibo_core_data w
                 LEFT JOIN sentiment_analysis_results s ON w.weibo_id = s.weibo_id
-                LEFT JOIN dual_dimension_ranking d ON w.weibo_id = d.weibo_id
+                LEFT JOIN tri_dimension_ranking d ON w.weibo_id = d.weibo_id
                 WHERE {where_clause}
                 """
                 cursor.execute(count_sql, params)
@@ -266,7 +266,7 @@ class QueryService:
                        d.composite_score, d.ranking_position, d.popularity_class
                 FROM weibo_core_data w
                 LEFT JOIN sentiment_analysis_results s ON w.weibo_id = s.weibo_id
-                LEFT JOIN dual_dimension_ranking d ON w.weibo_id = d.weibo_id
+                LEFT JOIN tri_dimension_ranking d ON w.weibo_id = d.weibo_id
                 WHERE {where_clause}
                 ORDER BY {order_by} {order_dir}
                 LIMIT %s OFFSET %s
@@ -319,7 +319,7 @@ class QueryService:
                d.composite_score, d.time_decay,
                w.reposts_count, w.comments_count, w.attitudes_count,
                w.created_at
-        FROM dual_dimension_ranking d
+        FROM tri_dimension_ranking d
         JOIN weibo_core_data w ON d.weibo_id = w.weibo_id
         WHERE d.graduation_flag = 1
         """
@@ -529,7 +529,7 @@ class QueryService:
                     (SELECT COUNT(DISTINCT user_id) FROM weibo_core_data WHERE graduation_batch=1) as total_users,
                     (SELECT COUNT(DISTINCT keyword) FROM weibo_core_data WHERE graduation_batch=1 AND keyword IS NOT NULL) as total_keywords,
                     (SELECT COUNT(*) FROM sentiment_analysis_results WHERE graduation_flag=1) as analyzed_weibos,
-                    (SELECT COUNT(*) FROM dual_dimension_ranking WHERE graduation_flag=1) as ranked_weibos,
+                    (SELECT COUNT(*) FROM tri_dimension_ranking WHERE graduation_flag=1) as ranked_weibos,
                     (SELECT COUNT(*) FROM crawl_batch_log WHERE graduation_batch=1) as total_batches
                 """)
                 stats['basic'] = cursor.fetchone()
@@ -552,7 +552,7 @@ class QueryService:
                 SELECT 
                     popularity_class,
                     COUNT(*) as count
-                FROM dual_dimension_ranking
+                FROM tri_dimension_ranking
                 WHERE graduation_flag = 1
                 GROUP BY popularity_class
                 ORDER BY count DESC
@@ -592,15 +592,15 @@ class QueryService:
                 
                 return stats
     
-    def get_dual_dimension_analysis(self, batch_id: str = None) -> Dict:
+    def get_tri_dimension_analysis(self, batch_id: str = None) -> Dict:
         """
-        获取双维度分析结果
+        获取三维度分析结果
         
         Args:
             batch_id: 批次ID
             
         Returns:
-            双维度分析数据
+            三维度分析数据
         """
         self.query_stats['total_queries'] += 1
         
@@ -622,7 +622,7 @@ class QueryService:
                     popularity_class,
                     COUNT(*) as count,
                     ROUND(AVG(composite_score), 4) as avg_composite_score
-                FROM dual_dimension_ranking
+                FROM tri_dimension_ranking
                 WHERE {where_clause}
                 GROUP BY sentiment_category, popularity_class
                 ORDER BY sentiment_category, popularity_class
@@ -640,7 +640,7 @@ class QueryService:
                         ELSE '0.0-0.2'
                     END as score_range,
                     COUNT(*) as count
-                FROM dual_dimension_ranking
+                FROM tri_dimension_ranking
                 WHERE {where_clause}
                 GROUP BY score_range
                 ORDER BY score_range DESC
@@ -654,7 +654,7 @@ class QueryService:
                     ROUND(AVG(beta_weight), 2) as avg_beta,
                     ROUND(AVG(time_decay), 4) as avg_time_decay,
                     COUNT(*) as total_records
-                FROM dual_dimension_ranking
+                FROM tri_dimension_ranking
                 WHERE {where_clause}
                 """, params)
                 algorithm_stats = cursor.fetchone()
@@ -663,8 +663,8 @@ class QueryService:
                     'cross_analysis': cross_analysis,
                     'score_distribution': score_distribution,
                     'algorithm_stats': algorithm_stats,
-                    'formula': 'C_score = α × |sentiment_score| + β × popularity_score × time_decay',
-                    'default_weights': {'alpha': 0.6, 'beta': 0.4}
+                    'formula': 'Score = ω₁×Intensity + ω₂×H_norm + ω₃×γ(Δt)',
+                    'default_weights': {'omega1': 0.4, 'omega2': 0.4, 'omega3': 0.2, 'half_life_hours': 12}
                 }
     
     def invalidate_cache(self, pattern: str = None):

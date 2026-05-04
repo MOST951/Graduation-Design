@@ -346,21 +346,39 @@
           </el-button>
         </el-card>
         
-        <el-card header="触发记录" class="trigger-card">
+        <el-card class="trigger-card">
+          <template #header>
+            <div class="card-header">
+              <span>触发记录</span>
+              <el-switch v-model="desktopNotifyEnabled" active-text="桌面通知" size="small" @change="requestNotifyPermission" />
+            </div>
+          </template>
           <el-timeline>
             <el-timeline-item
               v-for="trigger in triggerHistory"
               :key="trigger.id"
               :timestamp="trigger.time"
-              :type="trigger.level === 'critical' ? 'danger' : 'warning'"
+              :type="trigger.archived ? 'info' : trigger.level === 'critical' ? 'danger' : 'warning'"
               size="small"
             >
-              <div class="trigger-content">
-                <div class="trigger-title">{{ trigger.rule }}</div>
+              <div class="trigger-content" :class="{ archived: trigger.archived }">
+                <div class="trigger-title">
+                  {{ trigger.rule }}
+                  <el-tag v-if="trigger.archived" size="small" type="info" effect="plain" style="margin-left:6px">已归档</el-tag>
+                </div>
                 <div class="trigger-desc">{{ trigger.description }}</div>
-                <el-button type="primary" link size="small" @click="handleTrigger(trigger)">
-                  处理
-                </el-button>
+                <div class="trigger-actions">
+                  <el-button v-if="!trigger.archived" type="primary" link size="small" @click="handleTrigger(trigger)">
+                    处理
+                  </el-button>
+                  <el-button
+                    :type="trigger.archived ? 'info' : 'warning'"
+                    link size="small"
+                    @click="toggleArchive(trigger)"
+                  >
+                    {{ trigger.archived ? '取消归档' : '归档' }}
+                  </el-button>
+                </div>
               </div>
             </el-timeline-item>
           </el-timeline>
@@ -626,6 +644,7 @@ const triggerHistory = ref([
     rule: '负面情感激增',
     description: '最近5分钟负面情感占比达到35%',
     level: 'critical',
+    archived: false,
   },
   {
     id: '2',
@@ -633,8 +652,58 @@ const triggerHistory = ref([
     rule: '数据量异常',
     description: '数据采集速度异常增长',
     level: 'warning',
+    archived: false,
   },
 ]);
+
+// 桌面通知 & 标签闪烁
+const desktopNotifyEnabled = ref(false);
+let titleFlashTimer: any = null;
+const originalTitle = document.title;
+
+const requestNotifyPermission = async (val: boolean) => {
+  if (val && 'Notification' in window) {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      desktopNotifyEnabled.value = false;
+      ElMessage.warning('浏览器通知权限被拒绝');
+    } else {
+      ElMessage.success('桌面通知已启用');
+    }
+  }
+};
+
+const sendDesktopNotification = (title: string, body: string) => {
+  if (!desktopNotifyEnabled.value) return;
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '/favicon.ico' });
+  }
+  startTitleFlash(title);
+};
+
+const startTitleFlash = (alertText: string) => {
+  if (titleFlashTimer) return;
+  let flash = true;
+  titleFlashTimer = setInterval(() => {
+    document.title = flash ? `⚠️ ${alertText}` : originalTitle;
+    flash = !flash;
+  }, 1000);
+  setTimeout(() => stopTitleFlash(), 10000);
+};
+
+const stopTitleFlash = () => {
+  if (titleFlashTimer) {
+    clearInterval(titleFlashTimer);
+    titleFlashTimer = null;
+    document.title = originalTitle;
+  }
+};
+
+// 归档切换
+const toggleArchive = (trigger: any) => {
+  trigger.archived = !trigger.archived;
+  ElMessage.success(trigger.archived ? '已归档' : '已取消归档');
+};
 
 // 系统状态
 const systemStatus = reactive({
@@ -740,6 +809,7 @@ const refreshData = () => {
 
 const handleTrigger = (trigger: any) => {
   ElMessage.info(`处理预警: ${trigger.rule}`);
+  sendDesktopNotification('预警触发', `${trigger.rule}: ${trigger.description}`);
 };
 
 const addRule = () => {
@@ -859,6 +929,13 @@ const loadAlertRecords = async () => {
 // 自动滚动
 let scrollInterval: any = null;
 
+// 页面可见性变化时停止标题闪烁
+const handleVisibility = () => {
+  if (!document.hidden) {
+    stopTitleFlash();
+  }
+};
+
 onMounted(() => {
   // 
   fetchRealtimeData();
@@ -868,6 +945,9 @@ onMounted(() => {
   
   // 
   connectSSE();
+  
+  // visibilitychange：切回标签页时停止标题闪烁
+  document.addEventListener('visibilitychange', handleVisibility);
   
   // 
   scrollInterval = setInterval(() => {
@@ -888,7 +968,9 @@ onUnmounted(() => {
   }
   
   // 
+  document.removeEventListener('visibilitychange', handleVisibility);
   disconnectSSE();
+  stopTitleFlash();
 });
 
 </script>
@@ -1146,6 +1228,16 @@ onUnmounted(() => {
       font-size: $font-size-small;
       color: $text-secondary;
       margin-bottom: 4px;
+    }
+    
+    .trigger-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    &.archived {
+      opacity: 0.55;
+      .trigger-title { text-decoration: line-through; }
     }
   }
   

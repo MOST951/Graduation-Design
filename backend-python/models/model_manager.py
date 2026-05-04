@@ -122,11 +122,11 @@ class ModelManager:
             self._warmup_hybrid
         )
         
-        # 4. 双维度模型
+        # 4. 三维度模型
         self.register_model(
-            "dual_dimension",
-            self._load_dual_dimension,
-            self._warmup_dual_dimension
+            "tri_dimension",
+            self._load_tri_dimension,
+            self._warmup_tri_dimension
         )
     
     def register_model(
@@ -260,7 +260,7 @@ class ModelManager:
     
     def preload_essential(self):
         """预加载核心模型（答辩演示必需）"""
-        essential_models = ["sentiment_lexicon", "dual_dimension"]
+        essential_models = ["sentiment_lexicon", "tri_dimension"]
         
         logger.info("预加载核心模型...")
         for name in essential_models:
@@ -387,18 +387,18 @@ class ModelManager:
             logger.warning(f"混合分析器加载失败: {e}")
             return None
     
-    def _load_dual_dimension(self):
-        """加载双维度模型"""
+    def _load_tri_dimension(self):
+        """加载三维度模型"""
         try:
-            from spark.dual_dimension_model_v2 import DualDimensionModelV2
-            model = DualDimensionModelV2()
+            from spark.tri_dimension_model_v2 import TriDimensionModelV2
+            model = TriDimensionModelV2()
             return model
         except ImportError:
-            logger.warning("双维度模型模块未安装")
-            return MockDualDimensionModel()
+            logger.warning("三维度模型模块未安装")
+            return MockTriDimensionModel()
         except Exception as e:
-            logger.warning(f"双维度模型加载失败: {e}")
-            return MockDualDimensionModel()
+            logger.warning(f"三维度模型加载失败: {e}")
+            return MockTriDimensionModel()
     
     # ==================== 预热函数 ====================
     
@@ -428,10 +428,10 @@ class ModelManager:
         if analyzer and hasattr(analyzer, 'analyze'):
             analyzer.analyze("测试文本预热")
     
-    def _warmup_dual_dimension(self, model):
-        """预热双维度模型"""
-        if model and hasattr(model, 'calculate_dual_score'):
-            model.calculate_dual_score(0.5, 0.5)
+    def _warmup_tri_dimension(self, model):
+        """预热三维度模型"""
+        if model and hasattr(model, 'calculate_tri_score'):
+            model.calculate_tri_score(0.5, 0.5)
 
 
 class MockBertAnalyzer:
@@ -457,13 +457,13 @@ class MockBertAnalyzer:
         return [self.analyze(text) for text in texts]
 
 
-class MockDualDimensionModel:
-    """模拟双维度模型"""
+class MockTriDimensionModel:
+    """模拟三维度模型"""
     
     def __init__(self):
         self.is_mock = True
     
-    def calculate_dual_score(self, sentiment: float, heat: float) -> float:
+    def calculate_tri_score(self, sentiment: float, heat: float) -> float:
         return 0.5 * sentiment + 0.5 * heat
 
 
@@ -569,9 +569,9 @@ def get_hybrid_analyzer():
     return ModelManager().get_model("hybrid_analyzer")
 
 
-def get_dual_dimension_model():
-    """获取双维度模型"""
-    return ModelManager().get_model("dual_dimension")
+def get_tri_dimension_model():
+    """获取三维度模型"""
+    return ModelManager().get_model("tri_dimension")
 
 
 # ==================== 测试 ====================
@@ -596,8 +596,8 @@ if __name__ == "__main__":
     print(f"获取词典耗时: {time.time() - start:.4f}秒")
     
     start = time.time()
-    dual_model = manager.get_model("dual_dimension")
-    print(f"获取双维度模型耗时: {time.time() - start:.4f}秒")
+    tri_model = manager.get_model("tri_dimension")
+    print(f"获取三维度模型耗时: {time.time() - start:.4f}秒")
     
     # 测试预热
     print("\n3. 预热模型...")

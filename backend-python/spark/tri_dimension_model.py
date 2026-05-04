@@ -1,5 +1,5 @@
 """
-情感-热度双维度排序模型 (Sentiment-Heat Dual Dimension Ranking Model)
+情感-热度三维度排序模型 (Sentiment-Heat Tri-Dimension Ranking Model)
 
 创新点说明：
 1. 传统舆情分析只关注情感极性或热度单一维度
@@ -30,7 +30,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger('DualDimensionModel')
+logger = logging.getLogger('TriDimensionModel')
 
 # Spark相关导入
 try:
@@ -69,7 +69,7 @@ class WeiboItem:
     
     # 计算得分
     heat_score: float = 0.0
-    dual_score: float = 0.0
+    tri_score: float = 0.0
     rank: int = 0
 
 
@@ -81,9 +81,9 @@ class ConfigSource(Enum):
 
 
 @dataclass
-class DualDimensionConfig:
+class TriDimensionConfig:
     """
-    双维度模型配置
+    三维度模型配置
     
     支持从以下来源加载配置：
     1. 默认值（硬编码）
@@ -105,7 +105,7 @@ class DualDimensionConfig:
     like_factor: float = 1.0  # 点赞权重
     
     # 时间衰减参数
-    decay_half_life_hours: float = 24.0  # 半衰期（小时）
+    decay_half_life_hours: float = 12.0  # 半衰期H（小时）- 论文4.2.2
     
     # 情感强度放大因子
     sentiment_amplify: float = 1.5
@@ -121,14 +121,14 @@ class DualDimensionConfig:
     
     # 默认配置文件路径
     DEFAULT_CONFIG_PATH = os.path.join(
-        os.path.dirname(__file__), 'conf', 'dual_dimension_config.json'
+        os.path.dirname(__file__), 'conf', 'tri_dimension_config.json'
     )
     
     @classmethod
     def load(cls, 
              json_path: Optional[str] = None,
              mysql_config: Optional[Dict[str, Any]] = None,
-             fallback_to_default: bool = True) -> 'DualDimensionConfig':
+             fallback_to_default: bool = True) -> 'TriDimensionConfig':
         """
         动态加载配置
         
@@ -138,7 +138,7 @@ class DualDimensionConfig:
             fallback_to_default: 加载失败时是否回退到默认配置
             
         Returns:
-            DualDimensionConfig实例
+            TriDimensionConfig实例
         """
         config = None
         source = ConfigSource.DEFAULT
@@ -180,7 +180,7 @@ class DualDimensionConfig:
         return config
     
     @classmethod
-    def _load_from_json(cls, json_path: str) -> Optional['DualDimensionConfig']:
+    def _load_from_json(cls, json_path: str) -> Optional['TriDimensionConfig']:
         """从JSON文件加载配置"""
         try:
             if not os.path.exists(json_path):
@@ -198,7 +198,7 @@ class DualDimensionConfig:
                 repost_factor=data.get('repost_factor', 1.0),
                 comment_factor=data.get('comment_factor', 2.0),
                 like_factor=data.get('like_factor', 1.0),
-                decay_half_life_hours=data.get('decay_half_life_hours', 24.0),
+                decay_half_life_hours=data.get('decay_half_life_hours', 12.0),
                 sentiment_amplify=data.get('sentiment_amplify', 1.5),
                 negative_boost=data.get('negative_boost', True),
                 negative_boost_factor=data.get('negative_boost_factor', 1.2),
@@ -215,7 +215,7 @@ class DualDimensionConfig:
             return None
     
     @classmethod
-    def _load_from_mysql(cls, mysql_config: Dict[str, Any]) -> Optional['DualDimensionConfig']:
+    def _load_from_mysql(cls, mysql_config: Dict[str, Any]) -> Optional['TriDimensionConfig']:
         """从MySQL数据库加载配置"""
         try:
             import pymysql
@@ -236,7 +236,7 @@ class DualDimensionConfig:
                     sql = """
                         SELECT config_key, config_value 
                         FROM system_configs 
-                        WHERE config_group = 'dual_dimension' 
+                        WHERE config_group = 'tri_dimension' 
                         AND status = 1
                         ORDER BY updated_at DESC
                     """
@@ -244,7 +244,7 @@ class DualDimensionConfig:
                     rows = cursor.fetchall()
                     
                     if not rows:
-                        logger.debug("MySQL中无双维度配置")
+                        logger.debug("MySQL中无三维度配置")
                         return None
                     
                     # 构建配置字典
@@ -266,7 +266,7 @@ class DualDimensionConfig:
                     # 获取版本号
                     version_sql = """
                         SELECT config_value FROM system_configs 
-                        WHERE config_group = 'dual_dimension' 
+                        WHERE config_group = 'tri_dimension' 
                         AND config_key = 'version'
                     """
                     cursor.execute(version_sql)
@@ -280,7 +280,7 @@ class DualDimensionConfig:
                         repost_factor=config_dict.get('repost_factor', 1.0),
                         comment_factor=config_dict.get('comment_factor', 2.0),
                         like_factor=config_dict.get('like_factor', 1.0),
-                        decay_half_life_hours=config_dict.get('decay_half_life_hours', 24.0),
+                        decay_half_life_hours=config_dict.get('decay_half_life_hours', 12.0),
                         sentiment_amplify=config_dict.get('sentiment_amplify', 1.5),
                         negative_boost=config_dict.get('negative_boost', True),
                         negative_boost_factor=config_dict.get('negative_boost_factor', 1.2),
@@ -349,12 +349,12 @@ class DualDimensionConfig:
         }
 
 
-class DualDimensionRankingModel:
+class TriDimensionRankingModel:
     """
-    情感-热度双维度排序模型
+    情感-热度三维度排序模型
     
     核心算法：
-    DualScore = α * SentimentScore + β * HeatScore + γ * TimelinessScore
+    TriScore = α * SentimentScore + β * HeatScore + γ * TimelinessScore
     
     其中：
     - SentimentScore: 情感强度得分，经过归一化和放大处理
@@ -365,7 +365,7 @@ class DualDimensionRankingModel:
     配置加载优先级：MySQL > JSON文件 > 默认值
     """
     
-    def __init__(self, config: Optional[DualDimensionConfig] = None,
+    def __init__(self, config: Optional[TriDimensionConfig] = None,
                  load_dynamic: bool = False,
                  json_path: Optional[str] = None,
                  mysql_config: Optional[Dict[str, Any]] = None):
@@ -382,13 +382,13 @@ class DualDimensionRankingModel:
             self.config = config
             logger.info(f"使用传入的配置 [版本: {config.config_version}]")
         elif load_dynamic:
-            self.config = DualDimensionConfig.load(
+            self.config = TriDimensionConfig.load(
                 json_path=json_path,
                 mysql_config=mysql_config,
                 fallback_to_default=True
             )
         else:
-            self.config = DualDimensionConfig()
+            self.config = TriDimensionConfig()
             logger.info("使用默认配置")
         
         self._validate_config()
@@ -413,7 +413,7 @@ class DualDimensionRankingModel:
     def _log_config_info(self):
         """记录配置信息"""
         logger.info(
-            f"双维度排序模型初始化完成 | "
+            f"三维度排序模型初始化完成 | "
             f"权重: 情感={self.config.sentiment_weight:.2f}, "
             f"热度={self.config.heat_weight:.2f}, "
             f"时效={self.config.timeliness_weight:.2f} | "
@@ -483,12 +483,12 @@ class DualDimensionRankingModel:
         
         return normalized
     
-    def calculate_dual_score(self, item: WeiboItem,
+    def calculate_tri_score(self, item: WeiboItem,
                              reference_time: Optional[datetime] = None) -> float:
         """
-        计算双维度综合得分
+        计算三维度综合得分
         
-        DualScore = α * SentimentScore + β * HeatScore + γ * TimelinessScore
+        TriScore = α * SentimentScore + β * HeatScore + γ * TimelinessScore
         """
         # 计算各维度得分
         sentiment_score = self.calculate_sentiment_score(item)
@@ -499,19 +499,19 @@ class DualDimensionRankingModel:
         normalized_heat = min(1.0, heat_score / 11.5)
         
         # 加权求和
-        dual_score = (
+        tri_score = (
             self.config.sentiment_weight * sentiment_score +
             self.config.heat_weight * normalized_heat +
             self.config.timeliness_weight * timeliness_score
         )
         
-        return dual_score
+        return tri_score
     
     def rank_items(self, items: List[WeiboItem],
                    reference_time: Optional[datetime] = None,
                    top_k: Optional[int] = None) -> List[WeiboItem]:
         """
-        对微博列表进行双维度排序
+        对微博列表进行三维度排序
         
         Args:
             items: 微博数据列表
@@ -524,10 +524,10 @@ class DualDimensionRankingModel:
         # 计算每个item的得分
         for item in items:
             item.heat_score = self.calculate_heat_score(item)
-            item.dual_score = self.calculate_dual_score(item, reference_time)
+            item.tri_score = self.calculate_tri_score(item, reference_time)
         
-        # 按双维度得分降序排序
-        sorted_items = sorted(items, key=lambda x: x.dual_score, reverse=True)
+        # 按三维度得分降序排序
+        sorted_items = sorted(items, key=lambda x: x.tri_score, reverse=True)
         
         # 分配排名
         for i, item in enumerate(sorted_items):
@@ -553,26 +553,26 @@ class DualDimensionRankingModel:
             "heat_contribution": round(self.config.heat_weight * normalized_heat, 4),
             "timeliness_score": round(timeliness_score, 4),
             "timeliness_contribution": round(self.config.timeliness_weight * timeliness_score, 4),
-            "dual_score": round(self.calculate_dual_score(item, reference_time), 4),
+            "tri_score": round(self.calculate_tri_score(item, reference_time), 4),
         }
 
 
-class SparkDualDimensionProcessor:
+class SparkTriDimensionProcessor:
     """
-    基于Spark的双维度排序处理器
+    基于Spark的三维度排序处理器
     
     支持大规模数据的分布式处理
     """
     
     def __init__(self, spark: Optional['SparkSession'] = None,
-                 config: Optional[DualDimensionConfig] = None):
-        self.config = config or DualDimensionConfig()
+                 config: Optional[TriDimensionConfig] = None):
+        self.config = config or TriDimensionConfig()
         
         if spark:
             self.spark = spark
         elif SPARK_AVAILABLE:
             self.spark = SparkSession.builder \
-                .appName("DualDimensionRanking") \
+                .appName("TriDimensionRanking") \
                 .master("local[*]") \
                 .config("spark.driver.memory", "2g") \
                 .config("spark.sql.shuffle.partitions", "4") \
@@ -647,31 +647,31 @@ class SparkDualDimensionProcessor:
             F.least(F.lit(1.0), F.col("sentiment_intensity"))
         )
         
-        # 计算双维度综合得分
+        # 计算三维度综合得分
         df = df.withColumn(
-            "dual_score",
+            "tri_score",
             config.sentiment_weight * F.col("sentiment_normalized") +
             config.heat_weight * F.col("heat_normalized") +
             config.timeliness_weight * F.col("timeliness_score")
         )
         
         # 添加排名
-        window = Window.orderBy(F.desc("dual_score"))
+        window = Window.orderBy(F.desc("tri_score"))
         df = df.withColumn("rank", F.row_number().over(window))
         
         return df
     
     def get_top_k(self, df: 'DataFrame', k: int = 100) -> 'DataFrame':
         """获取Top-K结果"""
-        return df.orderBy(F.desc("dual_score")).limit(k)
+        return df.orderBy(F.desc("tri_score")).limit(k)
     
     def get_statistics(self, df: 'DataFrame') -> Dict[str, Any]:
         """获取统计信息"""
         stats = df.agg(
             F.count("*").alias("total_count"),
-            F.avg("dual_score").alias("avg_dual_score"),
-            F.max("dual_score").alias("max_dual_score"),
-            F.min("dual_score").alias("min_dual_score"),
+            F.avg("tri_score").alias("avg_tri_score"),
+            F.max("tri_score").alias("max_tri_score"),
+            F.min("tri_score").alias("min_tri_score"),
             F.avg("heat_score").alias("avg_heat_score"),
             F.avg("sentiment_score").alias("avg_sentiment_score"),
             F.sum(F.when(F.col("sentiment_score") > 0, 1).otherwise(0)).alias("positive_count"),
@@ -681,9 +681,9 @@ class SparkDualDimensionProcessor:
         
         return {
             "total_count": stats["total_count"],
-            "avg_dual_score": round(stats["avg_dual_score"], 4) if stats["avg_dual_score"] else 0,
-            "max_dual_score": round(stats["max_dual_score"], 4) if stats["max_dual_score"] else 0,
-            "min_dual_score": round(stats["min_dual_score"], 4) if stats["min_dual_score"] else 0,
+            "avg_tri_score": round(stats["avg_tri_score"], 4) if stats["avg_tri_score"] else 0,
+            "max_tri_score": round(stats["max_tri_score"], 4) if stats["max_tri_score"] else 0,
+            "min_tri_score": round(stats["min_tri_score"], 4) if stats["min_tri_score"] else 0,
             "avg_heat_score": round(stats["avg_heat_score"], 4) if stats["avg_heat_score"] else 0,
             "avg_sentiment_score": round(stats["avg_sentiment_score"], 4) if stats["avg_sentiment_score"] else 0,
             "sentiment_distribution": {
@@ -700,7 +700,7 @@ def create_ranking_model(sentiment_weight: float = None,
                          timeliness_weight: float = None,
                          load_dynamic: bool = True,
                          json_path: Optional[str] = None,
-                         mysql_config: Optional[Dict[str, Any]] = None) -> DualDimensionRankingModel:
+                         mysql_config: Optional[Dict[str, Any]] = None) -> TriDimensionRankingModel:
     """
     创建排序模型的便捷函数
     
@@ -713,19 +713,19 @@ def create_ranking_model(sentiment_weight: float = None,
         mysql_config: MySQL连接配置
         
     Returns:
-        DualDimensionRankingModel实例
+        TriDimensionRankingModel实例
     """
     # 如果指定了权重参数，则使用指定的配置
     if sentiment_weight is not None or heat_weight is not None or timeliness_weight is not None:
-        config = DualDimensionConfig(
+        config = TriDimensionConfig(
             sentiment_weight=sentiment_weight or 0.4,
             heat_weight=heat_weight or 0.4,
             timeliness_weight=timeliness_weight or 0.2
         )
-        return DualDimensionRankingModel(config)
+        return TriDimensionRankingModel(config)
     
     # 否则使用动态加载
-    return DualDimensionRankingModel(
+    return TriDimensionRankingModel(
         load_dynamic=load_dynamic,
         json_path=json_path,
         mysql_config=mysql_config
@@ -738,7 +738,7 @@ def rank_weibo_data(data: List[Dict],
                     load_dynamic: bool = True,
                     mysql_config: Optional[Dict[str, Any]] = None) -> List[Dict]:
     """
-    对微博数据进行双维度排序
+    对微博数据进行三维度排序
     
     Args:
         data: 微博数据列表（字典格式）
@@ -807,7 +807,7 @@ def rank_weibo_data(data: List[Dict],
             'sentiment_score': item.sentiment_score,
             'sentiment_label': item.sentiment_label,
             'heat_score': round(item.heat_score, 4),
-            'dual_score': round(item.dual_score, 4),
+            'tri_score': round(item.tri_score, 4),
             'rank': item.rank,
             'score_breakdown': model.get_score_breakdown(item),
         })
@@ -818,7 +818,7 @@ def rank_weibo_data(data: List[Dict],
 if __name__ == "__main__":
     # 测试代码
     print("=" * 60)
-    print("情感-热度双维度排序模型测试")
+    print("情感-热度三维度排序模型测试")
     print("=" * 60)
     
     # 创建测试数据
@@ -882,6 +882,6 @@ if __name__ == "__main__":
         print(f"排名 {item['rank']}: {item['text'][:20]}...")
         print(f"  情感: {item['sentiment_label']} ({item['sentiment_score']})")
         print(f"  热度得分: {item['heat_score']}")
-        print(f"  双维度得分: {item['dual_score']}")
+        print(f"  三维度得分: {item['tri_score']}")
         print(f"  得分分解: {item['score_breakdown']}")
         print()

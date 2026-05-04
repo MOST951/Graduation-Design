@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>第5章 数据集准备流程图</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "SimSun", "宋体", "Times New Roman", serif;
+            background: #f2f3f5;
+            color: #111;
+            padding: 28px;
+        }
+        .page-header {
+            max-width: 1180px;
+            margin: 0 auto 24px;
+            text-align: center;
+            background: #fff;
+            border: 1px solid #d9d9d9;
+            padding: 24px 20px;
+        }
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .page-header p {
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        .toolbar {
+            max-width: 1180px;
+            margin: 0 auto 18px;
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .toolbar a, .toolbar button {
+            font-family: "Microsoft YaHei", sans-serif;
+            font-size: 14px;
+            padding: 8px 14px;
+            border: 1px solid #555;
+            background: #fff;
+            color: #111;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .toolbar a:hover, .toolbar button:hover { background: #f0f0f0; }
+        .diagram-card {
+            max-width: 1180px;
+            margin: 0 auto 28px;
+            background: #fff;
+            border: 1px solid #bfbfbf;
+            page-break-inside: avoid;
+        }
+        .diagram-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+            padding: 14px 12px 6px;
+        }
+        .diagram-note {
+            text-align: center;
+            font-size: 12px;
+            color: #444;
+            padding-bottom: 10px;
+        }
+        .diagram-wrap {
+            padding: 18px 12px 28px;
+            overflow-x: auto;
+            border-top: 1px solid #e6e6e6;
+        }
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            min-width: 760px;
+        }
+        .legend {
+            max-width: 1180px;
+            margin: 0 auto 28px;
+            background: #fff;
+            border: 1px solid #bfbfbf;
+            padding: 18px 24px;
+        }
+        .legend h2 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 12px;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        .shape-demo {
+            display: inline-block;
+            min-width: 58px;
+            text-align: center;
+            border: 1.5px solid #111;
+            margin-right: 8px;
+            padding: 2px 8px;
+            background: #fff;
+        }
+        .shape-start { border-radius: 999px; }
+        .shape-data { transform: skewX(-15deg); }
+        .shape-data span { display: inline-block; transform: skewX(15deg); }
+        .shape-decision {
+            width: 44px;
+            height: 44px;
+            transform: rotate(45deg);
+            vertical-align: middle;
+            line-height: 40px;
+        }
+        .shape-decision span { display: inline-block; transform: rotate(-45deg); }
+        @media print {
+            body { background: #fff; padding: 0; }
+            .toolbar { display: none; }
+            .page-header, .diagram-card, .legend { border: none; }
+            .diagram-card { page-break-after: always; }
+        }
+    </style>
+</head>
+<body>
+    <header class="page-header">
+        <h1>第5章 数据集准备流程图</h1>
+        <p>本科论文格式版：开始/结束使用椭圆，数据输入输出使用平行四边形，条件判断使用菱形，处理步骤使用矩形。</p>
+    </header>
+
+    <div class="toolbar">
+        <button onclick="window.print()">打印 / 另存为 PDF</button>
+        <a href="#fig5-1">图5-1</a>
+        <a href="#fig5-2">图5-2</a>
+        <a href="#fig5-3">图5-3</a>
+        <a href="#fig5-4">图5-4</a>
+        <a href="#fig5-5">图5-5</a>
+        <a href="#fig5-6">图5-6</a>
+    </div>
+
+    <section class="legend">
+        <h2>流程图符号说明</h2>
+        <div class="legend-grid">
+            <div><span class="shape-demo shape-start">开始</span>开始 / 结束节点</div>
+            <div><span class="shape-demo shape-data"><span>数据</span></span>数据输入 / 输出</div>
+            <div><span class="shape-demo">处理</span>处理过程</div>
+            <div><span class="shape-demo shape-decision"><span>?</span></span>条件判断</div>
+        </div>
+    </section>
+
+    <section id="fig5-1" class="diagram-card">
+        <div class="diagram-title">图5-1 数据集处理总流程图</div>
+        <div class="diagram-note">展示标注语料与采集数据从输入到训练集、验证集、测试集输出的完整流程。</div>
+        <div class="diagram-wrap">
+            <div class="mermaid">
+flowchart TD
+    START([开始])
+    D_RAW[/原始微博数据<br/>weibo_senti_100k + nCoV_100k/]
+    P_DEDUP[三级去重处理<br/>MD5 / 时间窗口 / SimHash]
+    P_CLEAN[文本清洗与标准化<br/>HTML · URL · 表情 · 繁简]
+    P_TOKEN[中文分词与停用词过滤<br/>Jieba精确模式 + 自定义词典]
+    P_TIME[时间标准化与数值归一化<br/>统一时间戳 · Min-Max归一化]
+    P_FEAT[文本特征提取<br/>TF-IDF · Word2Vec · CountVec]
+    C_QUALITY{数据质量<br/>检查通过?}
+    P_FIX[质量问题修复<br/>补充缺失 · 过滤异常]
+    P_SPLIT[数据集划分<br/>分层抽样 8:1:1]
+    D_TRAIN[/训练集 80%<br/>79,999条/]
+    D_VAL[/验证集 10%<br/>10,000条/]
+    D_TEST[/测试集 10%<br/>10,000条/]
+    DONE([结束])
+
+    START --> D_RAW --> P_DEDUP --> P_CLEAN --> P_TOKEN --> P_TIME --> P_FEAT --> C_QUALITY
+    C_QUALITY -->|是| P_SPLIT
+    C_QUALITY -->|否| P_FIX --> P_FEAT
+    P_SPLIT --> D_TRAIN --> DONE
+    P_SPLIT --> D_VAL --> DONE
+    P_SPLIT --> D_TEST --> DONE
+            </div>
+        </div>
+    </section>
+
+    <section id="fig5-2" class="diagram-card">
+        <div class="diagram-title">图5-2 三级去重流程图</div>
+        <div class="diagram-note">依次进行 MD5 精确去重、用户时间窗口去重和 SimHash 近似去重。</div>
+        <div class="diagram-wrap">
+            <div class="mermaid">
+flowchart TD
+    START([开始])
+    D_IN[/原始微博数据集/]
+    P_MD5[计算每条文本的MD5哈希值]
+    P_MD5_DROP[基于content_md5执行dropDuplicates]
+    C_MD5{存在用户<br/>时间窗口重复?}
+    P_TIME[按24h划分时间桶time_bucket]
+    P_TIME_DROP[以用户ID+时间桶+文本指纹<br/>为联合键去重]
+    C_SIM{启用近似<br/>去重?}
+    P_SIM[对分词结果计算SimHash<br/>生成64位指纹]
+    P_SIM_CMP[比较汉明距离<br/>阈值≤3判定为近似重复]
+    P_SIM_DROP[去除近似重复记录]
+    D_OUT[/去重后数据集/]
+    DONE([结束])
+
+    START --> D_IN --> P_MD5 --> P_MD5_DROP --> C_MD5
+    C_MD5 -->|是| P_TIME --> P_TIME_DROP --> C_SIM
+    C_MD5 -->|否| C_SIM
+    C_SIM -->|是| P_SIM --> P_SIM_CMP --> P_SIM_DROP --> D_OUT
+    C_SIM -->|否| D_OUT
+    D_OUT --> DONE
+            </div>
+        </div>
+    </section>
+
+    <section id="fig5-3" class="diagram-card">
+        <div class="diagram-title">图5-3 文本清洗流程图</div>
+        <div class="diagram-note">对微博正文进行网页噪声、链接、用户提及、话题、表情和字符标准化处理。</div>
+        <div class="diagram-wrap">
+            <div class="mermaid">
+flowchart TD
+    START([开始])
+    D_IN[/去重后的微博正文/]
+    P_HTML[去除HTML标签]
+    P_URL[删除URL链接]
+    P_AT[删除@用户提及]
+    P_TOPIC[提取#话题#文字<br/>去掉#号]
+    C_EMOJI{包含表情标记?}
+    P_EMOJI[表情符号语义映射<br/>76种表情转中文描述]
+    P_TRAD[繁体转简体<br/>OpenCC / 内置映射表]
+    P_FULL[全角转半角<br/>合并连续空白]
+    D_OUT[/cleaned_text字段/]
+    DONE([结束])
+
+    START --> D_IN --> P_HTML --> P_URL --> P_AT --> P_TOPIC --> C_EMOJI
+    C_EMOJI -->|是| P_EMOJI --> P_TRAD
+    C_EMOJI -->|否| P_TRAD
+    P_TRAD --> P_FULL --> D_OUT --> DONE
+            </div>
+        </div>
+    </section>
+
+    <section id="fig5-4" class="diagram-card">
+        <div class="diagram-title">图5-4 中文分词与停用词过滤流程图</div>
+        <div class="diagram-note">采用 Jieba 精确模式完成中文分词，并结合自定义词典与停用词表降低噪声。</div>
+        <div class="diagram-wrap">
+            <div class="mermaid">
+flowchart TD
+    START([开始])
+    D_IN[/cleaned_text/]
+    C_JIEBA{Jieba可用?}
+    P_DICT[加载自定义词典]
+    P_JIEBA[Jieba精确模式分词]
+    P_CHAR[退化处理: 按字切分]
+    D_TOKENS[/tokens列表/]
+    P_LOAD_STOP[加载停用词表<br/>内置 + 自定义外部文件]
+    C_WORD{词长≥2 且<br/>不在停用词表?}
+    P_KEEP[保留该词]
+    P_DROP[过滤该词]
+    P_COUNT[统计词数写入word_count]
+    D_OUT[/filtered_tokens/]
+    DONE([结束])
+
+    START --> D_IN --> C_JIEBA
+    C_JIEBA -->|是| P_DICT --> P_JIEBA --> D_TOKENS
+    C_JIEBA -->|否| P_CHAR --> D_TOKENS
+    D_TOKENS --> P_LOAD_STOP --> C_WORD
+    C_WORD -->|是| P_KEEP --> P_COUNT
+    C_WORD -->|否| P_DROP --> P_COUNT
+    P_COUNT --> D_OUT --> DONE
+            </div>
+        </div>
+    </section>
+
+    <section id="fig5-5" class="diagram-card">
+        <div class="diagram-title">图5-5 文本特征提取流程图</div>
+        <div class="diagram-note">并行提取 TF-IDF、Word2Vec 和词频矩阵特征，并进行质量检查。</div>
+        <div class="diagram-wrap">
+            <div class="mermaid">
+flowchart TD
+    START([开始])
+    D_IN[/filtered_tokens/]
+    T1[HashingTF<br/>10000维词频向量]
+    T2[IDF逆文档频率加权]
+    W1[Word2Vec训练<br/>向量维度=100]
+    W2[文档向量均值池化]
+    V1[CountVectorizer<br/>词表大小=10000]
+    P_MERGE[合并多种特征向量]
+    P_QUALITY[数据质量检查<br/>空值 · 长度 · 词数分布]
+    C_PASS{质量达标?}
+    P_WARN[输出质量预警报告]
+    D_OUT[/数值特征矩阵/]
+    DONE([结束])
+
+    START --> D_IN
+    D_IN --> T1 --> T2 --> P_MERGE
+    D_IN --> W1 --> W2 --> P_MERGE
+    D_IN --> V1 --> P_MERGE
+    P_MERGE --> P_QUALITY --> C_PASS
+    C_PASS -->|是| D_OUT
+    C_PASS -->|否| P_WARN --> D_OUT
+    D_OUT --> DONE
+            </div>
+        </div>
+    </section>
+
+    <section id="fig5-6" class="diagram-card">
+        <div class="diagram-title">图5-6 数据集划分流程图</div>
+        <div class="diagram-note">采用固定随机种子和分层抽样，按 8:1:1 生成训练、验证和测试数据集。</div>
+        <div class="diagram-wrap">
+            <div class="mermaid">
+flowchart TD
+    START([开始])
+    D_IN[/标注数据集<br/>99,999条 三分类均衡/]
+    P_GROUP[按类别分组<br/>正面 · 负面 · 中性各33,333条]
+    P_SEED[设定随机种子<br/>random_state=42]
+    P_STRAT[分层抽样<br/>每类独立按比例划分]
+    C_RATIO{各子集类别<br/>比例一致?}
+    P_RESAMPLE[重新采样调整]
+    P_MERGE_TRAIN[合并训练集<br/>各类80%]
+    P_MERGE_VAL[合并验证集<br/>各类10%]
+    P_MERGE_TEST[合并测试集<br/>各类10%]
+    D_TRAIN[/训练集<br/>79,999条/]
+    D_VAL[/验证集<br/>10,000条/]
+    D_TEST[/测试集<br/>10,000条/]
+    DONE([结束])
+
+    START --> D_IN --> P_GROUP --> P_SEED --> P_STRAT --> C_RATIO
+    C_RATIO -->|否| P_RESAMPLE --> P_STRAT
+    C_RATIO -->|是| P_MERGE_TRAIN --> D_TRAIN --> DONE
+    C_RATIO -->|是| P_MERGE_VAL --> D_VAL --> DONE
+    C_RATIO -->|是| P_MERGE_TEST --> D_TEST --> DONE
+            </div>
+        </div>
+    </section>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            securityLevel: 'loose',
+            flowchart: {
+                htmlLabels: true,
+                curve: 'basis',
+                nodeSpacing: 48,
+                rankSpacing: 58,
+                padding: 14
+            },
+            theme: 'base',
+            themeVariables: {
+                fontFamily: 'SimSun, Microsoft YaHei, sans-serif',
+                fontSize: '16px',
+                primaryColor: '#ffffff',
+                primaryTextColor: '#111111',
+                primaryBorderColor: '#111111',
+                lineColor: '#111111',
+                secondaryColor: '#ffffff',
+                tertiaryColor: '#ffffff',
+                clusterBkg: '#ffffff',
+                clusterBorder: '#111111',
+                edgeLabelBackground: '#ffffff'
+            }
+        });
+    </script>
+</body>
+</html>

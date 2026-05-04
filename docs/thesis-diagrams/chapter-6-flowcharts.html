@@ -1,0 +1,253 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>第六章系统实现流程图</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body { margin: 0; padding: 28px; font-family: "SimSun", "Microsoft YaHei", Arial, sans-serif; color: #000; background: #fff; }
+    .page { max-width: 900px; margin: 0 auto; }
+    h1 { text-align: center; font-size: 24px; margin: 0 0 26px; font-weight: 700; }
+    h2 { font-size: 18px; margin: 0 0 14px; text-align: center; font-weight: 700; }
+    .figure { background: #fff; border: 1px solid #d8d8d8; padding: 22px 18px 26px; margin: 0 auto 30px; page-break-inside: avoid; }
+    .mermaid { display: flex; justify-content: center; }
+    .note { text-align: center; color: #333; margin-bottom: 22px; font-size: 14px; }
+    @media print { body { padding: 0; } .figure { border: none; page-break-after: always; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>第六章 系统详细设计与实现流程图</h1>
+    <p class="note">以下功能设计流程图采用论文常用黑白竖向样式：开始/结束为椭圆，处理为矩形，判断为菱形，数据输入输出为平行四边形。</p>
+
+    <section class="figure"><h2>图6-1 数据采集模块功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[进入数据采集页面]
+      A --> B[/输入关键词、数量和时间范围/]
+      B --> C{参数是否完整}
+      C -- 否 --> D[提示补充采集参数]
+      D --> B
+      C -- 是 --> E[提交采集任务]
+      E --> F[后端创建任务并调用爬虫]
+      F --> G[保存微博数据和采集日志]
+      G --> H[刷新任务进度]
+      H --> T([结束])</pre></section>
+
+    <section class="figure"><h2>图6-3 数据预处理模块功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[进入数据预处理页面]
+      A --> B[/选择待处理数据范围/]
+      B --> C{是否存在待处理数据}
+      C -- 否 --> D[显示无待处理数据]
+      D --> T([结束])
+      C -- 是 --> E[执行去重和空值过滤]
+      E --> F[执行文本清洗]
+      F --> G[执行中文分词和停用词过滤]
+      G --> H[保存标准化数据]
+      H --> T</pre></section>
+
+    <section class="figure"><h2>图6-5 情感分析模块功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[进入情感分析页面]
+      A --> B[/选择分析数据/]
+      B --> C[词典情感分析]
+      C --> D{置信度是否达标}
+      D -- 是 --> E[采用词典结果]
+      D -- 否 --> F[调用ChineseBERT模型]
+      F --> G[生成模型结果]
+      E --> H[保存情感类别和置信度]
+      G --> H
+      H --> I[展示情感分布和趋势]
+      I --> T([结束])</pre></section>
+
+    <section class="figure"><h2>图6-7 热点话题分析模块功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[进入热点话题页面]
+      A --> B[/选择时间范围和关键词/]
+      B --> C[读取预处理文本]
+      C --> D[提取关键词并统计词频]
+      D --> E{是否存在热点词}
+      E -- 否 --> F[显示暂无热点话题]
+      F --> T([结束])
+      E -- 是 --> G[关联情感和互动指标]
+      G --> H[生成词云和热门微博列表]
+      H --> T</pre></section>
+
+    <section class="figure"><h2>图6-9 实时舆情监控模块功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[进入实时监控页面]
+      A --> B[启动定时刷新]
+      B --> C[请求任务状态接口]
+      C --> D[请求舆情统计接口]
+      D --> E{是否达到预警阈值}
+      E -- 是 --> F[显示预警信息]
+      E -- 否 --> G[刷新监控图表]
+      F --> G
+      G --> H{是否继续监控}
+      H -- 是 --> C
+      H -- 否 --> T([结束])</pre></section>
+
+    <section class="figure"><h2>图6-11 数据流水线管理模块功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[进入流水线管理页面]
+      A --> B[点击启动流水线]
+      B --> C[读取未处理微博]
+      C --> D{是否有待处理数据}
+      D -- 否 --> E[提示无待处理数据]
+      E --> T([结束])
+      D -- 是 --> F[执行级联情感分析]
+      F --> G[保存情感分析结果]
+      G --> H[执行三维度排序]
+      H --> I[保存排序结果并展示Top列表]
+      I --> T</pre></section>
+
+    <section class="figure"><h2>图6-13 可视化展示模块功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[进入可视化展示页面]
+      A --> B[/选择图表类型/]
+      B --> C[请求后端统计数据]
+      C --> D{数据是否为空}
+      D -- 是 --> E[显示暂无数据]
+      E --> T([结束])
+      D -- 否 --> F[转换图表数据格式]
+      F --> G[渲染图表组件]
+      G --> H[展示图表和表格]
+      H --> T</pre></section>
+
+    <section class="figure"><h2>图6-15 系统管理模块功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[访问系统管理页面]
+      A --> B[/输入账号和密码/]
+      B --> C{身份认证是否通过}
+      C -- 否 --> D[显示登录失败信息]
+      D --> T([结束])
+      C -- 是 --> E[加载用户权限]
+      E --> F{是否具有管理权限}
+      F -- 否 --> G[拒绝访问]
+      G --> T
+      F -- 是 --> H[执行用户、任务或配置管理]
+      H --> I[记录操作日志]
+      I --> T</pre></section>
+
+    <section class="figure"><h2>图6-17 Spring Boot 后端功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[接收前端请求]
+      A --> B[Controller路由分发]
+      B --> C[校验请求参数]
+      C --> D{校验是否通过}
+      D -- 否 --> E[返回错误信息]
+      E --> T([结束])
+      D -- 是 --> F[Service处理业务逻辑]
+      F --> G[访问数据库]
+      G --> H[封装JSON响应]
+      H --> T</pre></section>
+
+    <section class="figure"><h2>图6-19 Flask 后端功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[接收API请求]
+      A --> B[Flask蓝图分发]
+      B --> C[解析请求参数]
+      C --> D{判断业务类型}
+      D -- 分析任务 --> E[调用模型服务]
+      D -- 数据查询 --> F[调用数据库服务]
+      D -- Spark任务 --> G[调用Spark服务]
+      E --> H[封装JSON结果]
+      F --> H
+      G --> H
+      H --> T([结束])</pre></section>
+
+    <section class="figure"><h2>图6-21 双后端协同机制功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[用户访问前端页面]
+      A --> B{请求属于哪类业务}
+      B -- 管理业务 --> C[请求Spring Boot后端]
+      B -- 分析业务 --> D[请求Flask后端]
+      C --> E[(MySQL数据库)]
+      D --> E
+      D --> F[调用模型或Spark作业]
+      E --> G[返回业务数据]
+      F --> G
+      G --> T([结束])</pre></section>
+
+    <section class="figure"><h2>图6-23 Spark 伪集群环境功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[配置Spark作业参数]
+      A --> B[生成spark-submit命令]
+      B --> C[提交作业到Master]
+      C --> D[Worker执行任务]
+      D --> E{作业是否成功}
+      E -- 否 --> F[记录错误并判断重试]
+      F --> G{是否还能重试}
+      G -- 是 --> C
+      G -- 否 --> T([结束])
+      E -- 是 --> H[更新作业完成状态]
+      H --> T</pre></section>
+
+    <section class="figure"><h2>图6-25 分布式数据预处理功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[Spark读取原始数据]
+      A --> B[划分数据分区]
+      B --> C[并行去重和过滤]
+      C --> D[并行文本清洗]
+      D --> E[字段标准化]
+      E --> F[写出清洗结果]
+      F --> T([结束])</pre></section>
+
+    <section class="figure"><h2>图6-27 分布式情感分析功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[读取批量微博数据]
+      A --> B[按批次组织文本]
+      B --> C[执行词典分析]
+      C --> D{置信度是否足够}
+      D -- 是 --> E[返回词典结果]
+      D -- 否 --> F[调用ChineseBERT推理]
+      E --> G[汇总分析结果]
+      F --> G
+      G --> H[保存情感结果]
+      H --> T([结束])</pre></section>
+
+    <section class="figure"><h2>图6-29 三维度排序功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[读取待排序微博]
+      A --> B[计算情感维度]
+      B --> C[计算热度维度]
+      C --> D[计算时间衰减]
+      D --> E[计算综合得分]
+      E --> F{是否完成全部微博计算}
+      F -- 否 --> A
+      F -- 是 --> G[按综合得分排序]
+      G --> H[保存排名结果]
+      H --> T([结束])</pre></section>
+
+    <section class="figure"><h2>图6-31 实时流处理功能设计流程图</h2><pre class="mermaid">flowchart TD
+      S([开始]) --> A[新增微博进入系统]
+      A --> B[增量读取数据]
+      B --> C[执行清洗和分析]
+      C --> D[更新统计结果]
+      D --> E{是否达到预警条件}
+      E -- 是 --> F[生成预警事件]
+      E -- 否 --> G[刷新实时数据]
+      F --> G
+      G --> H{是否继续监听}
+      H -- 是 --> B
+      H -- 否 --> T([结束])</pre></section>
+  </div>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      flowchart: {
+        curve: 'linear',
+        nodeSpacing: 32,
+        rankSpacing: 42,
+        padding: 10,
+        htmlLabels: true
+      },
+      themeVariables: {
+        background: '#ffffff',
+        primaryColor: '#ffffff',
+        primaryTextColor: '#000000',
+        primaryBorderColor: '#000000',
+        lineColor: '#000000',
+        secondaryColor: '#ffffff',
+        secondaryTextColor: '#000000',
+        secondaryBorderColor: '#000000',
+        tertiaryColor: '#ffffff',
+        tertiaryTextColor: '#000000',
+        tertiaryBorderColor: '#000000',
+        noteBkgColor: '#ffffff',
+        noteBorderColor: '#000000',
+        fontFamily: 'SimSun, Microsoft YaHei, Arial',
+        fontSize: '14px'
+      }
+    });
+  </script>
+</body>
+</html>
+

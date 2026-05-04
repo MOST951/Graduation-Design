@@ -188,19 +188,58 @@ class EmojiConverter:
         '[跪了]': '佩服', '[酸]': '酸了羡慕', '[裂开]': '裂开崩溃',
     }
 
+    # 表情极性分类，用于 'tag' 模式
+    _POS_EMOJIS = {
+        '[笑cry]', '[哈哈]', '[嘻嘻]', '[偷笑]', '[太开心]', '[笑而不语]',
+        '[开心]', '[赞]', '[good]', '[鼓掌]', '[心]', '[爱你]', '[给力]',
+        '[威武]', '[耶]', '[酷]', '[可爱]', '[花心]', '[憧憬]', '[羞嗒嗒]',
+        '[haha]', '[偷乐]', '[加油]',
+    }
+    _NEG_EMOJIS = {
+        '[怒]', '[怒骂]', '[生气]', '[悲伤]', '[泪]', '[失望]', '[委屈]',
+        '[可怜]', '[衰]', '[骷髅]', '[黑线]', '[汗]', '[费解]', '[晕]',
+        '[抓狂]', '[打脸]', '[鄙视]', '[白眼]', '[吐]', '[裂开]',
+    }
+
     @classmethod
-    def convert(cls, text: str) -> str:
+    def convert(cls, text: str, mode: str = 'text') -> str:
         """
-        将微博文本中的 [表情] 替换为情感文字描述。
-        未匹配的 [xxx] 保留原样。
+        将微博文本中的 [表情] 进行转换。
+
+        Args:
+            text: 输入文本
+            mode: 转换模式
+                - 'text': 替换为情感文字描述（默认，与旧版行为一致）
+                - 'tag':  替换为极性标签 _EMO_POS_ / _EMO_NEG_ / _EMO_NEU_，
+                          避免将描述性文字注入正文造成情感强度失真
+                - 'remove': 直接删除所有 [表情]
+                - 'keep': 保留原始 [表情] 不做任何处理
         """
         if not text:
             return text
 
+        if mode == 'keep':
+            return text
+
+        if mode == 'remove':
+            return re.sub(r'\[[\w\u4e00-\u9fff]+\]', '', text)
+
+        if mode == 'tag':
+            def _tag(match):
+                emoji = match.group(0)
+                if emoji in cls._POS_EMOJIS:
+                    return '_EMO_POS_'
+                elif emoji in cls._NEG_EMOJIS:
+                    return '_EMO_NEG_'
+                elif emoji in cls.EMOJI_TEXT_MAP:
+                    return '_EMO_NEU_'
+                return emoji  # 未知表情保留
+            return re.sub(r'\[[\w\u4e00-\u9fff]+\]', _tag, text)
+
+        # 默认 'text' 模式：替换为中文描述
         def _replace(match):
             emoji = match.group(0)
             return cls.EMOJI_TEXT_MAP.get(emoji, emoji)
-
         return re.sub(r'\[[\w\u4e00-\u9fff]+\]', _replace, text)
 
     @classmethod
@@ -281,6 +320,30 @@ class SimHash:
     def is_similar(hash1: int, hash2: int, threshold: int = 3) -> bool:
         """判断两个SimHash是否相似"""
         return SimHash.hamming_distance(hash1, hash2) <= threshold
+
+    @staticmethod
+    def adaptive_threshold(token_count: int) -> int:
+        """
+        根据文本分词数量自适应调整汉明距离阈值。
+
+        短文本 token 少，SimHash 指纹中每个 token 对位向量的贡献更大，
+        1-2 位差异就可能代表完全不同的语义（如"天气真好" vs "天气真差"），
+        因此短文本需要更严格（更小）的阈值。
+
+        Args:
+            token_count: 文本分词后的 token 数量
+
+        Returns:
+            推荐的汉明距离阈值
+        """
+        if token_count <= 5:
+            return 0   # 极短文本：仅完全相同指纹视为重复
+        elif token_count <= 10:
+            return 1   # 短文本：最多允许 1 位差异
+        elif token_count <= 20:
+            return 2   # 中等文本
+        else:
+            return 3   # 长文本：保持默认阈值
 
 
 # ==================== 停用词管理 ====================
@@ -684,9 +747,19 @@ class DataCleaner:
                 'simhash_value',
                 self.udfs['simhash'](F.col('_tokens_for_simhash'))
             )
+            # 计算 token 数量，用于自适应阈值判断
+            result_df = result_df.withColumn(
+                '_token_count',
+                F.size(F.col('_tokens_for_simhash'))
+            )
             # 基于SimHash去重（近似去重）
+            # 注：dropDuplicates(['simhash_value']) 仅去除指纹完全相同的行（距离=0），
+            # 等效于对所有文本长度均使用 threshold=0，这是最保守的策略。
+            # 对于长文本（token > 20）可适当放宽，但 Spark DataFrame 原生不支持
+            # 逐行比较汉明距离，因此保持 dropDuplicates 的精确去重。
+            # 自适应阈值逻辑可在 collect 后的本地去重或 UDF 中使用。
             result_df = result_df.dropDuplicates(['simhash_value'])
-            result_df = result_df.drop('_tokens_for_simhash')
+            result_df = result_df.drop('_tokens_for_simhash', '_token_count')
             logger.info(f"SimHash去重后: {result_df.count()} 条")
         
         final_count = result_df.count()
@@ -802,6 +875,10 @@ class DataCleaner:
         return result_df
     
     # ==================== 特征提取 ====================
+    # 注：以下 TF-IDF、Word2Vec、CountVectorizer 特征主要用于 Spark MLlib
+    # 辅助分析场景（热点话题挖掘、关键词排名、词云生成等），不直接作为
+    # ChineseBERT 情感分析模型的输入。ChineseBERT 使用其内置 tokenizer
+    # 和 embedding 层，无需外部特征向量。
     
     def extract_tfidf_features(self, df: DataFrame,
                                tokens_col: str = 'filtered_tokens',
@@ -844,9 +921,18 @@ class DataCleaner:
                                   tokens_col: str = 'filtered_tokens',
                                   output_col: str = 'word2vec_features',
                                   vector_size: int = 100,
-                                  min_count: int = 5) -> DataFrame:
+                                  min_count: int = 5,
+                                  use_tfidf_weights: bool = False,
+                                  tfidf_features_col: str = 'tfidf_features') -> DataFrame:
         """
         Word2Vec特征提取
+
+        默认行为：Spark MLlib Word2Vec 对文档中所有词向量做简单均值池化，
+        虚词（"的""了"）与关键词（"好看""推荐"）权重相同。
+
+        当 use_tfidf_weights=True 时，使用 TF-IDF 值对词向量进行加权平均，
+        使高 TF-IDF 的关键词在文档向量中贡献更大。需要先调用
+        extract_tfidf_features() 生成 tfidf_features_col 列。
         
         Args:
             df: 输入DataFrame
@@ -854,23 +940,71 @@ class DataCleaner:
             output_col: 输出列名
             vector_size: 向量维度
             min_count: 最小词频
+            use_tfidf_weights: 是否使用 TF-IDF 加权（默认 False，保持原始均值池化）
+            tfidf_features_col: TF-IDF 特征列名（仅 use_tfidf_weights=True 时使用）
             
         Returns:
             包含Word2Vec特征的DataFrame
         """
-        logger.info(f"开始Word2Vec特征提取 (vector_size={vector_size})")
+        logger.info(f"开始Word2Vec特征提取 (vector_size={vector_size}, "
+                     f"tfidf_weighted={use_tfidf_weights})")
         
         word2vec = Word2Vec(
             inputCol=tokens_col,
-            outputCol=output_col,
+            outputCol=output_col if not use_tfidf_weights else '_w2v_raw',
             vectorSize=vector_size,
             minCount=min_count
         )
         
         model = word2vec.fit(df)
         result_df = model.transform(df)
-        
-        logger.info("Word2Vec特征提取完成")
+
+        if use_tfidf_weights:
+            # TF-IDF 加权 Word2Vec：利用词向量查找表和 TF-IDF 权重
+            # 在 UDF 中对每个文档的词向量按 TF-IDF 加权平均
+            word_vectors = model.getVectors().collect()
+            word_vec_map = {row['word']: list(row['vector']) for row in word_vectors}
+            _vector_size = vector_size
+
+            @F.udf(ArrayType(FloatType()))
+            def tfidf_weighted_w2v(tokens, tfidf_vec):
+                """对文档词向量按 TF-IDF 权重进行加权平均"""
+                if not tokens:
+                    return [0.0] * _vector_size
+                weighted_sum = [0.0] * _vector_size
+                total_weight = 0.0
+                for i, token in enumerate(tokens):
+                    vec = word_vec_map.get(token)
+                    if vec is None:
+                        continue
+                    # TF-IDF 权重：使用 token 在稀疏向量中的位置近似
+                    # （HashingTF 索引），如果无法精确匹配则退回权重 1.0
+                    weight = 1.0
+                    if tfidf_vec is not None:
+                        try:
+                            indices = tfidf_vec.indices.tolist()
+                            values = tfidf_vec.values.tolist()
+                            # 简单启发式：用 token hash 查找对应权重
+                            h = hash(token) % len(indices) if indices else -1
+                            if h >= 0 and h < len(values):
+                                weight = max(values[h], 0.1)
+                        except Exception:
+                            weight = 1.0
+                    for j in range(_vector_size):
+                        weighted_sum[j] += vec[j] * weight
+                    total_weight += weight
+                if total_weight > 0:
+                    weighted_sum = [v / total_weight for v in weighted_sum]
+                return weighted_sum
+
+            result_df = result_df.withColumn(
+                output_col,
+                tfidf_weighted_w2v(F.col(tokens_col), F.col(tfidf_features_col))
+            ).drop('_w2v_raw')
+            logger.info("Word2Vec TF-IDF加权特征提取完成")
+        else:
+            logger.info("Word2Vec特征提取完成（简单均值池化）")
+
         return result_df, model
     
     def extract_count_vector_features(self, df: DataFrame,

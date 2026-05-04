@@ -776,9 +776,9 @@ export async function getPredictionAlertHistory(params?: {
   return response.data.data;
 }
 
-// ==================== 6. 双维度排序 API ====================
+// ==================== 6. 三维度排序 API ====================
 
-/** 双维度排序话题 */
+/** 三维度排序话题 */
 export interface RankedTopic {
   topic_id: string | number;
   keywords: string[];
@@ -807,15 +807,15 @@ interface RawRankedTopicItem {
   trend?: 'up' | 'stable' | 'down';
 }
 
-/** 双维度配置 */
-export interface DualDimensionConfig {
+/** 三维度配置 */
+export interface TriDimensionConfig {
   sentiment_weight: number;
   popularity_weight: number;
   time_decay_hours: number;
 }
 
 /**
- * 获取双维度排序后的热点话题
+ * 获取三维度排序后的热点话题
  * GET /api/topics/ranked
  * 包含降级方案
  */
@@ -838,7 +838,7 @@ export async function getRankedTopics(): Promise<RankedTopic[]> {
     }));
   } catch (error) {
     FallbackDataService.recordError('rankedTopics');
-    console.warn('[API] 双维度排序API不可用，使用模拟数据');
+    console.warn('[API] 三维度排序API不可用，使用模拟数据');
     
     // 使用模拟数据
     const mockData = FallbackDataService.getMockRankedTopics();
@@ -857,26 +857,26 @@ export async function getRankedTopics(): Promise<RankedTopic[]> {
 }
 
 /**
- * 获取双维度排序配置
- * GET /api/topics/dual-dimension/config
+ * 获取三维度排序配置
+ * GET /api/topics/tri-dimension/config
  * 包含降级方案
  */
-export async function getDualDimensionConfig(): Promise<DualDimensionConfig> {
+export async function getTriDimensionConfig(): Promise<TriDimensionConfig> {
   try {
-    const response = await apiClient.get('/topics/dual-dimension/config');
+    const response = await apiClient.get('/topics/tri-dimension/config');
     return response.data.data;
   } catch (error) {
-    console.warn('[API] 双维度配置API不可用，使用默认配置');
-    return FallbackDataService.getMockDualDimensionConfig();
+    console.warn('[API] 三维度配置API不可用，使用默认配置');
+    return FallbackDataService.getMockTriDimensionConfig();
   }
 }
 
 /**
- * 更新双维度排序配置
- * POST /api/topics/dual-dimension/config
+ * 更新三维度排序配置
+ * POST /api/topics/tri-dimension/config
  */
-export async function updateDualDimensionConfig(config: Partial<DualDimensionConfig>): Promise<DualDimensionConfig> {
-  const response = await apiClient.post('/topics/dual-dimension/config', config);
+export async function updateTriDimensionConfig(config: Partial<TriDimensionConfig>): Promise<TriDimensionConfig> {
+  const response = await apiClient.post('/topics/tri-dimension/config', config);
   return response.data.data;
 }
 
@@ -933,8 +933,8 @@ export default {
   getPredictionAlertConfig,
   getPredictionAlertHistory,
   
-  // 6. 双维度排序
+  // 6. 三维度排序
   getRankedTopics,
-  getDualDimensionConfig,
-  updateDualDimensionConfig,
+  getTriDimensionConfig,
+  updateTriDimensionConfig,
 };

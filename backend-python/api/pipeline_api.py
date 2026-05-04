@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 def run_pipeline():
     """
     同步执行完整流水线:
-    采集数据(MySQL) → 情感分析(级联策略) → 双维度排序 → 结果入库
+    采集数据(MySQL) → 情感分析(级联策略) → 三维度排序 → 结果入库
     """
     try:
         data = request.get_json(silent=True) or {}
@@ -114,7 +114,7 @@ def get_database_stats():
 @pipeline_bp.route('/ranking', methods=['GET'])
 def get_latest_ranking():
     """
-    查询最新双维度排序结果
+    查询最新三维度排序结果
     
     参数: ?limit=20&batch_id=xxx
     """
@@ -127,7 +127,7 @@ def get_latest_ranking():
         if batch_id:
             sql = """
                 SELECT r.*, w.content, w.user_name, w.created_at as weibo_created_at
-                FROM dual_dimension_ranking r
+                FROM tri_dimension_ranking r
                 JOIN weibo_core_data w ON r.weibo_id = w.weibo_id
                 WHERE r.batch_id = %s
                 ORDER BY r.ranking_position ASC
@@ -137,10 +137,10 @@ def get_latest_ranking():
         else:
             sql = """
                 SELECT r.*, w.content, w.user_name, w.created_at as weibo_created_at
-                FROM dual_dimension_ranking r
+                FROM tri_dimension_ranking r
                 JOIN weibo_core_data w ON r.weibo_id = w.weibo_id
                 WHERE r.batch_id = (
-                    SELECT batch_id FROM dual_dimension_ranking 
+                    SELECT batch_id FROM tri_dimension_ranking 
                     ORDER BY calculation_time DESC LIMIT 1
                 )
                 ORDER BY r.ranking_position ASC

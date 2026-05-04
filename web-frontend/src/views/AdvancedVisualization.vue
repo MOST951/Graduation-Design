@@ -340,7 +340,7 @@
                   {{ selectedPoint.heatScore }}
                 </el-descriptions-item>
                 <el-descriptions-item label="综合得分">
-                  <span class="highlight">{{ selectedPoint.dualScore }}</span>
+                  <span class="highlight">{{ selectedPoint.triScore }}</span>
                 </el-descriptions-item>
                 <el-descriptions-item label="象限">
                   <el-tag :color="quadrantInfo[selectedPoint.quadrant]?.color" effect="dark">
@@ -576,7 +576,7 @@ const generateMockData = () => {
       sentiment: sentiment > 0.2 ? 'positive' : sentiment < -0.2 ? 'negative' : 'neutral',
       sentimentScore: sentiment.toFixed(3),
       heatScore: heat.toFixed(3),
-      dualScore: (config.sentimentWeight * sentimentNorm + config.heatWeight * heat).toFixed(3),
+      triScore: (config.sentimentWeight * sentimentNorm + config.heatWeight * heat).toFixed(3),
     });
   }
   

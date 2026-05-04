@@ -42,9 +42,9 @@
           <template #title>情感分析</template>
         </el-menu-item>
         
-        <el-menu-item index="/dual-dimension">
+        <el-menu-item index="/tri-dimension">
           <el-icon><Histogram /></el-icon>
-          <template #title>双维度排序</template>
+          <template #title>三维度排序</template>
         </el-menu-item>
 
         <template v-if="!isCollapse">
@@ -236,8 +236,8 @@
                 <el-icon :size="16"><User /></el-icon>
               </el-avatar>
               <div class="user-meta">
-                <span class="username">管理员</span>
-                <span class="user-role">Admin</span>
+                <span class="username">{{ displayName }}</span>
+                <span class="user-role">{{ displayRoleEn }}</span>
               </div>
             </div>
             <template #dropdown>
@@ -284,9 +284,28 @@ import {
   TrendCharts,
 } from '@element-plus/icons-vue';
 import apiClient from '@/api/index';
+import { useAuthStore } from '@/store/auth';
 
 const route = useRoute();
 const router = useRouter();
+const authStore = useAuthStore();
+
+const displayName = computed(() => {
+  if (authStore.user) {
+    return authStore.user.name || authStore.user.username;
+  }
+  return localStorage.getItem('username') || '用户';
+});
+
+const displayRole = computed(() => {
+  const role = authStore.user?.role || localStorage.getItem('userRole') || 'user';
+  return role === 'admin' ? '管理员' : '普通用户';
+});
+
+const displayRoleEn = computed(() => {
+  const role = authStore.user?.role || localStorage.getItem('userRole') || 'user';
+  return role === 'admin' ? 'Admin' : 'User';
+});
 
 const isCollapse = ref(false);
 const notificationTab = ref('alert');
@@ -359,7 +378,7 @@ const currentTitle = computed(() => {
     '/collection': '数据采集',
     '/preprocess': '数据预处理',
     '/sentiment': '情感分析',
-    '/dual-dimension': '双维度分析',
+    '/tri-dimension': '三维度分析',
     '/topics': '热点话题分析',
     '/behavior': '用户行为分析',
     '/realtime': '实时舆情监控',
@@ -377,6 +396,12 @@ const toggleCollapse = () => {
 };
 
 const handleLogout = () => {
+  authStore.logout();
+  localStorage.removeItem('isLoggedIn');
+  localStorage.removeItem('username');
+  localStorage.removeItem('userRole');
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('userEmail');
   router.push('/login');
 };
 

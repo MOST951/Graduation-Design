@@ -8,7 +8,7 @@
 3. 批量数据处理流水线
 4. 实时流处理（Structured Streaming）
 5. 情感分析UDF
-6. 双维度排序分布式计算
+6. 三维度排序分布式计算
 
 技术特点：
 - 自适应资源分配
@@ -100,8 +100,8 @@ class SparkConfig:
 
 
 @dataclass 
-class DualDimensionSparkConfig:
-    """双维度模型Spark配置"""
+class TriDimensionSparkConfig:
+    """三维度模型Spark配置"""
     # 权重配置
     sentiment_weight: float = 0.4
     heat_weight: float = 0.4
@@ -112,8 +112,8 @@ class DualDimensionSparkConfig:
     comment_factor: float = 2.0
     like_factor: float = 1.0
     
-    # 时间衰减参数
-    decay_half_life_hours: float = 24.0
+    # 时间衰减参数 - 论文4.2.2 H=12
+    decay_half_life_hours: float = 12.0
     
     # 情感放大参数
     sentiment_amplify: float = 1.5
@@ -160,7 +160,7 @@ if SPARK_AVAILABLE:
         StructField("sentiment_score", FloatType(), True),
         StructField("sentiment_confidence", FloatType(), True),
         StructField("heat_score", FloatType(), True),
-        StructField("dual_score", FloatType(), True),
+        StructField("tri_score", FloatType(), True),
         StructField("rank", IntegerType(), True),
     ])
 
@@ -439,24 +439,24 @@ class SentimentUDFFactory:
             return self.create_sentiment_udf()
 
 
-# ==================== 双维度排序处理器 ====================
+# ==================== 三维度排序处理器 ====================
 
-class DualDimensionProcessor:
+class TriDimensionProcessor:
     """
-    双维度排序Spark处理器
+    三维度排序Spark处理器
     
-    实现情感-热度双维度排序的分布式计算
+    实现情感-热度三维度排序的分布式计算
     """
     
-    def __init__(self, spark: 'SparkSession', config: DualDimensionSparkConfig = None):
+    def __init__(self, spark: 'SparkSession', config: TriDimensionSparkConfig = None):
         self.spark = spark
-        self.config = config or DualDimensionSparkConfig()
+        self.config = config or TriDimensionSparkConfig()
         self._sentiment_udf_factory = SentimentUDFFactory(spark)
     
     def process(self, df: 'DataFrame', 
                 reference_time: datetime = None) -> 'DataFrame':
         """
-        处理DataFrame，添加双维度排序
+        处理DataFrame，添加三维度排序
         
         Args:
             df: 输入DataFrame，需要包含以下列：
@@ -468,7 +468,7 @@ class DualDimensionProcessor:
             reference_time: 参考时间点
             
         Returns:
-            添加了情感分析和双维度得分的DataFrame
+            添加了情感分析和三维度得分的DataFrame
         """
         if reference_time is None:
             reference_time = datetime.now()
@@ -538,17 +538,17 @@ class DualDimensionProcessor:
             F.least(F.lit(1.0), F.col("sentiment_intensity"))
         )
         
-        # 5. 计算双维度综合得分
-        # DualScore = α * SentimentScore + β * HeatScore + γ * TimelinessScore
+        # 5. 计算三维度综合得分
+        # TriScore = α * SentimentScore + β * HeatScore + γ * TimelinessScore
         df = df.withColumn(
-            "dual_score",
+            "tri_score",
             config.sentiment_weight * F.col("sentiment_normalized") +
             config.heat_weight * F.col("heat_normalized") +
             config.timeliness_weight * F.col("timeliness_score")
         )
         
         # 6. 添加排名
-        window = Window.orderBy(F.desc("dual_score"))
+        window = Window.orderBy(F.desc("tri_score"))
         df = df.withColumn("rank", F.row_number().over(window))
         
         # 7. 清理临时列
@@ -559,7 +559,7 @@ class DualDimensionProcessor:
     
     def get_top_k(self, df: 'DataFrame', k: int = 100) -> 'DataFrame':
         """获取Top-K结果"""
-        return df.orderBy(F.desc("dual_score")).limit(k)
+        return df.orderBy(F.desc("tri_score")).limit(k)
     
     def get_quadrant_distribution(self, df: 'DataFrame') -> Dict[str, int]:
         """
@@ -614,10 +614,10 @@ class DualDimensionProcessor:
         """获取统计信息"""
         stats = df.agg(
             F.count("*").alias("total_count"),
-            F.avg("dual_score").alias("avg_dual_score"),
-            F.max("dual_score").alias("max_dual_score"),
-            F.min("dual_score").alias("min_dual_score"),
-            F.stddev("dual_score").alias("stddev_dual_score"),
+            F.avg("tri_score").alias("avg_tri_score"),
+            F.max("tri_score").alias("max_tri_score"),
+            F.min("tri_score").alias("min_tri_score"),
+            F.stddev("tri_score").alias("stddev_tri_score"),
             F.avg("heat_normalized").alias("avg_heat"),
             F.avg("sentiment_score").alias("avg_sentiment"),
             F.sum(F.when(F.col("sentiment") == "positive", 1).otherwise(0)).alias("positive_count"),
@@ -629,10 +629,10 @@ class DualDimensionProcessor:
         
         return {
             "total_count": total,
-            "avg_dual_score": round(stats["avg_dual_score"] or 0, 4),
-            "max_dual_score": round(stats["max_dual_score"] or 0, 4),
-            "min_dual_score": round(stats["min_dual_score"] or 0, 4),
-            "stddev_dual_score": round(stats["stddev_dual_score"] or 0, 4),
+            "avg_tri_score": round(stats["avg_tri_score"] or 0, 4),
+            "max_tri_score": round(stats["max_tri_score"] or 0, 4),
+            "min_tri_score": round(stats["min_tri_score"] or 0, 4),
+            "stddev_tri_score": round(stats["stddev_tri_score"] or 0, 4),
             "avg_heat": round(stats["avg_heat"] or 0, 4),
             "avg_sentiment": round(stats["avg_sentiment"] or 0, 4),
             "sentiment_distribution": {
@@ -783,7 +783,7 @@ class SparkEngine:
         self.config = config or SparkConfig()
         self._session_manager = SparkSessionManager()
         self._spark = None
-        self._dual_processor = None
+        self._tri_processor = None
         self._data_store = None
         
         # 统计信息
@@ -796,7 +796,7 @@ class SparkEngine:
     def start(self) -> 'SparkSession':
         """启动Spark引擎"""
         self._spark = self._session_manager.get_or_create(self.config)
-        self._dual_processor = DualDimensionProcessor(self._spark)
+        self._tri_processor = TriDimensionProcessor(self._spark)
         self._data_store = SparkDataStore(self._spark)
         
         logger.info("SparkEngine已启动")
@@ -873,22 +873,22 @@ class SparkEngine:
         
         return result_df
     
-    def rank_dual_dimension(self, df: 'DataFrame', 
-                           config: DualDimensionSparkConfig = None) -> 'DataFrame':
+    def rank_tri_dimension(self, df: 'DataFrame', 
+                           config: TriDimensionSparkConfig = None) -> 'DataFrame':
         """
-        双维度排序
+        三维度排序
         
         Args:
             df: 输入DataFrame
-            config: 双维度配置
+            config: 三维度配置
             
         Returns:
             排序后的DataFrame
         """
         if config:
-            processor = DualDimensionProcessor(self.spark, config)
+            processor = TriDimensionProcessor(self.spark, config)
         else:
-            processor = self._dual_processor
+            processor = self._tri_processor
         
         result_df = processor.process(df)
         self.stats["jobs_completed"] += 1
@@ -918,15 +918,15 @@ class SparkEngine:
         total_count = df.count()
         logger.info(f"共加载 {total_count} 条数据")
         
-        # 2. 双维度分析（包含情感分析）
-        result_df = self.rank_dual_dimension(df)
+        # 2. 三维度分析（包含情感分析）
+        result_df = self.rank_tri_dimension(df)
         
         # 3. 获取统计信息
-        statistics = self._dual_processor.get_statistics(result_df)
-        quadrant_dist = self._dual_processor.get_quadrant_distribution(result_df)
+        statistics = self._tri_processor.get_statistics(result_df)
+        quadrant_dist = self._tri_processor.get_quadrant_distribution(result_df)
         
         # 4. 获取Top-K结果
-        top_df = self._dual_processor.get_top_k(result_df, top_k)
+        top_df = self._tri_processor.get_top_k(result_df, top_k)
         top_results = [row.asDict() for row in top_df.collect()]
         
         # 5. 保存结果

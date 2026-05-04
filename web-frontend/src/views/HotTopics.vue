@@ -1,14 +1,13 @@
 <template>
   <div class="hot-topics-module">
-    <!-- 顶部标题和核心创新点说明 -->
+    <!-- 顶部标题 -->
     <div class="page-header">
       <h2>热点话题分析</h2>
       <div class="header-badges">
         <el-tag type="success" size="large" effect="dark">
           <el-icon><TrendCharts /></el-icon>
-          核心创新点：情感-热度双维度排序
+          核心创新：三维度综合排序
         </el-tag>
-        <!-- 连通性状态指示器 -->
         <el-tag 
           :type="connectivityTagType" 
           size="small" 
@@ -23,158 +22,257 @@
       </div>
     </div>
 
-    <el-row :gutter="20">
-      <!-- 左侧列：实时热搜和词云 -->
-      <el-col :span="12">
-        <!-- 实时热搜榜 -->
-        <el-card class="mb-4">
+    <!-- 上部区域：词云 + 权重调节 -->
+    <el-row :gutter="20" class="mb-4">
+      <!-- 词云图 -->
+      <el-col :span="14">
+        <el-card class="wordcloud-card">
           <template #header>
             <div class="card-header">
-              <span>微博实时热搜</span>
+              <span>话题词云 <el-tag v-if="selectedKeyword" size="small" closable @close="clearKeywordFilter">已选: {{ selectedKeyword }}</el-tag></span>
               <div class="header-actions">
-                <el-button text :icon="Refresh" size="small" :loading="hotSearchLoading" @click="doRefreshHotSearch">
-                  刷新
-                </el-button>
-                <span v-if="lastRefreshTime" class="refresh-time">
-                  {{ formatRefreshTime(lastRefreshTime) }}
-                </span>
+                <el-switch v-model="sentimentColoring" active-text="情感着色" inactive-text="默认" size="small" style="margin-right:8px" @change="renderWordcloud" />
+                <el-button :icon="Refresh" size="small" :loading="hotSearchLoading" @click="doRefreshHotSearch">刷新</el-button>
+                <el-button :icon="Download" size="small" @click="downloadWordcloud">下载</el-button>
               </div>
             </div>
           </template>
-          <el-table :data="hotSearches" :show-header="false" height="350" size="small">
-            <el-table-column width="45">
-              <template #default="{ $index }">
-                <el-tag
-                  :type="$index < 3 ? 'danger' : 'info'"
-                  size="small"
-                  class="rank-tag"
-                >
-                  {{ $index + 1 }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column>
-              <template #default="{ row }">
-                <div class="hotsearch-item" @click="handleHotSearchClick(row)">
-                  <div class="item-title">
-                    {{ row.title }}
-                    <el-tag v-if="row.isNew" type="danger" size="small">新</el-tag>
-                  </div>
-                  <div class="item-meta">
-                    <span class="heat-value">{{ formatHeat(row.heat) }}</span>
-                    <el-tag :type="getSentimentType(row.sentiment)" size="small">
-                      {{ getSentimentLabel(row.sentiment) }}
-                    </el-tag>
-                  </div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column width="50">
-              <template #default="{ row }">
-                <el-icon :color="row.trend === 'up' ? '#67c23a' : '#f56c6c'" :size="16">
-                  <component :is="row.trend === 'up' ? CaretTop : CaretBottom" />
-                </el-icon>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div ref="wordcloudRef" style="height: 360px"></div>
+          <p class="wordcloud-hint">点击词云中的关键词，右下方列表自动筛选展示相关微博</p>
         </el-card>
+      </el-col>
 
-        <!-- 动态词云图 -->
-        <el-card>
+      <!-- 权重调节 + 关键词搜索 -->
+      <el-col :span="10">
+        <el-card class="control-card">
           <template #header>
             <div class="card-header">
-              <span>话题词云</span>
-              <div class="header-actions">
-                <el-button-group size="small">
-                  <el-button :icon="Refresh" @click="refreshWordcloud">刷新</el-button>
-                  <el-button :icon="Download" @click="downloadWordcloud">下载</el-button>
-                  <el-button :icon="Setting" @click="showSettings = true">设置</el-button>
-                </el-button-group>
-              </div>
+              <span><el-icon><Setting /></el-icon> 排序参数调节</span>
+              <el-button text size="small" @click="resetWeights">重置</el-button>
             </div>
           </template>
-          <div ref="wordcloudRef" style="height: 350px"></div>
-          <div class="wordcloud-controls">
-            <el-select v-model="wordcloudShape" style="width: 100px" size="small" @change="updateWordcloud">
-              <el-option label="圆形" value="circle" />
-              <el-option label="矩形" value="rect" />
-              <el-option label="心形" value="heart" />
-              <el-option label="星形" value="star" />
-            </el-select>
-            <el-color-picker v-model="wordcloudColor" size="small" @change="updateWordcloud" />
-            <el-switch v-model="wordcloudAnimation" active-text="动画" size="small" @change="updateWordcloud" />
+
+          <!-- 三维度公式说明 -->
+          <div class="formula-banner">
+            <div class="formula-text">
+              S = <span class="w-sentiment">α</span> × 情感强度 + <span class="w-heat">β</span> × 互动热度 + <span class="w-time">γ</span> × 时效性
+            </div>
+          </div>
+
+          <!-- 情感强度权重 -->
+          <div class="weight-row">
+            <span class="weight-label">α 情感强度</span>
+            <el-slider
+              v-model="weights.sentiment"
+              :min="0" :max="1" :step="0.05"
+              :format-tooltip="(v:number) => (v*100).toFixed(0)+'%'"
+              class="weight-slider"
+              @input="onWeightChange"
+            />
+            <span class="weight-val">{{ (weights.sentiment*100).toFixed(0) }}%</span>
+          </div>
+
+          <!-- 互动热度权重 -->
+          <div class="weight-row">
+            <span class="weight-label">β 互动热度</span>
+            <el-slider
+              v-model="weights.heat"
+              :min="0" :max="1" :step="0.05"
+              :format-tooltip="(v:number) => (v*100).toFixed(0)+'%'"
+              class="weight-slider"
+              @input="onWeightChange"
+            />
+            <span class="weight-val">{{ (weights.heat*100).toFixed(0) }}%</span>
+          </div>
+
+          <!-- 时效性权重 -->
+          <div class="weight-row">
+            <span class="weight-label">γ 时效性</span>
+            <el-slider
+              v-model="weights.timeliness"
+              :min="0" :max="1" :step="0.05"
+              :format-tooltip="(v:number) => (v*100).toFixed(0)+'%'"
+              class="weight-slider"
+              @input="onWeightChange"
+            />
+            <span class="weight-val">{{ (weights.timeliness*100).toFixed(0) }}%</span>
+          </div>
+
+          <div class="weight-sum" :class="{ warn: Math.abs(weightSum - 1) > 0.06 }">
+            α + β + γ = {{ weightSum.toFixed(2) }}
+            <el-tag v-if="Math.abs(weightSum-1)<=0.06" type="success" size="small">正常</el-tag>
+            <el-tag v-else type="warning" size="small">建议为1</el-tag>
+          </div>
+
+          <el-divider />
+
+          <!-- 关键词搜索 -->
+          <div class="search-box">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="输入关键词检索话题"
+              clearable
+              :prefix-icon="Search"
+              @keyup.enter="doSearch"
+              @clear="clearKeywordFilter"
+            />
+            <el-button type="primary" :icon="Search" @click="doSearch">搜索</el-button>
           </div>
         </el-card>
       </el-col>
+    </el-row>
 
-      <!-- 右侧列：双维度排序组件（核心创新点） -->
-      <el-col :span="12">
-        <el-card class="dual-dimension-card">
-          <template #header>
-            <div class="card-header innovation-header">
-              <div class="header-title">
-                <el-icon><TrendCharts /></el-icon>
-                <span>情感-热度双维度排序</span>
-                <el-tag type="success" size="small" effect="plain">核心创新点</el-tag>
+    <!-- 下部区域：排序结果列表 -->
+    <el-card class="ranking-card">
+      <template #header>
+        <div class="card-header">
+          <div class="header-title">
+            <el-icon><TrendCharts /></el-icon>
+            <span>综合排序结果</span>
+            <el-tag type="success" size="small" effect="plain">核心创新点</el-tag>
+            <el-tag v-if="selectedKeyword" type="primary" size="small">
+              筛选: {{ selectedKeyword }}
+            </el-tag>
+          </div>
+          <div class="header-actions">
+            <span class="topic-count">共 {{ filteredTopics.length }} 条</span>
+            <el-button size="small" type="success" plain @click="exportFilteredResults" :disabled="filteredTopics.length === 0">
+              <el-icon><Download /></el-icon> 导出
+            </el-button>
+            <el-button :icon="Refresh" size="small" :loading="isLoadingRanked" @click="loadRankedTopics">刷新数据</el-button>
+          </div>
+        </div>
+      </template>
+
+      <el-table
+        v-loading="isLoadingRanked"
+        :data="filteredTopics"
+        stripe
+        highlight-current-row
+        @row-click="handleRowClick"
+        style="width: 100%"
+      >
+        <el-table-column label="排名" width="70" align="center">
+          <template #default="{ $index }">
+            <el-tag
+              :type="$index < 3 ? 'danger' : $index < 5 ? 'warning' : 'info'"
+              size="large"
+              class="rank-badge"
+            >{{ $index + 1 }}</el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="微博内容" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <div class="topic-cell">
+              <span class="topic-name">{{ row.name }}</span>
+              <div class="topic-keywords">
+                <el-tag v-for="kw in (row.keywords||[]).slice(0,4)" :key="kw" size="small" type="info" @click.stop="onKeywordTagClick(kw)">{{ kw }}</el-tag>
               </div>
-              <p class="header-desc">
-                综合得分 = α × 情感强度 + β × 传播热度，实现舆情话题的智能排序
-              </p>
             </div>
           </template>
-          <!-- 集成双维度排序组件 -->
-          <DualDimensionRanking 
-            @config-change="onDualDimensionConfigChange"
-            @topic-select="onTopicSelect"
-          />
+        </el-table-column>
+
+        <el-table-column label="发布用户" width="110" align="center" prop="user_name">
+          <template #default="{ row }">
+            <span>{{ row.user_name || row.author || '-' }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="发布时间" width="150" align="center">
+          <template #default="{ row }">
+            <span>{{ formatPublishTime(row.publish_time || row.created_at) }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="情感标签" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getSentimentType(row.sentiment_avg > 0.3 ? 'positive' : row.sentiment_avg < -0.3 ? 'negative' : 'neutral')" size="small">
+              {{ row.sentiment_avg > 0.3 ? '正面' : row.sentiment_avg < -0.3 ? '负面' : '中性' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="情感得分" width="100" align="center" sortable prop="sentiment_avg">
+          <template #default="{ row }">
+            <div class="meta-score">{{ row.sentiment_avg.toFixed(2) }}</div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="互动热度" width="110" align="center" sortable prop="popularity_score">
+          <template #default="{ row }">
+            <span>{{ row.popularity_score.toFixed(4) }}</span>
+            <el-icon :color="getTrendColor(row.trend)" style="margin-left:4px">
+              <component :is="getTrendIcon(row.trend)" />
+            </el-icon>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="综合得分" width="130" align="center" sortable prop="composite_score">
+          <template #default="{ row }">
+            <div class="score-cell">
+              <span class="score-value">{{ row.composite_score.toFixed(4) }}</span>
+              <el-progress :percentage="row.composite_score*100" :show-text="false" :stroke-width="6" :color="getScoreColor(row.composite_score)" />
+            </div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="四象限分类" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag
+              :type="getQuadrantTag(row).type"
+              size="small"
+              effect="dark"
+              :title="getQuadrantTag(row).tooltip"
+            >{{ getQuadrantTag(row).label }}</el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" width="90" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click.stop="handleRowClick(row)">查看详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 下方图表区 -->
+    <el-row :gutter="20" class="mt-4">
+      <el-col :span="12">
+        <el-card shadow="hover">
+          <template #header><span>情感-热度分布</span></template>
+          <div ref="scatterChartRef" style="height: 320px"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card shadow="hover">
+          <template #header><span>Top 5 三维度贡献对比</span></template>
+          <div ref="barChartRef" style="height: 320px"></div>
         </el-card>
       </el-col>
     </el-row>
-    
-    <!-- 词云设置对话框 -->
-    <el-dialog v-model="showSettings" title="词云设置" width="500px">
-      <el-form label-width="100px">
-        <el-form-item label="最大词数">
-          <el-input-number v-model="wordcloudSettings.maxWords" :min="50" :max="500" />
-        </el-form-item>
-        <el-form-item label="最小字号">
-          <el-input-number v-model="wordcloudSettings.minFontSize" :min="12" :max="30" />
-        </el-form-item>
-        <el-form-item label="最大字号">
-          <el-input-number v-model="wordcloudSettings.maxFontSize" :min="40" :max="120" />
-        </el-form-item>
-        <el-form-item label="旋转角度">
-          <el-slider v-model="wordcloudSettings.rotation" :max="90" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showSettings = false">取消</el-button>
-        <el-button type="primary" @click="applySettings">应用</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import { ElMessage, ElNotification } from 'element-plus';
 import * as echarts from 'echarts';
 import 'echarts-wordcloud';
-import { Refresh, Download, Setting, CaretTop, CaretBottom, TrendCharts, Connection } from '@element-plus/icons-vue';
+import { Refresh, Download, Setting, Search, CaretTop, CaretBottom, Minus, TrendCharts, Connection } from '@element-plus/icons-vue';
 import { useWeiboStore } from '@/store/weibo';
 import { useTopicsStore } from '@/store/topics';
-import DualDimensionRanking from '@/components/topics/DualDimensionRanking.vue';
 import useConnectivityMonitor from '@/composables/useConnectivityMonitor';
-import type { RankedTopic, DualDimensionConfig } from '@/api/topics';
+import type { RankedTopic } from '@/api/topics';
 
 // Store
 const weiboStore = useWeiboStore();
 const topicsStore = useTopicsStore();
 
 // 连通性监控
-const { 
-  status: connectivityStatus, 
+const {
+  status: connectivityStatus,
   checking: connectivityChecking,
   overallConnectivity,
   connectivityTagType,
@@ -185,196 +283,168 @@ const {
 
 // 从store获取响应式状态
 const { hotSearches, lastRefreshTime, isLoading: hotSearchLoading, wordcloudDataFromHotSearch } = storeToRefs(weiboStore);
-const { rankedTopics } = storeToRefs(topicsStore);
+const { rankedTopics, isLoadingRankedTopics } = storeToRefs(topicsStore);
 
-// 自动刷新定时器
+const isLoadingRanked = computed(() => isLoadingRankedTopics.value);
+
+// ==================== 三维度权重 ====================
+const weights = reactive({ sentiment: 0.4, heat: 0.35, timeliness: 0.25 });
+const weightSum = computed(() => weights.sentiment + weights.heat + weights.timeliness);
+
+const resetWeights = () => {
+  weights.sentiment = 0.4;
+  weights.heat = 0.35;
+  weights.timeliness = 0.25;
+  recomputeScores();
+};
+
+const onWeightChange = () => {
+  recomputeScores();
+};
+
+// ==================== 关键词筛选 ====================
+const selectedKeyword = ref('');
+const searchKeyword = ref('');
+
+const clearKeywordFilter = () => {
+  selectedKeyword.value = '';
+  searchKeyword.value = '';
+};
+
+const doSearch = () => {
+  if (searchKeyword.value.trim()) {
+    selectedKeyword.value = searchKeyword.value.trim();
+  }
+};
+
+const onKeywordTagClick = (kw: string) => {
+  selectedKeyword.value = kw;
+  searchKeyword.value = kw;
+};
+
+// ==================== 排序结果 ====================
+// 本地重算综合得分（三维度）
+const recomputedTopics = ref<RankedTopic[]>([]);
+
+const recomputeScores = () => {
+  const topics = rankedTopics.value.map((t, idx) => {
+    const timeScore = Math.max(0, 1 - idx * 0.03);
+    const composite = weights.sentiment * Math.abs(t.sentiment_avg)
+                    + weights.heat * t.popularity_score
+                    + weights.timeliness * timeScore;
+    return { ...t, composite_score: composite };
+  });
+  topics.sort((a, b) => b.composite_score - a.composite_score);
+  topics.forEach((t, i) => t.rank = i + 1);
+  recomputedTopics.value = topics;
+  nextTick(updateCharts);
+};
+
+const filteredTopics = computed(() => {
+  const kw = selectedKeyword.value.toLowerCase();
+  if (!kw) return recomputedTopics.value;
+  return recomputedTopics.value.filter(t =>
+    t.name.toLowerCase().includes(kw)
+    || (t.keywords || []).some(k => k.toLowerCase().includes(kw))
+  );
+});
+
+// ==================== 词云 ====================
+const wordcloudRef = ref<HTMLElement>();
+let wordcloudChart: echarts.ECharts | null = null;
+const wordcloudData: { name: string; value: number }[] = reactive([]);
+const sentimentColoring = ref(false);
+
 let autoRefreshTimer: number | null = null;
 
-// 加载真实热搜数据（通过store从微博实时爬取）
 const loadHotSearch = async () => {
   try {
     await weiboStore.fetchHotSearch();
-    
-    // 如果成功获取热搜，更新词云数据
     if (hotSearches.value.length > 0) {
       updateWordcloudFromHotSearch();
-      
-      // 显示成功通知
-      ElNotification({
-        title: '热搜已更新',
-        message: `获取到 ${hotSearches.value.length} 条实时热搜`,
-        type: 'success',
-        duration: 2000,
-      });
+      ElNotification({ title: '热搜已更新', message: `获取到 ${hotSearches.value.length} 条实时热搜`, type: 'success', duration: 2000 });
     }
   } catch (error: any) {
     console.error('加载热搜失败:', error);
-    ElMessage.warning('获取热搜失败: ' + (error.message || '请检查后端服务是否启动'));
   }
 };
 
-// 启动自动刷新
-const startAutoRefresh = () => {
-  // 每60秒自动刷新
-  autoRefreshTimer = window.setInterval(() => {
-    loadHotSearch();
-  }, 60000);
-};
-
-// 停止自动刷新
-const stopAutoRefresh = () => {
-  if (autoRefreshTimer) {
-    clearInterval(autoRefreshTimer);
-    autoRefreshTimer = null;
-  }
-};
-
-// 从热搜更新词云数据（使用store中的计算属性）
 const updateWordcloudFromHotSearch = () => {
   if (wordcloudDataFromHotSearch.value.length > 0) {
-    // 使用store中计算好的词云数据
     wordcloudData.length = 0;
-    wordcloudDataFromHotSearch.value.forEach(item => {
-      wordcloudData.push(item);
-    });
-    updateWordcloud();
+    wordcloudDataFromHotSearch.value.forEach(item => wordcloudData.push(item));
+    renderWordcloud();
   }
 };
 
-// 词云配置
-const wordcloudRef = ref<HTMLElement>();
-const wordcloudShape = ref('circle');
-const wordcloudColor = ref('#409EFF');
-const wordcloudAnimation = ref(true);
-const showSettings = ref(false);
-
-const wordcloudSettings = reactive({
-  maxWords: 200,
-  minFontSize: 14,
-  maxFontSize: 80,
-  rotation: 45,
-});
-
-let wordcloudChart: echarts.ECharts | null = null;
-
-// 词云数据（响应式数组，从热搜动态生成）
-const wordcloudData: { name: string; value: number }[] = reactive([]);
-
-// 工具函数
-const formatHeat = (heat: number) => {
-  if (heat >= 10000000) return (heat / 10000000).toFixed(1) + '千万';
-  if (heat >= 10000) return (heat / 10000).toFixed(1) + '万';
-  return heat.toString();
-};
-
-const getSentimentType = (sentiment: string) => {
-  const map: Record<string, any> = {
-    positive: 'success',
-    neutral: 'info',
-    negative: 'danger',
-  };
-  return map[sentiment] || 'info';
-};
-
-const getSentimentLabel = (sentiment: string) => {
-  const map: Record<string, string> = {
-    positive: '正面',
-    neutral: '中性',
-    negative: '负面',
-  };
-  return map[sentiment] || '未知';
-};
-
-// 初始化词云
 const initWordcloud = () => {
   if (!wordcloudRef.value) return;
-  
   wordcloudChart = echarts.init(wordcloudRef.value);
-  updateWordcloud();
+  renderWordcloud();
 };
 
-// 更新词云
-const updateWordcloud = () => {
+// 根据词名获取情感色
+const getWordSentimentColor = (name: string): string => {
+  const topic = recomputedTopics.value.find(t =>
+    t.name === name || (t.keywords || []).includes(name)
+  );
+  if (!topic) return '#909399';
+  if (topic.sentiment_avg > 0.3) return '#67C23A'; // positive green
+  if (topic.sentiment_avg < -0.3) return '#F56C6C'; // negative red
+  return '#409EFF'; // neutral blue
+};
+
+const renderWordcloud = () => {
   if (!wordcloudChart) return;
-  
-  const maskImage = new Image();
-  const shapes: Record<string, string> = {
-    circle: 'circle',
-    rect: 'rect',
-    star: 'star',
-    heart: 'heart',
-  };
-  
   wordcloudChart.setOption({
-    tooltip: {
-      show: true,
-      formatter: (params: any) => {
-        return `${params.name}: ${params.value}`;
-      },
-    },
+    tooltip: { show: true, formatter: (p: any) => `${p.name}: ${p.value}` },
     series: [{
       type: 'wordCloud',
-      shape: shapes[wordcloudShape.value] || 'circle',
-      left: 'center',
-      top: 'center',
-      width: '90%',
-      height: '90%',
-      right: null,
-      bottom: null,
-      sizeRange: [wordcloudSettings.minFontSize, wordcloudSettings.maxFontSize],
-      rotationRange: [-wordcloudSettings.rotation, wordcloudSettings.rotation],
+      shape: 'circle',
+      left: 'center', top: 'center', width: '90%', height: '90%',
+      sizeRange: [14, 72],
+      rotationRange: [-30, 30],
       rotationStep: 45,
       gridSize: 8,
       drawOutOfBound: false,
-      layoutAnimation: wordcloudAnimation.value,
+      layoutAnimation: true,
       textStyle: {
         fontFamily: 'PingFang SC, Microsoft YaHei, sans-serif',
         fontWeight: 'bold',
-        color: () => {
-          const colors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399'];
+        color: (params: any) => {
+          if (sentimentColoring.value) {
+            return getWordSentimentColor(params.name);
+          }
+          const colors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399', '#8B5CF6'];
           return colors[Math.floor(Math.random() * colors.length)];
         },
       },
-      emphasis: {
-        focus: 'self',
-        textStyle: {
-          textShadowBlur: 10,
-          textShadowColor: '#333',
-        },
-      },
+      emphasis: { focus: 'self', textStyle: { textShadowBlur: 10, textShadowColor: '#333' } },
       data: wordcloudData,
     }],
   });
-  
-  // 点击事件
+
+  wordcloudChart.off('click');
   wordcloudChart.on('click', (params: any) => {
-    ElMessage.info(`点击了词语: ${params.name}`);
+    selectedKeyword.value = params.name;
+    searchKeyword.value = params.name;
+    ElMessage.success(`已筛选关键词: ${params.name}`);
   });
 };
 
-// 双维度排序配置变更事件处理
-const onDualDimensionConfigChange = (config: DualDimensionConfig) => {
-  ElMessage.success(`配置已更新: 情感权重=${(config.sentiment_weight * 100).toFixed(0)}%, 热度权重=${(config.popularity_weight * 100).toFixed(0)}%`);
-};
-
-// 话题选择事件处理
-const onTopicSelect = (topic: RankedTopic) => {
-  ElMessage.info(`选择话题: ${topic.name}`);
-  // 可以在这里添加更多交互逻辑，如显示话题详情
-};
-
-const refreshWordcloud = () => {
-  ElMessage.success('词云已刷新');
-  initWordcloud();
+const doRefreshHotSearch = async () => {
+  try {
+    await weiboStore.forceRefreshHotSearch();
+    updateWordcloudFromHotSearch();
+    ElMessage.success('热搜已刷新');
+  } catch (error: any) {
+    ElMessage.warning('刷新失败: ' + (error.message || '请检查后端服务'));
+  }
 };
 
 const downloadWordcloud = () => {
   if (!wordcloudChart) return;
-  const url = wordcloudChart.getDataURL({
-    type: 'png',
-    pixelRatio: 2,
-    backgroundColor: '#fff',
-  });
+  const url = wordcloudChart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
   const link = document.createElement('a');
   link.href = url;
   link.download = '词云图.png';
@@ -382,67 +452,162 @@ const downloadWordcloud = () => {
   ElMessage.success('词云图已下载');
 };
 
-const doRefreshHotSearch = async () => {
-  try {
-    // 通过store强制刷新（重新从微博爬取）
-    await weiboStore.forceRefreshHotSearch();
-    updateWordcloudFromHotSearch();
-    ElMessage.success('热搜已刷新');
-  } catch (error: any) {
-    console.error('刷新热搜失败:', error);
-    ElMessage.warning('刷新失败: ' + (error.message || '请检查后端服务'));
+// ==================== 图表 ====================
+const scatterChartRef = ref<HTMLElement>();
+const barChartRef = ref<HTMLElement>();
+let scatterChart: echarts.ECharts | null = null;
+let barChart: echarts.ECharts | null = null;
+
+const initCharts = () => {
+  if (scatterChartRef.value) scatterChart = echarts.init(scatterChartRef.value);
+  if (barChartRef.value) barChart = echarts.init(barChartRef.value);
+};
+
+const updateCharts = () => {
+  const data = recomputedTopics.value;
+  if (!data.length) return;
+
+  if (scatterChart) {
+    scatterChart.setOption({
+      tooltip: {
+        formatter: (p: any) => `${p.data.name}<br/>情感: ${p.data.value[0].toFixed(2)}<br/>热度: ${p.data.value[1].toFixed(4)}<br/>综合: ${p.data.value[2].toFixed(4)}`
+      },
+      xAxis: { name: '情感强度', type: 'value', max: 1 },
+      yAxis: { name: '互动热度', type: 'value', max: 1 },
+      series: [{
+        type: 'scatter',
+        symbolSize: (d: number[]) => Math.max(10, d[2] * 50),
+        data: data.map(t => ({
+          name: t.name,
+          value: [Math.abs(t.sentiment_avg), t.popularity_score, t.composite_score],
+          itemStyle: { color: t.sentiment_avg > 0 ? '#67C23A' : t.sentiment_avg < 0 ? '#F56C6C' : '#909399' }
+        }))
+      }]
+    });
+  }
+
+  if (barChart) {
+    const top5 = data.slice(0, 5);
+    barChart.setOption({
+      tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+      legend: { data: ['情感贡献', '热度贡献', '时效贡献'] },
+      xAxis: { type: 'category', data: top5.map(t => t.name), axisLabel: { rotate: 15, interval: 0 } },
+      yAxis: { type: 'value', max: 1 },
+      series: [
+        { name: '情感贡献', type: 'bar', stack: 'total', data: top5.map(t => +(Math.abs(t.sentiment_avg) * weights.sentiment).toFixed(4)), itemStyle: { color: '#409EFF' } },
+        { name: '热度贡献', type: 'bar', stack: 'total', data: top5.map(t => +(t.popularity_score * weights.heat).toFixed(4)), itemStyle: { color: '#67C23A' } },
+        { name: '时效贡献', type: 'bar', stack: 'total', data: top5.map((_, i) => +(Math.max(0, 1 - i * 0.03) * weights.timeliness).toFixed(4)), itemStyle: { color: '#E6A23C' } },
+      ]
+    });
   }
 };
 
-const handleHotSearchClick = (item: any) => {
-  ElMessage.info(`查看热搜: ${item.title}`);
+// ==================== 导出筛选结果 ====================
+const exportFilteredResults = () => {
+  const data = filteredTopics.value;
+  if (data.length === 0) {
+    ElMessage.warning('暂无数据可导出');
+    return;
+  }
+  const headers = ['排名', '话题名称', '关键词', '综合得分', '情感强度', '互动热度', '微博数', '趋势'];
+  const rows = data.map((t, idx) => [
+    idx + 1,
+    `"${t.name.replace(/"/g, '""')}"`,
+    `"${(t.keywords || []).join(', ')}"`,
+    t.composite_score.toFixed(4),
+    t.sentiment_avg.toFixed(4),
+    t.popularity_score.toFixed(4),
+    t.post_count,
+    t.trend === 'up' ? '↑' : t.trend === 'down' ? '↓' : '→',
+  ]);
+  const BOM = '\uFEFF';
+  const csv = BOM + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `热点话题排序_${selectedKeyword.value || '全部'}_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success(`已导出 ${data.length} 条话题数据`);
 };
 
-const applySettings = () => {
-  updateWordcloud();
-  showSettings.value = false;
-  ElMessage.success('设置已应用');
+// ==================== 工具函数 ====================
+const formatCount = (c: number) => c >= 10000 ? (c / 10000).toFixed(1) + '万' : String(c);
+const getScoreColor = (s: number) => s > 0.7 ? '#67C23A' : s > 0.4 ? '#E6A23C' : '#909399';
+const getSentimentType = (s: string) => ({ positive: 'success', neutral: 'info', negative: 'danger' } as any)[s] || 'info';
+const getTrendColor = (t: string) => t === 'up' ? '#67C23A' : t === 'down' ? '#F56C6C' : '#909399';
+const getTrendIcon = (t: string) => t === 'up' ? CaretTop : t === 'down' ? CaretBottom : Minus;
+
+// 四象限分类：根据情感强度和互动热度划分
+const getQuadrantTag = (row: any): { label: string; type: string; tooltip: string } => {
+  const sentimentHigh = Math.abs(row.sentiment_avg) > 0.3;
+  const heatHigh = row.popularity_score > 0.5;
+  if (sentimentHigh && heatHigh) {
+    return { label: '高情感高热度', type: 'danger', tooltip: '高情感强度 + 高互动热度：重点关注话题' };
+  }
+  if (sentimentHigh && !heatHigh) {
+    return { label: '高情感低热度', type: 'warning', tooltip: '高情感强度 + 低互动热度：潜力话题' };
+  }
+  if (!sentimentHigh && heatHigh) {
+    return { label: '低情感高热度', type: 'primary', tooltip: '低情感强度 + 高互动热度：热门中性话题' };
+  }
+  return { label: '低情感低热度', type: 'info', tooltip: '低情感强度 + 低互动热度：冷门话题' };
 };
 
-// 格式化刷新时间
-const formatRefreshTime = (timeStr: string) => {
-  if (!timeStr) return '';
+// 格式化发布时间
+const formatPublishTime = (time: string | undefined): string => {
+  if (!time) return '-';
   try {
-    const date = new Date(timeStr);
-    return `更新于 ${date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`;
+    const d = new Date(time);
+    if (isNaN(d.getTime())) return time;
+    return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   } catch {
-    return '';
+    return time;
   }
 };
 
-// 生命周期
+const handleRowClick = (row: RankedTopic) => {
+  ElMessage.info(`查看话题: ${row.name}`);
+};
+
+// ==================== 加载排序数据 ====================
+const loadRankedTopics = async () => {
+  try {
+    await topicsStore.fetchRankedTopics();
+    recomputeScores();
+    ElMessage.success(`加载了 ${rankedTopics.value.length} 个话题`);
+  } catch (error: any) {
+    ElMessage.warning('加载失败: ' + (error.message || '请检查后端服务'));
+  }
+};
+
+// ==================== 生命周期 ====================
 onMounted(async () => {
   initWordcloud();
-  
-  // 启动后端热搜服务
-  try {
-    await weiboStore.startHotSearch(60);
-  } catch (e) {
-    console.warn('启动热搜服务失败，将直接获取数据');
-  }
-  
-  // 加载真实热搜数据
+  initCharts();
+
+  try { await weiboStore.startHotSearch(60); } catch { /* ignore */ }
   await loadHotSearch();
-  
-  // 启动前端自动刷新
-  startAutoRefresh();
-  
+  await loadRankedTopics();
+
+  autoRefreshTimer = window.setInterval(() => loadHotSearch(), 60000);
+
   window.addEventListener('resize', () => {
     wordcloudChart?.resize();
+    scatterChart?.resize();
+    barChart?.resize();
   });
 });
 
 onUnmounted(() => {
-  // 停止自动刷新
-  stopAutoRefresh();
-  
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
   wordcloudChart?.dispose();
+  scatterChart?.dispose();
+  barChart?.dispose();
 });
+
+watch(rankedTopics, () => recomputeScores(), { deep: true });
 </script>
 
 <style scoped lang="scss">
@@ -459,423 +624,86 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-  
-  h2 {
-    margin: 0;
-    font-size: 22px;
-    color: #303133;
-  }
-  
+
+  h2 { margin: 0; font-size: 22px; color: #303133; }
+
   .header-badges {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    
-    :deep(.el-tag) {
-      font-size: 14px;
-      padding: 8px 16px;
-      
-      .el-icon {
-        margin-right: 6px;
-      }
-    }
-    
-    .connectivity-tag {
-      cursor: pointer;
-      font-size: 12px;
-      padding: 4px 10px;
-      
-      &:hover {
-        opacity: 0.8;
-      }
-    }
+    display: flex; align-items: center; gap: 12px;
+    :deep(.el-tag) { font-size: 14px; padding: 8px 16px; .el-icon { margin-right: 6px; } }
+    .connectivity-tag { cursor: pointer; font-size: 12px; padding: 4px 10px; &:hover { opacity: 0.8; } }
   }
 }
 
-.mb-4 {
-  margin-bottom: 16px;
-}
+.mb-4 { margin-bottom: 16px; }
+.mt-4 { margin-top: 16px; }
 
 .card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  
-  .refresh-time {
-    font-size: 12px;
-    color: var(--color-text-secondary);
-  }
-}
-
-.innovation-header {
-  flex-direction: column;
-  align-items: flex-start;
-  
+  display: flex; justify-content: space-between; align-items: center;
+  .header-actions { display: flex; align-items: center; gap: 10px; }
   .header-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: bold;
-    
-    .el-icon {
-      color: var(--color-success);
+    display: flex; align-items: center; gap: 8px; font-weight: bold;
+    .el-icon { color: var(--color-success); }
+  }
+  .topic-count { font-size: 13px; color: #909399; }
+}
+
+/* 词云卡片 */
+.wordcloud-card {
+  .wordcloud-hint {
+    text-align: center; font-size: 12px; color: #909399; margin: 8px 0 0;
+  }
+}
+
+/* 控制面板 */
+.control-card {
+  .formula-banner {
+    background: linear-gradient(135deg, #ecf5ff, #f0f9eb);
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 18px;
+    .formula-text {
+      font-family: 'Courier New', monospace; font-size: 15px; font-weight: 600; color: #303133;
+      .w-sentiment { color: #409EFF; }
+      .w-heat { color: #67C23A; }
+      .w-time { color: #E6A23C; }
     }
   }
-  
-  .header-desc {
-    margin: 8px 0 0;
-    font-size: 13px;
-    color: var(--color-text-secondary);
-    font-weight: normal;
+
+  .weight-row {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+    .weight-label { width: 90px; font-size: 13px; color: #606266; white-space: nowrap; }
+    .weight-slider { flex: 1; }
+    .weight-val { width: 42px; text-align: right; font-weight: bold; color: #409EFF; font-size: 13px; }
+  }
+
+  .weight-sum {
+    text-align: center; font-size: 13px; color: #606266; margin-bottom: 4px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    &.warn { color: #E6A23C; }
+  }
+
+  .search-box {
+    display: flex; gap: 10px;
+    :deep(.el-input) { flex: 1; }
   }
 }
 
-.dual-dimension-card {
-  :deep(.el-card__body) {
-    padding: 0;
+/* 排序结果卡片 */
+.ranking-card {
+  .rank-badge { font-size: 16px; font-weight: bold; }
+
+  .topic-cell {
+    .topic-name { font-weight: 500; display: block; margin-bottom: 4px; cursor: pointer; &:hover { color: var(--el-color-primary); } }
+    .topic-keywords { display: flex; gap: 4px; flex-wrap: wrap; cursor: pointer; }
   }
+
+  .score-cell {
+    .score-value { font-weight: bold; display: block; margin-bottom: 4px; }
+  }
+
+  .meta-score { font-size: 12px; color: #909399; margin-top: 2px; }
 }
 
-.wordcloud-controls {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding-top: 12px;
-  margin-top: 12px;
-  border-top: 1px solid #ebeef5;
-  gap: 12px;
-}
-
-.topic-list {
-  max-height: 500px;
-  overflow-y: auto;
-}
-
-.topic-item {
-  padding: $spacing-sm;
-  margin-bottom: $spacing-xs;
-  border-radius: $border-radius-base;
-  cursor: pointer;
-  transition: $transition-fast;
-  border: 1px solid transparent;
-  
-  &:hover {
-    background: $bg-hover;
-    border-color: $primary-color;
-  }
-  
-  &.active {
-    background: rgba(64, 158, 255, 0.1);
-    border-color: $primary-color;
-  }
-  
-  .topic-name {
-    margin-bottom: $spacing-xs;
-    font-weight: $font-weight-medium;
-    color: $text-primary;
-  }
-  
-  .topic-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: $spacing-xs;
-    font-size: $font-size-small;
-    color: $text-secondary;
-  }
-}
-
-.hotsearch-header {
-  margin-bottom: $spacing-sm;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  
-  .refresh-time {
-    font-size: 12px;
-    color: var(--color-text-secondary);
-  }
-}
-
-.hotsearch-item {
-  cursor: pointer;
-  padding: $spacing-xs 0;
-  
-  .item-title {
-    font-size: $font-size-base;
-    color: $text-primary;
-    margin-bottom: 4px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    
-    &:hover {
-      color: $primary-color;
-    }
-  }
-  
-  .item-meta {
-    display: flex;
-    align-items: center;
-    gap: $spacing-xs;
-    font-size: $font-size-small;
-    
-    .heat-value {
-      color: $text-secondary;
-    }
-  }
-}
-
-.rank-tag {
-  font-weight: $font-weight-bold;
-}
-
-// 响应式
-@media (max-width: 1400px) {
-  .left-panel,
-  .right-panel {
-    width: 25%;
-  }
-}
-
+/* 响应式 */
 @media (max-width: 1200px) {
-  .topics-layout {
-    flex-direction: column;
-  }
-  
-  .left-panel,
-  .right-panel,
-  .center-panel {
-    width: 100%;
-    height: auto;
-  }
+  .el-row { flex-direction: column; }
 }
-</style>
-
-<style scoped>
-.hot-topics-page {
-  padding: 20px;
-  background: #f5f7fa;
-  min-height: 100%;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-header h2 {
-  margin: 0;
-  font-size: 20px;
-  color: #303133;
-}
-
-.header-actions {
-  display: flex;
-  gap: 15px;
-}
-
-/* 卡片样式 */
-.wordcloud-card,
-.hotsearch-card,
-.monitor-card,
-.modeling-card,
-.spread-card,
-.prediction-card,
-.topics-card {
-  margin-bottom: 20px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: bold;
-}
-
-.header-filters {
-  display: flex;
-  gap: 10px;
-}
-
-/* 热搜列表 */
-.hotsearch-list {
-  padding: 0 10px;
-}
-
-.hotsearch-item {
-  display: flex;
-  align-items: flex-start;
-  padding: 12px 0;
-  border-bottom: 1px solid #ebeef5;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.hotsearch-item:hover {
-  background: #f5f7fa;
-}
-
-.hotsearch-item:last-child {
-  border-bottom: none;
-}
-
-.rank {
-  width: 24px;
-  height: 24px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: bold;
-  margin-right: 12px;
-  background: var(--color-text-secondary);
-  color: #fff;
-}
-
-.rank-1 { background: var(--color-danger); }
-.rank-2 { background: var(--color-warning); }
-.rank-3 { background: #f4e04d; color: #333; }
-
-.item-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.item-title {
-  font-size: 14px;
-  color: #303133;
-  margin-bottom: 5px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.item-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-}
-
-.heat {
-  color: var(--color-text-secondary);
-}
-
-/* 话题表格 */
-.topic-name {
-  cursor: pointer;
-}
-
-.topic-name:hover {
-  color: var(--color-primary);
-}
-
-.topic-keywords {
-  margin-top: 5px;
-  display: flex;
-  gap: 5px;
-}
-
-.heat-cell {
-  display: flex;
-  flex-direction: column;
-}
-
-.heat-value {
-  font-weight: 500;
-}
-
-.heat-trend {
-  font-size: 12px;
-}
-
-.heat-trend.up { color: var(--color-success); }
-.heat-trend.down { color: var(--color-danger); }
-
-.pagination-wrapper {
-  margin-top: 15px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-/* 话题详情 */
-.topic-detail,
-.word-detail {
-  padding: 10px 0;
-}
-
-.detail-section {
-  margin-top: 20px;
-}
-
-.detail-section h4 {
-  margin: 0 0 10px;
-  font-size: 14px;
-  color: #303133;
-}
-
-.opinions-list {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.opinion-item {
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 8px;
-  margin-bottom: 10px;
-}
-
-.opinion-content {
-  font-size: 14px;
-  color: #303133;
-  line-height: 1.6;
-  margin-bottom: 8px;
-}
-
-.opinion-meta {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-/* 词语详情 */
-.sentiment-bars {
-  padding: 10px 0;
-}
-
-.bar-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.bar-label {
-  width: 40px;
-  font-size: 13px;
-  color: #606266;
-}
-
-.bar-item :deep(.el-progress) {
-  flex: 1;
-}
-
-.related-words {
-  padding: 10px 0;
-}
-
-.text-success { color: var(--color-success); }
-.text-danger { color: var(--color-danger); }
 </style>

@@ -1,0 +1,70 @@
+[
+  {
+    "mode": "baseline",
+    "run": 1,
+    "input_rows": 10000,
+    "output_rows": 9970,
+    "data_cleaning_seconds": 7.849869400000898,
+    "tokenization_seconds": 6.876881999982288,
+    "feature_extraction_seconds": 19.754829800018342,
+    "sentiment_analysis_seconds": 6.955890499986708,
+    "total_seconds": 48.76913749999949,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "false",
+      "spark.sql.adaptive.coalescePartitions.enabled": "false",
+      "spark.serializer": "org.apache.spark.serializer.JavaSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "-1"
+    }
+  },
+  {
+    "mode": "baseline",
+    "run": 2,
+    "input_rows": 10000,
+    "output_rows": 9970,
+    "data_cleaning_seconds": 7.5007690000056755,
+    "tokenization_seconds": 6.806565400009276,
+    "feature_extraction_seconds": 19.153404800017597,
+    "sentiment_analysis_seconds": 6.914448199997423,
+    "total_seconds": 47.044735300005414,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "false",
+      "spark.sql.adaptive.coalescePartitions.enabled": "false",
+      "spark.serializer": "org.apache.spark.serializer.JavaSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "-1"
+    }
+  },
+  {
+    "mode": "optimized",
+    "run": 1,
+    "input_rows": 10000,
+    "output_rows": 9970,
+    "data_cleaning_seconds": 7.0222274999832734,
+    "tokenization_seconds": 7.026418099994771,
+    "feature_extraction_seconds": 17.31617279999773,
+    "sentiment_analysis_seconds": 6.792959299986251,
+    "total_seconds": 44.78349970001727,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "true",
+      "spark.sql.adaptive.coalescePartitions.enabled": "true",
+      "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "10485760"
+    }
+  },
+  {
+    "mode": "optimized",
+    "run": 2,
+    "input_rows": 10000,
+    "output_rows": 9970,
+    "data_cleaning_seconds": 6.916762400011066,
+    "tokenization_seconds": 6.64168349999818,
+    "feature_extraction_seconds": 17.34811219997937,
+    "sentiment_analysis_seconds": 7.6517561999789905,
+    "total_seconds": 45.4696232000133,
+    "spark_conf": {
+      "spark.sql.adaptive.enabled": "true",
+      "spark.sql.adaptive.coalescePartitions.enabled": "true",
+      "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+      "spark.sql.autoBroadcastJoinThreshold": "10485760"
+    }
+  }
+]

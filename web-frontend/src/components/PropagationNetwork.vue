@@ -6,6 +6,7 @@
         微博传播路径网络图
       </h3>
       <div class="header-actions">
+        <el-switch v-model="showNickname" active-text="显示昵称" inactive-text="" size="small" @change="toggleLabel" />
         <el-button type="primary" :icon="Refresh" :loading="loading" @click="loadNetwork">
           刷新数据
         </el-button>
@@ -68,6 +69,7 @@ const maxNodes = ref(50);
 const stats = ref<any>(null);
 const showNodeDetail = ref(false);
 const selectedNode = ref<any>(null);
+const showNickname = ref(true);
 
 let chartInstance: echarts.ECharts | null = null;
 
@@ -139,7 +141,7 @@ const renderChart = (network: any) => {
         roam: true,
         draggable: true,
         label: {
-          show: true,
+          show: showNickname.value,
           position: 'right',
           formatter: '{b}',
           fontSize: 10
@@ -218,6 +220,15 @@ const renderDemoChart = () => {
 const getCategoryName = (category: number) => {
   const names = ['原创博主', '一级传播', '二级传播', '三级传播'];
   return names[category] || '未知';
+};
+
+// 切换昵称显示
+const toggleLabel = () => {
+  if (chartInstance) {
+    chartInstance.setOption({
+      series: [{ label: { show: showNickname.value } }],
+    });
+  }
 };
 
 // 窗口大小变化时重绘

@@ -7,7 +7,7 @@
 提供功能：
 1. 数据采集接口
 2. 情感分析接口
-3. 双维度排序接口
+3. 三维度排序接口
 4. 统计分析接口
 5. 系统监控接口
 
@@ -41,7 +41,7 @@ except ImportError as e:
     logger.warning(f"数据流水线不可用: {e}")
 
 try:
-    from core.spark_engine import SparkEngine, SparkConfig, DualDimensionSparkConfig
+    from core.spark_engine import SparkEngine, SparkConfig, TriDimensionSparkConfig
     SPARK_AVAILABLE = True
 except ImportError as e:
     SPARK_AVAILABLE = False
@@ -55,10 +55,10 @@ except ImportError:
     HYBRID_ANALYZER_AVAILABLE = False
 
 try:
-    from spark.dual_dimension_model import rank_weibo_data, DualDimensionConfig
-    DUAL_DIMENSION_AVAILABLE = True
+    from spark.tri_dimension_model import rank_weibo_data, TriDimensionConfig
+    TRI_DIMENSION_AVAILABLE = True
 except ImportError:
-    DUAL_DIMENSION_AVAILABLE = False
+    TRI_DIMENSION_AVAILABLE = False
 
 # 数据目录
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
@@ -102,7 +102,7 @@ def get_system_status():
                 'pipeline': PIPELINE_AVAILABLE,
                 'spark': SPARK_AVAILABLE,
                 'hybrid_analyzer': HYBRID_ANALYZER_AVAILABLE,
-                'dual_dimension': DUAL_DIMENSION_AVAILABLE,
+                'tri_dimension': TRI_DIMENSION_AVAILABLE,
             },
             'data_dir': DATA_DIR,
             'data_files': _count_data_files(),
@@ -377,12 +377,12 @@ def get_sentiment_distribution():
         }), 500
 
 
-# ==================== 双维度排序API ====================
+# ==================== 三维度排序API ====================
 
-@unified_bp.route('/ranking/dual-dimension', methods=['POST'])
-def dual_dimension_ranking():
+@unified_bp.route('/ranking/tri-dimension', methods=['POST'])
+def tri_dimension_ranking():
     """
-    双维度排序
+    三维度排序
     
     Body参数:
         data: 微博数据列表 (可选，不传则从文件加载)
@@ -391,10 +391,10 @@ def dual_dimension_ranking():
         timeliness_weight: 时效性权重 (默认0.2)
         top_k: 返回Top-K (可选)
     """
-    if not DUAL_DIMENSION_AVAILABLE:
+    if not TRI_DIMENSION_AVAILABLE:
         return jsonify({
             'code': 500,
-            'message': '双维度排序模块不可用'
+            'message': '三维度排序模块不可用'
         }), 500
     
     try:
@@ -414,7 +414,7 @@ def dual_dimension_ranking():
                 'message': '没有可用的数据'
             }), 400
         
-        # 执行双维度排序
+        # 执行三维度排序
         ranked_data = rank_weibo_data(
             weibo_data,
             sentiment_weight=sentiment_weight,
@@ -442,7 +442,7 @@ def dual_dimension_ranking():
         })
         
     except Exception as e:
-        logger.error(f'双维度排序失败: {e}', exc_info=True)
+        logger.error(f'三维度排序失败: {e}', exc_info=True)
         return jsonify({
             'code': 500,
             'message': str(e)
@@ -513,7 +513,7 @@ def get_quadrant_analysis():
                 'message': '没有可用的数据'
             }), 400
         
-        if DUAL_DIMENSION_AVAILABLE:
+        if TRI_DIMENSION_AVAILABLE:
             ranked_data = rank_weibo_data(weibo_data)
         else:
             ranked_data = weibo_data

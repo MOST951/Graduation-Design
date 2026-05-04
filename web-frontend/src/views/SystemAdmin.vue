@@ -343,6 +343,30 @@
               </el-form>
             </el-card>
             
+            <!-- 数据库连接配置卡片 -->
+            <el-card class="settings-card" style="margin-top: 20px">
+              <template #header><div class="card-header"><span>数据库连接配置</span><el-tag size="small" :type="dbTestResult === 'success' ? 'success' : dbTestResult === 'failed' ? 'danger' : 'info'">{{ dbTestResult === 'success' ? '连接正常' : dbTestResult === 'failed' ? '连接失败' : '未测试' }}</el-tag></div></template>
+              <el-form :model="dbConfigForm" label-width="120px">
+                <el-row :gutter="20">
+                  <el-col :span="12"><el-form-item label="数据库类型"><el-select v-model="dbConfigForm.type" style="width:100%"><el-option label="MySQL" value="mysql" /><el-option label="PostgreSQL" value="postgresql" /><el-option label="SQLite" value="sqlite" /></el-select></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="主机地址"><el-input v-model="dbConfigForm.host" placeholder="localhost" /></el-form-item></el-col>
+                </el-row>
+                <el-row :gutter="20">
+                  <el-col :span="8"><el-form-item label="端口"><el-input-number v-model="dbConfigForm.port" :min="1" :max="65535" style="width:100%" /></el-form-item></el-col>
+                  <el-col :span="8"><el-form-item label="用户名"><el-input v-model="dbConfigForm.username" placeholder="root" /></el-form-item></el-col>
+                  <el-col :span="8"><el-form-item label="密码"><el-input v-model="dbConfigForm.password" type="password" show-password placeholder="请输入密码" /></el-form-item></el-col>
+                </el-row>
+                <el-row :gutter="20">
+                  <el-col :span="12"><el-form-item label="数据库名"><el-input v-model="dbConfigForm.database" placeholder="weibo_sentiment" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="字符集"><el-select v-model="dbConfigForm.charset" style="width:100%"><el-option label="utf8mb4" value="utf8mb4" /><el-option label="utf8" value="utf8" /><el-option label="latin1" value="latin1" /></el-select></el-form-item></el-col>
+                </el-row>
+                <el-form-item>
+                  <el-button type="primary" :loading="isSavingConfig" @click="handleSaveDbConfig">保存配置</el-button>
+                  <el-button type="success" :loading="testingDb" @click="handleTestDbConnection">测试连接</el-button>
+                </el-form-item>
+              </el-form>
+            </el-card>
+            
             <!-- 邮件配置卡片 -->
             <el-card class="settings-card" style="margin-top: 20px">
               <template #header><div class="card-header"><span>邮件服务器配置</span></div></template>
@@ -401,6 +425,7 @@
       <el-tab-pane label="系统日志" name="syslog">
         <div class="tab-header">
           <div class="header-left">
+            <el-input v-model="sysLogSearch" placeholder="搜索日志内容..." :prefix-icon="Search" clearable style="width: 260px" @input="filterSystemLogs" />
             <el-select v-model="sysLogLevel" placeholder="日志级别" style="width: 140px" @change="fetchSystemLogs">
               <el-option label="全部" value="ALL" />
               <el-option label="ERROR" value="ERROR" />
@@ -411,17 +436,35 @@
             <el-input-number v-model="sysLogLimit" :min="20" :max="500" :step="20" @change="fetchSystemLogs" />
           </div>
           <div class="header-right">
+            <el-tag type="info" size="small">{{ filteredSystemLogs.length }} / {{ systemLogs.length }} 条</el-tag>
             <el-button :icon="Refresh" :loading="loadingSysLogs" @click="fetchSystemLogs">刷新</el-button>
           </div>
         </div>
 
         <el-card shadow="hover" style="margin-top: 12px">
           <div v-loading="loadingSysLogs" class="sys-log-list">
-            <div v-if="systemLogs.length === 0" class="no-logs">暂无日志记录</div>
-            <div v-for="(log, idx) in systemLogs" :key="idx" class="sys-log-item" :class="'log-' + log.level.toLowerCase()">
+            <div v-if="filteredSystemLogs.length === 0" class="no-logs">暂无匹配的日志记录</div>
+            <div
+              v-for="(log, idx) in filteredSystemLogs"
+              :key="idx"
+              class="sys-log-item"
+              :class="['log-' + log.level.toLowerCase(), { expanded: expandedLogIdx === idx }]"
+              @click="toggleLogExpand(idx)"
+            >
               <el-tag :type="getLogLevelType(log.level)" size="small" class="log-level-tag">{{ log.level }}</el-tag>
               <span class="log-message">{{ log.message }}</span>
+              <el-icon class="expand-icon"><ArrowDown /></el-icon>
             </div>
+            <transition name="el-fade-in">
+              <div v-if="expandedLogIdx !== null" class="log-detail-panel">
+                <div class="log-detail-header">日志详情</div>
+                <pre class="log-detail-content">{{ filteredSystemLogs[expandedLogIdx]?.message }}</pre>
+                <div class="log-detail-meta">
+                  <span>级别: {{ filteredSystemLogs[expandedLogIdx]?.level }}</span>
+                  <span>索引: #{{ expandedLogIdx + 1 }}</span>
+                </div>
+              </div>
+            </transition>
           </div>
         </el-card>
       </el-tab-pane>
@@ -611,6 +654,9 @@ const sparkConfigForm = ref({
   maxExecutors: 10,
 });
 
+// 保存初始快照，用于判断核心参数是否变更
+const sparkConfigSnapshot = ref({ ...sparkConfigForm.value });
+
 const emailConfigForm = ref({
   host: 'smtp.example.com',
   port: 465,
@@ -631,6 +677,35 @@ const sysLogLevel = ref('ALL');
 const sysLogLimit = ref(100);
 const loadingSysLogs = ref(false);
 const systemLogs = ref<{ message: string; level: string }[]>([]);
+const sysLogSearch = ref('');
+const expandedLogIdx = ref<number | null>(null);
+
+const filteredSystemLogs = computed(() => {
+  if (!sysLogSearch.value) return systemLogs.value;
+  const keyword = sysLogSearch.value.toLowerCase();
+  return systemLogs.value.filter(log => log.message.toLowerCase().includes(keyword));
+});
+
+const filterSystemLogs = () => {
+  expandedLogIdx.value = null;
+};
+
+const toggleLogExpand = (idx: number) => {
+  expandedLogIdx.value = expandedLogIdx.value === idx ? null : idx;
+};
+
+// ==================== 数据库连接配置 ====================
+const dbConfigForm = ref({
+  type: 'mysql',
+  host: 'localhost',
+  port: 3306,
+  username: 'root',
+  password: '',
+  database: 'weibo_sentiment',
+  charset: 'utf8mb4',
+});
+const dbTestResult = ref<'success' | 'failed' | ''>('');
+const testingDb = ref(false);
 
 // ==================== 权限管理状态 ====================
 const selectedUserId = ref('');
@@ -910,13 +985,39 @@ const handleSaveSparkConfig = async () => {
     const res = await apiClient.put('/admin/config/spark', sparkConfigForm.value);
     
     if (res.data.code === 200) {
-      ElMessage.success('Spark configuration saved successfully');
-      
-      // Show restart warning if required
-      if (res.data.data?.requires_restart) {
+      // 判断核心参数是否被修改
+      const cur = sparkConfigForm.value;
+      const snap = sparkConfigSnapshot.value;
+      const coreChanged =
+        cur.executorMemory !== snap.executorMemory ||
+        cur.executorCores !== snap.executorCores ||
+        cur.partitions !== snap.partitions ||
+        cur.minExecutors !== snap.minExecutors ||
+        cur.maxExecutors !== snap.maxExecutors;
+
+      if (coreChanged) {
+        // 核心参数变更 → 弹出重启确认
         sparkRestartRequired.value = true;
-        ElMessage.warning('Spark cluster restart required for changes to take effect');
+        ElMessageBox.confirm(
+          '检测到 Spark 核心参数已变更，需要重启 Spark 服务后生效。是否现在重启？',
+          '参数变更提示',
+          {
+            confirmButtonText: '立即重启',
+            cancelButtonText: '稍后手动重启',
+            type: 'warning',
+          },
+        ).then(() => {
+          handleRestartSparkCluster();
+        }).catch(() => {
+          ElMessage.info('请稍后手动重启 Spark 服务以使参数生效');
+        });
+      } else {
+        // 非核心参数变更 → 热加载即可
+        ElMessage.success('参数已保存并热加载生效');
       }
+
+      // 更新快照为当前值
+      sparkConfigSnapshot.value = { ...cur };
     }
   } catch (error) {
     ElMessage.warning('Failed to save Spark configuration');
@@ -977,6 +1078,7 @@ const handleResetSparkConfig = () => {
     minExecutors: 1,
     maxExecutors: 10,
   };
+  sparkConfigSnapshot.value = { ...sparkConfigForm.value };
   ElMessage.info('Reset to default configuration');
 };
 
@@ -1037,6 +1139,43 @@ const handleSaveSystemParams = async () => {
     console.error('System params save error:', error);
   } finally {
     isSavingConfig.value = false;
+  }
+};
+
+// ==================== 数据库连接操作 ====================
+const handleSaveDbConfig = async () => {
+  try {
+    isSavingConfig.value = true;
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.put('/admin/config/database', dbConfigForm.value);
+    if (res.data.code === 200) {
+      ElMessage.success('数据库配置已保存');
+    }
+  } catch (error) {
+    ElMessage.warning('保存数据库配置失败');
+  } finally {
+    isSavingConfig.value = false;
+  }
+};
+
+const handleTestDbConnection = async () => {
+  testingDb.value = true;
+  dbTestResult.value = '';
+  try {
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.post('/admin/config/database/test', dbConfigForm.value);
+    if (res.data.code === 200 && res.data.data?.connected) {
+      dbTestResult.value = 'success';
+      ElMessage.success(`数据库连接成功 (延迟: ${res.data.data.latency_ms || '?'}ms)`);
+    } else {
+      dbTestResult.value = 'failed';
+      ElMessage.error(res.data.message || '数据库连接失败');
+    }
+  } catch (error: any) {
+    dbTestResult.value = 'failed';
+    ElMessage.error(error.response?.data?.message || '连接测试失败，请检查配置');
+  } finally {
+    testingDb.value = false;
   }
 };
 
@@ -1404,6 +1543,11 @@ onMounted(async () => {
     padding: 6px $spacing-xs;
     border-bottom: 1px solid $border-lighter;
     line-height: 1.5;
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:hover { background: rgba($primary-color, 0.03); }
+    &.expanded { background: rgba($primary-color, 0.06); border-left: 3px solid $primary-color; }
 
     .log-level-tag {
       flex-shrink: 0;
@@ -1414,11 +1558,55 @@ onMounted(async () => {
     .log-message {
       word-break: break-all;
       color: $text-regular;
+      flex: 1;
     }
+
+    .expand-icon {
+      flex-shrink: 0;
+      color: $text-placeholder;
+      transition: transform 0.2s;
+    }
+
+    &.expanded .expand-icon { transform: rotate(180deg); color: $primary-color; }
 
     &.log-error .log-message { color: $danger-color; }
     &.log-warning .log-message { color: $warning-color; }
     &.log-debug .log-message { color: $text-secondary; }
+  }
+
+  .log-detail-panel {
+    margin: $spacing-xs 0;
+    padding: $spacing-base;
+    background: #1e1e1e;
+    border-radius: $border-radius-base;
+    
+    .log-detail-header {
+      font-size: $font-size-small;
+      color: #67C23A;
+      margin-bottom: $spacing-xs;
+      font-weight: $font-weight-medium;
+    }
+    
+    .log-detail-content {
+      margin: 0;
+      padding: $spacing-sm;
+      background: #2d2d2d;
+      border-radius: $border-radius-small;
+      color: #d4d4d4;
+      font-size: $font-size-extra-small;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .log-detail-meta {
+      display: flex;
+      gap: $spacing-md;
+      margin-top: $spacing-xs;
+      font-size: $font-size-extra-small;
+      color: #909399;
+    }
   }
 }
 

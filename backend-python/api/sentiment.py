@@ -326,7 +326,58 @@ def analyze_text():
         result = None
         
         # 根据方法选择分析器
-        if method == 'bert' and BERT_AVAILABLE:
+        if method == 'cascade':
+            # 级联模式：先词典，置信度不足θ时升级到BERT
+            theta = data.get('threshold', 0.7)
+            escalated = False
+            if LEXICON_AVAILABLE:
+                sentiment, score = SentimentLexicon.analyze(text)
+                confidence = round(min(1.0, abs(score) + 0.3), 4)
+                if confidence >= theta:
+                    result = {
+                        'text': text,
+                        'sentiment': sentiment,
+                        'score': round(score, 4),
+                        'confidence': confidence,
+                        'method': 'cascade_lexicon',
+                        'escalated': False,
+                        'threshold': theta,
+                    }
+                else:
+                    escalated = True
+            else:
+                escalated = True
+
+            if escalated and BERT_AVAILABLE:
+                analyzer = get_bert_analyzer()
+                if analyzer:
+                    bert_result = analyzer.analyze(text)
+                    result = {
+                        'text': text,
+                        'sentiment': bert_result.label,
+                        'score': round(bert_result.score, 4),
+                        'confidence': round(bert_result.confidence, 4),
+                        'probabilities': {k: round(v, 4) for k, v in bert_result.probabilities.items()},
+                        'method': 'cascade_bert',
+                        'escalated': True,
+                        'threshold': theta,
+                        'processing_time_ms': round(bert_result.processing_time, 2),
+                    }
+            elif escalated:
+                # BERT不可用，仍用词典结果
+                if LEXICON_AVAILABLE:
+                    sentiment, score = SentimentLexicon.analyze(text)
+                    result = {
+                        'text': text,
+                        'sentiment': sentiment,
+                        'score': round(score, 4),
+                        'confidence': round(min(1.0, abs(score) + 0.3), 4),
+                        'method': 'cascade_lexicon_fallback',
+                        'escalated': False,
+                        'threshold': theta,
+                    }
+
+        elif method == 'bert' and BERT_AVAILABLE:
             # 使用BERT分析
             analyzer = get_bert_analyzer()
             if analyzer:

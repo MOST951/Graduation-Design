@@ -270,7 +270,7 @@ class RankingEvaluator:
     """
     排序模型评估器
     
-    评估双维度排序模型的排序质量
+    评估三维度排序模型的排序质量
     """
     
     @staticmethod
@@ -630,7 +630,7 @@ class QuadrantEvaluator:
     """
     四象限分类评估器
     
-    评估双维度模型的四象限分类效果
+    评估三维度模型的四象限分类效果
     """
     
     QUADRANTS = [
@@ -734,13 +734,13 @@ class ModelEvaluation:
         """评估情感分析模型"""
         return SentimentEvaluator.evaluate(y_true, y_pred)
     
-    def evaluate_dual_dimension_model(
+    def evaluate_tri_dimension_model(
         self,
         predictions: List[Dict],
         ground_truth: List[Dict]
     ) -> EvaluationReport:
         """
-        评估双维度模型效果
+        评估三维度模型效果
         
         Args:
             predictions: 预测结果列表，每项包含:
@@ -748,7 +748,7 @@ class ModelEvaluation:
                 - sentiment: 情感标签
                 - sentiment_score: 情感得分
                 - heat_score: 热度得分
-                - dual_score: 双维度得分
+                - tri_score: 三维度得分
                 - quadrant: 四象限分类
                 - rank: 排名
             ground_truth: 真实标签列表，格式同上
@@ -773,14 +773,14 @@ class ModelEvaluation:
         
         # 3. 排序模型评估
         predicted_ranking = [pred['id'] for pred in sorted(
-            predictions, key=lambda x: x['dual_score'], reverse=True
+            predictions, key=lambda x: x['tri_score'], reverse=True
         )]
-        relevance_scores = {gt['id']: gt['dual_score'] for gt in ground_truth}
+        relevance_scores = {gt['id']: gt['tri_score'] for gt in ground_truth}
         
-        # 定义相关项（如双维度得分 > 0.7 的项）
+        # 定义相关项（如三维度得分 > 0.7 的项）
         relevant_items = {
             gt['id'] for gt in ground_truth 
-            if gt['dual_score'] > 0.7
+            if gt['tri_score'] > 0.7
         }
         
         report.ranking_metrics = RankingEvaluator.evaluate(
@@ -878,7 +878,7 @@ class ModelEvaluation:
         
         # 排序建议
         if report.ranking_metrics.ndcg_at_k.get(10, 0) < 0.7:
-            recommendations.append("排序NDCG@10较低，建议调整双维度权重参数")
+            recommendations.append("排序NDCG@10较低，建议调整三维度权重参数")
         
         # 四象限分类建议
         if report.quadrant_metrics.accuracy < 0.7:
@@ -1055,16 +1055,16 @@ if __name__ == "__main__":
     # 模拟预测和真实数据
     predictions = [
         {'id': i, 'sentiment': y_pred_sentiment[i], 'heat_score': y_pred_heat[i],
-         'dual_score': 0.5 + i * 0.05, 'quadrant': y_pred_quadrant[i]}
+         'tri_score': 0.5 + i * 0.05, 'quadrant': y_pred_quadrant[i]}
         for i in range(10)
     ]
     ground_truth = [
         {'id': i, 'sentiment': y_true_sentiment[i], 'heat_score': y_true_heat[i],
-         'dual_score': 0.5 + i * 0.05, 'quadrant': y_true_quadrant[i]}
+         'tri_score': 0.5 + i * 0.05, 'quadrant': y_true_quadrant[i]}
         for i in range(10)
     ]
     
-    report = evaluator.evaluate_dual_dimension_model(predictions, ground_truth)
+    report = evaluator.evaluate_tri_dimension_model(predictions, ground_truth)
     
     print(f"综合评分: {report.summary['overall_score']}")
     print(f"情感分析准确率: {report.summary['sentiment_accuracy']:.4f}")

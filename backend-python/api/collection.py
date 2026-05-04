@@ -59,10 +59,16 @@ class CrawlerTask:
         self.collected = 0
         self.failed = 0
         self.is_running = False
+        self._pause_event = threading.Event()  # 用于真正的暂停挂起
+        self._pause_event.set()  # 初始为非暂停状态
+        self._terminated = False  # 终止标志（不可恢复）
         self.thread: Optional[threading.Thread] = None
         self.batch_id: Optional[str] = None
         self._weibo_buffer: List[Dict] = []  # 批量入库缓冲
         self._buffer_size = 50  # 每50条刷入MySQL
+        self.start_time: Optional[float] = None
+        self.end_time: Optional[float] = None
+        self.summary: Dict = {}  # 完成汇总
         
     def start(self):
         """启动任务"""
@@ -71,20 +77,35 @@ class CrawlerTask:
             
         self.is_running = True
         self.status = 'running'
+        self.start_time = time.time()
         self.thread = threading.Thread(target=self._run)
         self.thread.daemon = True
         self.thread.start()
         return True
         
     def pause(self):
-        """暂停任务"""
-        self.is_running = False
+        """暂停任务 - 线程挂起，不退出"""
+        self._pause_event.clear()  # 阻塞线程
         self.status = 'paused'
+        self._log('warn', '任务已暂停，线程挂起等待恢复')
+        self._update_task_status()
         
     def stop(self):
-        """停止任务"""
+        """终止任务 - 不可恢复"""
+        self._terminated = True
+        self._pause_event.set()  # 确保线程不在等待中
         self.is_running = False
         self.status = 'stopped'
+
+    def resume(self):
+        """恢复暂停的任务 - 唤醒挂起线程"""
+        if self.status != 'paused':
+            return False
+        self.status = 'running'
+        self._pause_event.set()  # 唤醒线程
+        self._log('info', '任务已恢复，线程继续执行')
+        self._update_task_status()
+        return True
         
     def _run(self):
         """执行采集任务"""
@@ -121,7 +142,12 @@ class CrawlerTask:
                 crawler = WeiboCrawler()
                 
                 for keyword in keyword_list:
-                    if not self.is_running:
+                    if not self.is_running or self._terminated:
+                        break
+                    
+                    # 暂停检查点：线程在此挂起等待恢复
+                    self._pause_event.wait()
+                    if self._terminated:
                         break
                     
                     self._log('info', f'正在搜索关键词: {keyword}')
@@ -129,7 +155,12 @@ class CrawlerTask:
                     try:
                         # 搜索微博
                         page = 1
-                        while self.is_running and self.collected < max_count and page <= 5:
+                        while self.is_running and not self._terminated and self.collected < max_count and page <= 5:
+                            # 每页采集前检查暂停
+                            self._pause_event.wait()
+                            if self._terminated:
+                                break
+                            
                             weibo_list = list(crawler.search_weibo(keyword, page, 'all'))
                             
                             if not weibo_list:
@@ -178,18 +209,34 @@ class CrawlerTask:
                 except Exception as e:
                     self._log('warn', f'更新批次状态失败: {e}')
             
+            # 如果是终止退出，保留stopped状态
+            if self._terminated:
+                self.end_time = time.time()
+                self._log('warn', f'任务已终止，已采集 {self.collected} 条数据已保留')
+                return
+
             # 任务完成
-            if self.collected >= max_count:
+            self.end_time = time.time()
+            elapsed = self.end_time - (self.start_time or self.end_time)
+            success_rate = round(self.collected / max(self.collected + self.failed, 1) * 100, 1)
+            self.summary = {
+                'total_collected': self.collected,
+                'total_failed': self.failed,
+                'elapsed_seconds': round(elapsed, 1),
+                'elapsed_display': f'{int(elapsed // 60)}分{int(elapsed % 60)}秒',
+                'success_rate': success_rate,
+                'avg_speed': round(self.collected / max(elapsed, 1), 2),
+            }
+
+            if self.collected > 0:
                 self.status = 'completed'
                 self.progress = 100
-                self._log('success', f'任务完成，共采集 {self.collected} 条数据，已入库MySQL')
-            elif self.collected > 0:
-                self.status = 'completed'
-                self.progress = 100
-                self._log('success', f'任务完成，共采集 {self.collected} 条数据，已入库MySQL')
+                self._log('success',
+                    f'任务完成 | 采集 {self.collected} 条 | 耗时 {self.summary["elapsed_display"]}'
+                    f' | 成功率 {success_rate}% | 速率 {self.summary["avg_speed"]} 条/s')
             else:
                 self.status = 'failed'
-                self._log('error', f'未采集到数据')
+                self._log('error', '未采集到数据')
                 
         except Exception as e:
             self.status = 'failed'
@@ -266,6 +313,7 @@ class CrawlerTask:
                     'collected': self.collected,
                     'failed': self.failed,
                     'updatedAt': datetime.now().isoformat(),
+                    'summary': self.summary,
                 })
 
 
@@ -530,6 +578,37 @@ def stop_task(task_id: str):
             }), 400
     except Exception as e:
         logger.error(f'Stop task failed: {e}', exc_info=True)
+        return jsonify({
+            'code': 500,
+            'message': str(e),
+        }), 500
+
+
+@collection_bp.route('/tasks/<task_id>/resume', methods=['POST'])
+def resume_task(task_id: str):
+    """恢复暂停的任务"""
+    try:
+        if task_id not in tasks:
+            return jsonify({
+                'code': 404,
+                'message': '任务不存在',
+            }), 404
+        
+        task = tasks[task_id]
+        if 'crawler' in task and task['crawler'].status == 'paused':
+            task['crawler'].resume()
+            logger.info(f'Task resumed: {task_id}')
+            return jsonify({
+                'code': 200,
+                'message': '任务已恢复',
+            })
+        else:
+            return jsonify({
+                'code': 400,
+                'message': '任务未处于暂停状态',
+            }), 400
+    except Exception as e:
+        logger.error(f'Resume task failed: {e}', exc_info=True)
         return jsonify({
             'code': 500,
             'message': str(e),

@@ -49,6 +49,9 @@ apiClient.interceptors.request.use(
     if (authStore.token) {
       config.headers.Authorization = `Bearer ${authStore.token}`;
     }
+    if (authStore.user?.role) {
+      config.headers['X-User-Role'] = authStore.user.role;
+    }
     return config;
   },
   error => {

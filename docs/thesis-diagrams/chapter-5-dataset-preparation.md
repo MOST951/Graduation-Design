@@ -1,636 +1,336 @@
-# 第5章 数据集准备 - 数据处理流程图
+# 第5章 数据集准备
 
-## 5.1 数据集处理流程图
+## 5.1 数据集采集
+
+情感分析模型的训练效果在很大程度上取决于标注数据的质量和规模。本系统使用的标注数据集由两个公开的中文微博情感语料库合并而来。第一个是weibo_senti_100k，托管于HuggingFace平台（dirtycomputer/weibo_senti_100k），原始规模约12万条，每条数据包含一段微博评论文本和一个二分类标签（0表示负面，1表示正面）。第二个是nCoV_100k_train，该数据集采集于2020年初新冠疫情暴发期间，约10万条微博，标注体系为三分类（-1为负面，0为中性，1为正面）。选择这两个数据集的原因在于：前者提供了充足的正面和负面样本，后者则补充了中性类别，且两者均为真实微博文本，语言风格和噪声特征与系统实际采集的数据较为接近。
+
+两个数据集合并后，原始数据存在两个问题：一是两个来源之间可能存在重复文本，二是类别数量不均衡——nCoV数据集中中性样本约占57%，远多于正面和负面。对此，系统先基于MD5哈希对文本进行去重，再按类别分别随机采样，使正面、负面、中性各保留33,333条，最终得到99,999条三分类标注数据。采样时固定随机种子为42，保证结果可复现。
+
+除标注数据集外，系统还需要用于功能验证的微博采集数据。这部分数据通过系统自身的爬虫模块实时获取，用户在前端界面设定关键词、时间范围和采集数量后，后端调用爬虫通过微博移动端接口抓取微博正文、发布时间、用户信息、转发数、评论数、点赞数等字段。为应对微博的反爬机制，爬虫模块内置了User-Agent轮换、请求间隔随机化和失败自动重试策略。采集到的原始数据以JSON格式按日期分区写入HDFS，同时将任务状态和异常信息记录到MySQL的日志表中，便于追溯和监控。
+
+完整的数据处理流程如图5-1所示，从原始数据采集开始，依次经过去重、文本清洗、标准化、分词去停用词、特征提取，最终输出可供模型训练和系统测试使用的规范化数据集。
+
+### 图5-1 数据集处理总流程图
 
 ```mermaid
 flowchart TD
-    A[数据采集<br/>Data Collection] --> B[数据清洗<br/>Data Cleaning]
-    B --> C[中文分词<br/>Chinese Segmentation]
-    C --> D[特征提取<br/>Feature Extraction]
-    D --> E[数据标注<br/>Data Labeling]
-    E --> F[数据划分<br/>Data Splitting]
-    F --> G[数据存储<br/>Data Storage]
-    
-    subgraph "数据采集详细流程"
-        A1[关键词配置<br/>Keyword Configuration]
-        A2[微博API调用<br/>Weibo API Calls]
-        A3[增量去重<br/>Deduplication]
-        A4[实时流处理<br/>Real-time Stream]
-        A5[数据验证<br/>Data Validation]
-    end
-    
-    subgraph "数据清洗详细流程"
-        B1[HTML标签去除<br/>HTML Tag Removal]
-        B2[特殊字符处理<br/>Special Character Processing]
-        B3[繁简转换<br/>Traditional-Simplified Conversion]
-        B4[表情符号处理<br/>Emoji Processing]
-        B5[URL链接处理<br/>URL Link Processing]
-        B6[重复内容检测<br/>Duplicate Content Detection]
-    end
-    
-    subgraph "中文分词详细流程"
-        C1[自定义词典加载<br/>Custom Dictionary Loading]
-        C2[Jieba分词<br/>Jieba Segmentation]
-        C3[停用词过滤<br/>Stopword Filtering]
-        C4[词性标注<br/>Part-of-Speech Tagging]
-        C5[分词结果验证<br/>Segmentation Validation]
-    end
-    
-    subgraph "特征提取详细流程"
-        D1[词向量提取<br/>Word Vector Extraction]
-        D2[统计特征计算<br/>Statistical Feature Calculation]
-        D3[情感特征构建<br/>Sentiment Feature Construction]
-        D4[热度特征计算<br/>Popularity Feature Calculation]
-        D5[时间特征编码<br/>Time Feature Encoding]
-    end
-    
-    subgraph "数据标注详细流程"
-        E1[人工标注<br/>Manual Labeling]
-        E2[词典标注<br/>Dictionary Labeling]
-        E3[半自动标注<br/>Semi-automatic Labeling]
-        E4[标注一致性检查<br/>Label Consistency Check]
-        E5[标注质量评估<br/>Label Quality Assessment]
-    end
-    
-    subgraph "数据划分详细流程"
-        F1[训练集<br/>Training Set<br/>70%]
-        F2[验证集<br/>Validation Set<br/>15%]
-        F3[测试集<br/>Test Set<br/>15%]
-        F4[分层抽样<br/>Stratified Sampling]
-        F5[时间序列划分<br/>Time Series Splitting]
-    end
-    
-    A --> A1
-    A1 --> A2
-    A2 --> A3
-    A3 --> A4
-    A4 --> A5
-    
-    B --> B1
-    B1 --> B2
-    B2 --> B3
-    B3 --> B4
-    B4 --> B5
-    B5 --> B6
-    
-    C --> C1
-    C1 --> C2
-    C2 --> C3
-    C3 --> C4
-    C4 --> C5
-    
-    D --> D1
-    D1 --> D2
-    D2 --> D3
-    D3 --> D4
-    D4 --> D5
-    
-    E --> E1
-    E1 --> E2
-    E2 --> E3
-    E3 --> E4
-    E4 --> E5
-    
-    F --> F1
-    F --> F2
-    F --> F3
-    F1 --> F4
-    F2 --> F4
-    F3 --> F4
-    F4 --> F5
-    
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#fce4ec
-    style F fill:#f1f8e9
-    style G fill:#e1f5fe
+    START(["开始"])
+    D_RAW[/"原始微博数据<br/>weibo_senti_100k + nCoV_100k"/]
+    P_DEDUP["三级去重处理<br/>MD5 / 时间窗口 / SimHash"]
+    P_CLEAN["文本清洗与标准化<br/>HTML · URL · 表情 · 繁简"]
+    P_TOKEN["中文分词与停用词过滤<br/>Jieba精确模式 + 自定义词典"]
+    P_TIME["时间标准化与数值归一化<br/>统一时间戳 · Min-Max归一化"]
+    P_FEAT["文本特征提取<br/>TF-IDF · Word2Vec · CountVec"]
+    C_QUALITY{"数据质量<br/>检查通过?"}
+    P_FIX["质量问题修复<br/>补充缺失 · 过滤异常"]
+    P_SPLIT["数据集划分<br/>分层抽样 8:1:1"]
+    D_TRAIN[/"训练集 80%<br/>79,999条"/]
+    D_VAL[/"验证集 10%<br/>10,000条"/]
+    D_TEST[/"测试集 10%<br/>10,000条"/]
+    DONE(["结束"])
+
+    START --> D_RAW
+    D_RAW --> P_DEDUP
+    P_DEDUP --> P_CLEAN
+    P_CLEAN --> P_TOKEN
+    P_TOKEN --> P_TIME
+    P_TIME --> P_FEAT
+    P_FEAT --> C_QUALITY
+    C_QUALITY -->|"是"| P_SPLIT
+    C_QUALITY -->|"否"| P_FIX
+    P_FIX --> P_FEAT
+    P_SPLIT --> D_TRAIN
+    P_SPLIT --> D_VAL
+    P_SPLIT --> D_TEST
+    D_TRAIN --> DONE
+    D_VAL --> DONE
+    D_TEST --> DONE
+
+    style START fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style DONE fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style D_RAW fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style D_TRAIN fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style D_VAL fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style D_TEST fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style C_QUALITY fill:#fff9c4,stroke:#f9a825,stroke-width:3px
+    style P_FIX fill:#ffcdd2,stroke:#c62828
 ```
 
-## 5.2 数据采集详细流程
+## 5.2 数据集预处理
 
-### 5.2.1 微博数据采集架构
+微博文本的特点是短小、口语化强、噪声多。一条几十字的微博里可能同时出现HTML残留标签、URL链接、@提及、#话题标签#、表情符号、繁体字和全角标点，如果不加处理直接喂给模型，分词结果会很碎，特征也会变得稀疏。因此，系统在数据采集之后设计了一套相对完整的预处理流程。
+
+这套流程的代码实现集中在`backend-python/spark/data_cleaner.py`中，核心类为`DataCleaner`。对外暴露的主入口是`clean_weibo_data()`方法，它内部依次调用去重、清洗、分词、停用词过滤、时间标准化、数值归一化和特征提取等步骤。
+
+### 5.2.1 数据去重
+
+采集到的微博数据中，重复来源主要有三种：爬虫分页抓取时的重叠、同一用户短时间内的刷屏转发、以及内容经过轻微改写但语义几乎相同的"洗稿"。针对这三种情况，系统的`remove_duplicates()`方法实现了三级去重，默认按`method='all'`依次执行。
+
+第一级是MD5精确去重。系统对每条微博的正文计算MD5哈希值，生成`content_md5`字段，然后调用Spark的`dropDuplicates(['content_md5'])`删除文本完全一致的记录。
+
+第二级是用户时间窗口去重。系统将微博发布时间按24小时划分时间桶（`time_bucket`），以用户ID、时间桶和文本指纹作为联合键，同一用户在同一天内发布的相同内容只保留一条。
+
+第三级是SimHash近似去重。SimHash算法将分词后的文本映射为64位指纹，通过比较两个指纹之间的汉明距离来判断相似程度。系统代码中保留了阈值参数（默认为3），实现近似重复的过滤。
+
+三级去重的详细流程如图5-2所示。
+
+### 图5-2 三级去重流程图
 
 ```mermaid
-graph TD
-    subgraph "数据源 Data Sources"
-        S1[微博搜索API<br/>Search API]
-        S2[微博用户时间线<br/>User Timeline]
-        S3[微博热门话题<br/>Hot Topics]
-        S4[实时流接口<br/>Streaming API]
-    end
-    
-    subgraph "采集层 Collection Layer"
-        C1[关键词采集器<br/>Keyword Collector]
-        C2[用户采集器<br/>User Collector]
-        C3[热门采集器<br/>Hot Topics Collector]
-        C4[流式采集器<br/>Stream Collector]
-    end
-    
-    subgraph "处理层 Processing Layer"
-        P1[数据验证器<br/>Data Validator]
-        P2[去重处理器<br/>Deduplication Processor]
-        P3[格式转换器<br/>Format Converter]
-        P4[质量检查器<br/>Quality Checker]
-    end
-    
-    subgraph "存储层 Storage Layer"
-        ST1[原始数据存储<br/>Raw Data Storage]
-        ST2[元数据存储<br/>Metadata Storage]
-        ST3[索引存储<br/>Index Storage]
-    end
-    
-    S1 --> C1
-    S2 --> C2
-    S3 --> C3
-    S4 --> C4
-    
-    C1 --> P1
-    C2 --> P1
-    C3 --> P1
-    C4 --> P1
-    
-    P1 --> P2
-    P2 --> P3
-    P3 --> P4
-    
-    P4 --> ST1
-    P4 --> ST2
-    P4 --> ST3
-    
-    style S1 fill:#e3f2fd
-    style S2 fill:#e3f2fd
-    style S3 fill:#e3f2fd
-    style S4 fill:#e3f2fd
-    style C1 fill:#f3e5f5
-    style C2 fill:#f3e5f5
-    style C3 fill:#f3e5f5
-    style C4 fill:#f3e5f5
-    style P1 fill:#e8f5e8
-    style P2 fill:#e8f5e8
-    style P3 fill:#e8f5e8
-    style P4 fill:#e8f5e8
-    style ST1 fill:#fff3e0
-    style ST2 fill:#fff3e0
-    style ST3 fill:#fff3e0
+flowchart TD
+    START(["开始"])
+    D_IN[/"原始微博数据集"/]
+    P_MD5["计算每条文本的MD5哈希值"]
+    P_MD5_DROP["基于content_md5执行dropDuplicates"]
+    C_MD5{"存在用户<br/>时间窗口重复?"}
+    P_TIME["按24h划分时间桶time_bucket"]
+    P_TIME_DROP["以用户ID+时间桶+文本指纹为联合键去重"]
+    C_SIM{"启用近似<br/>去重?"}
+    P_SIM["对分词结果计算SimHash生成64位指纹"]
+    P_SIM_CMP["比较汉明距离 阈值≤3判定为近似重复"]
+    P_SIM_DROP["去除近似重复记录"]
+    D_OUT[/"去重后数据集"/]
+    DONE(["结束"])
+
+    START --> D_IN --> P_MD5 --> P_MD5_DROP --> C_MD5
+    C_MD5 -->|"是"| P_TIME --> P_TIME_DROP --> C_SIM
+    C_MD5 -->|"否"| C_SIM
+    C_SIM -->|"是"| P_SIM --> P_SIM_CMP --> P_SIM_DROP --> D_OUT
+    C_SIM -->|"否"| D_OUT
+    D_OUT --> DONE
+
+    style START fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style DONE fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style D_IN fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style D_OUT fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style C_MD5 fill:#fff9c4,stroke:#f9a825,stroke-width:3px
+    style C_SIM fill:#fff9c4,stroke:#f9a825,stroke-width:3px
 ```
 
-### 5.2.2 数据采集算法实现
+### 5.2.2 数据清洗与文本标准化
 
-```python
-class WeiboDataCollector:
-    """微博数据采集器"""
-    
-    def __init__(self, config):
-        self.keywords = config.get('keywords', [])
-        self.user_ids = config.get('user_ids', [])
-        self.collection_rate = config.get('rate', 1)  # 每秒采集次数
-        self.deduplication_cache = set()
-        self.session = requests.Session()
-        
-    def collect_by_keywords(self):
-        """基于关键词的数据采集"""
-        for keyword in self.keywords:
-            try:
-                # 1. 调用微博搜索API
-                response = self.session.get(
-                    f'https://m.weibo.cn/api/container/getIndex',
-                    params={
-                        'containerid': 100103type,
-                        'q': keyword,
-                        'count': 50
-                    }
-                )
-                
-                # 2. 数据验证
-                if response.status_code == 200:
-                    data = response.json()
-                    posts = self.extract_posts(data)
-                    
-                    # 3. 去重处理
-                    unique_posts = []
-                    for post in posts:
-                        post_id = post.get('id')
-                        if post_id and post_id not in self.deduplication_cache:
-                            self.deduplication_cache.add(post_id)
-                            unique_posts.append(post)
-                    
-                    # 4. 存储数据
-                    self.save_posts(unique_posts, keyword)
-                    
-            except Exception as e:
-                self.log_error(f'关键词采集失败: {keyword}, 错误: {e}')
-            
-            # 5. 采集频率控制
-            time.sleep(self.collection_rate)
-    
-    def collect_realtime_stream(self):
-        """实时流数据采集"""
-        while True:
-            try:
-                # 建立WebSocket连接
-                ws = websocket.create_connection(
-                    'wss://stream.weibo.com/2/status/sample'
-                )
-                
-                for message in ws:
-                    data = json.loads(message)
-                    post = self.parse_stream_message(data)
-                    
-                    if post and self.is_relevant_post(post):
-                        self.save_post(post)
-                        
-            except Exception as e:
-                self.log_error(f'流采集异常: {e}')
-                time.sleep(5)  # 重连间隔
-```
+去重完成后，下一步是对微博正文做清洗。这部分由`_clean_text_impl()`方法实现，通过Spark UDF在分布式环境下并行执行。
 
-## 5.3 数据清洗详细流程
+第一步是去除HTML标签和URL链接。系统用正则表达式将它们统一删除。第二步是处理@提及和#话题#。@用户名直接删除；话题标签只去掉两侧的#号，保留中间的话题文字。第三步是表情符号转换——系统设计了一个`EmojiConverter`类，内置了76种常见微博表情到中文描述的映射关系。部分示例如表5-1所示。
 
-### 5.3.1 文本预处理算法
+### 表5-1 微博表情符号转换示例
 
-```python
-class TextPreprocessor:
-    """文本预处理器"""
-    
-    def __init__(self):
-        self.stopwords = self.load_stopwords()
-        self.custom_dict = self.load_custom_dictionary()
-        self.emoji_pattern = re.compile(
-            r'[\U00010000-\U0010ffff\U00002600-\U000027bf\U000024c2-\U0001f251]'
-        )
-        
-    def clean_text(self, text):
-        """综合文本清洗"""
-        if not text:
-            return ""
-            
-        # 1. HTML标签去除
-        text = re.sub(r'<[^>]+>', '', text)
-        
-        # 2. URL链接处理
-        text = re.sub(r'http[s]?://\S+', '[URL]', text)
-        
-        # 3. @用户提及处理
-        text = re.sub(r'@\w+', '[USER]', text)
-        
-        # 4. #话题标签处理
-        text = re.sub(r'#\w+#', '[TOPIC]', text)
-        
-        # 5. 表情符号处理
-        text = self.emoji_pattern.sub('[EMOJI]', text)
-        
-        # 6. 繁简转换
-        text = self.traditional_to_simplified(text)
-        
-        # 7. 特殊字符处理
-        text = re.sub(r'[^\u4e00-\u9fff\w\s]', '', text)
-        
-        # 8. 多余空格处理
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        return text
-    
-    def segment_text(self, text):
-        """中文分词处理"""
-        # 1. 加载自定义词典
-        jieba.load_userdict(self.custom_dict)
-        
-        # 2. 精确模式分词
-        words = jieba.lcut(text, cut_all=False)
-        
-        # 3. 停用词过滤
-        filtered_words = []
-        for word in words:
-            if (len(word) > 1 and 
-                word not in self.stopwords and 
-                not word.isdigit()):
-                filtered_words.append(word)
-        
-        return filtered_words
-```
+| 原始表情 | 转换结果 | 情感倾向 |
+|---------|---------|---------|
+| [哈哈] | 开心大笑 | 正面 |
+| [心] | 爱心喜欢 | 正面 |
+| [赞] | 点赞好评 | 正面 |
+| [怒] | 生气愤怒 | 负面 |
+| [泪] | 伤心难过 | 负面 |
+| [衰] | 倒霉不好 | 负面 |
+| [思考] | 正在思考 | 中性 |
+| [围观] | 围观关注 | 中性 |
 
-### 5.3.2 数据质量评估
+第四步是字符层面的标准化。系统调用OpenCC将繁体中文转换为简体中文，如果运行环境中没有安装OpenCC，则回退到内置的高频繁简映射表。同时，系统将全角字符转换为半角形式，并把连续的空白字符合并为单个空格。清洗后的文本保存在`cleaned_text`字段中。
 
-```python
-class DataQualityAssessor:
-    """数据质量评估器"""
-    
-    def assess_data_quality(self, dataset):
-        """评估数据集质量"""
-        metrics = {}
-        
-        # 1. 完整性评估
-        metrics['completeness'] = {
-            'total_records': len(dataset),
-            'missing_values': self.count_missing_values(dataset),
-            'completeness_rate': self.calculate_completeness(dataset)
-        }
-        
-        # 2. 准确性评估
-        metrics['accuracy'] = {
-            'duplicate_rate': self.calculate_duplicate_rate(dataset),
-            'format_consistency': self.check_format_consistency(dataset),
-            'language_detection': self.detect_language_consistency(dataset)
-        }
-        
-        # 3. 一致性评估
-        metrics['consistency'] = {
-            'timestamp_consistency': self.check_timestamp_consistency(dataset),
-            'field_consistency': self.check_field_consistency(dataset),
-            'value_range_consistency': self.check_value_ranges(dataset)
-        }
-        
-        # 4. 及时性评估
-        metrics['timeliness'] = {
-            'data_freshness': self.calculate_freshness(dataset),
-            'collection_delay': self.calculate_collection_delay(dataset),
-            'update_frequency': self.calculate_update_frequency(dataset)
-        }
-        
-        return metrics
-    
-    def generate_quality_report(self, metrics):
-        """生成质量评估报告"""
-        report = {
-            'overall_score': self.calculate_overall_quality_score(metrics),
-            'detailed_metrics': metrics,
-            'recommendations': self.generate_improvement_recommendations(metrics)
-        }
-        
-        return report
-```
+文本清洗的详细流程如图5-3所示。
 
-## 5.4 特征工程详细流程
-
-### 5.4.1 情感特征构建
-
-```python
-class SentimentFeatureExtractor:
-    """情感特征提取器"""
-    
-    def __init__(self):
-        self.sentiment_dict = self.load_sentiment_dictionary()
-        self.bert_tokenizer = AutoTokenizer.from_pretrained('bert-base-chinese')
-        self.bert_model = AutoModel.from_pretrained('bert-base-chinese')
-        
-    def extract_sentiment_features(self, text):
-        """提取情感特征"""
-        features = {}
-        
-        # 1. 词典特征
-        dict_features = self.extract_dictionary_features(text)
-        features.update(dict_features)
-        
-        # 2. 统计特征
-        stat_features = self.extract_statistical_features(text)
-        features.update(stat_features)
-        
-        # 3. 语义特征
-        semantic_features = self.extract_semantic_features(text)
-        features.update(semantic_features)
-        
-        # 4. 上下文特征
-        context_features = self.extract_context_features(text)
-        features.update(context_features)
-        
-        return features
-    
-    def extract_dictionary_features(self, text):
-        """词典特征提取"""
-        words = jieba.lcut(text)
-        
-        # 正面情感词统计
-        positive_words = [w for w in words if w in self.sentiment_dict and self.sentiment_dict[w] > 0]
-        negative_words = [w for w in words if w in self.sentiment_dict and self.sentiment_dict[w] < 0]
-        
-        features = {
-            'positive_word_count': len(positive_words),
-            'negative_word_count': len(negative_words),
-            'positive_word_ratio': len(positive_words) / len(words) if words else 0,
-            'negative_word_ratio': len(negative_words) / len(words) if words else 0,
-            'sentiment_word_ratio': (len(positive_words) + len(negative_words)) / len(words) if words else 0,
-            'max_positive_score': max([self.sentiment_dict[w] for w in positive_words], default=0),
-            'min_negative_score': min([self.sentiment_dict[w] for w in negative_words], default=0),
-            'sentiment_intensity': sum([abs(self.sentiment_dict[w]) for w in words if w in self.sentiment_dict])
-        }
-        
-        return features
-```
-
-### 5.4.2 BERT语义特征提取
-
-```python
-def extract_bert_features(self, text):
-    """BERT语义特征提取"""
-    # 1. 文本编码
-    inputs = self.bert_tokenizer(
-        text, 
-        return_tensors='pt', 
-        truncation=True, 
-        padding=True, 
-        max_length=512
-    )
-    
-    # 2. BERT推理
-    with torch.no_grad():
-        outputs = self.bert_model(**inputs)
-        last_hidden_states = outputs.last_hidden_state
-        attention_weights = outputs.attentions
-    
-    # 3. 特征提取
-    features = {
-        # CLS向量特征
-        'cls_embedding': last_hidden_states[:, 0, :].squeeze().numpy(),
-        
-        # 平均池化特征
-        'mean_pooling': last_hidden_states.mean(dim=1).squeeze().numpy(),
-        
-        # 最大池化特征
-        'max_pooling': last_hidden_states.max(dim=1).squeeze().numpy(),
-        
-        # 注意力特征
-        'attention_entropy': self.calculate_attention_entropy(attention_weights),
-        'attention_variance': self.calculate_attention_variance(attention_weights),
-        
-        # 序列长度特征
-        'sequence_length': (inputs['attention_mask'].sum(dim=1)).item(),
-        'padding_ratio': (inputs['attention_mask'] == 0).float().mean().item()
-    }
-    
-    return features
-```
-
-## 5.5 数据存储策略
-
-### 5.5.1 分层存储架构
+### 图5-3 文本清洗流程图
 
 ```mermaid
-graph LR
-    subgraph "热数据 Hot Data"
-        H1[Redis缓存<br/>实时分析结果]
-        H2[内存数据库<br/>用户会话]
-        H3[应用缓存<br/>配置参数]
-    end
-    
-    subgraph "温数据 Warm Data"
-        W1[MySQL关系库<br/>用户/任务数据]
-        W2[索引存储<br/>快速查询]
-        W3[中间结果<br/>处理缓存]
-    end
-    
-    subgraph "冷数据 Cold Data"
-        C1[HBase列式库<br/>历史微博数据]
-        C2[HDFS分布式<br/>原始数据文件]
-        C3[对象存储<br/>模型文件]
-    end
-    
-    subgraph "数据流转 Data Flow"
-        DF1[实时写入<br/>Redis]
-        DF2[定期同步<br/>MySQL]
-        DF3[批量归档<br/>HBase]
-        DF4[冷备策略<br/>HDFS]
-    end
-    
-    H1 --> DF1
-    H2 --> DF1
-    H3 --> DF1
-    DF1 --> DF2
-    DF2 --> W1
-    DF2 --> W2
-    DF2 --> W3
-    W1 --> DF3
-    W2 --> DF3
-    W3 --> DF3
-    DF3 --> C1
-    DF3 --> C2
-    C1 --> DF4
-    C2 --> DF4
-    DF4 --> C3
-    
-    style H1 fill:#ff6b6b
-    style H2 fill:#ff6b6b
-    style H3 fill:#ff6b6b
-    style W1 fill:#4ecdc4
-    style W2 fill:#4ecdc4
-    style W3 fill:#4ecdc4
-    style C1 fill:#45b7d1
-    style C2 fill:#45b7d1
-    style C3 fill:#45b7d1
-    style DF1 fill:#96ceb4
-    style DF2 fill:#96ceb4
-    style DF3 fill:#96ceb4
-    style DF4 fill:#96ceb4
+flowchart TD
+    START(["开始"])
+    D_IN[/"去重后的微博正文"/]
+    P_HTML["去除HTML标签"]
+    P_URL["删除URL链接"]
+    P_AT["删除@用户提及"]
+    P_TOPIC["提取#话题#文字 去掉#号"]
+    C_EMOJI{"包含表情标记?"}
+    P_EMOJI["表情符号语义映射<br/>76种表情转中文描述"]
+    P_TRAD["繁体转简体<br/>OpenCC / 内置映射表"]
+    P_FULL["全角转半角 合并空白"]
+    D_OUT[/"cleaned_text字段"/]
+    DONE(["结束"])
+
+    START --> D_IN --> P_HTML --> P_URL --> P_AT --> P_TOPIC --> C_EMOJI
+    C_EMOJI -->|"是"| P_EMOJI --> P_TRAD
+    C_EMOJI -->|"否"| P_TRAD
+    P_TRAD --> P_FULL --> D_OUT --> DONE
+
+    style START fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style DONE fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style D_IN fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style D_OUT fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style C_EMOJI fill:#fff9c4,stroke:#f9a825,stroke-width:3px
 ```
 
-### 5.5.2 数据分区策略
+### 5.2.3 文本分词与去停用词
 
-```python
-class DataPartitioner:
-    """数据分区器"""
-    
-    def partition_by_time(self, data, partition_unit='day'):
-        """按时间分区"""
-        if partition_unit == 'hour':
-            return data.groupby(data['publish_time'].dt.floor('H'))
-        elif partition_unit == 'day':
-            return data.groupby(data['publish_time'].dt.date)
-        elif partition_unit == 'week':
-            return data.groupby(data['publish_time'].dt.to_period('W'))
-        elif partition_unit == 'month':
-            return data.groupby(data['publish_time'].dt.to_period('M'))
-    
-    def partition_by_sentiment(self, data):
-        """按情感分区"""
-        sentiment_bins = [-1, -0.5, 0, 0.5, 1]
-        sentiment_labels = ['strong_negative', 'negative', 'neutral', 'positive', 'strong_positive']
-        
-        data['sentiment_category'] = pd.cut(
-            data['sentiment_score'], 
-            bins=sentiment_bins, 
-            labels=sentiment_labels
-        )
-        
-        return dict(list(data.groupby('sentiment_category')))
-    
-    def partition_by_popularity(self, data):
-        """按热度分区"""
-        popularity_percentiles = [0, 0.2, 0.4, 0.6, 0.8, 1.0]
-        popularity_labels = ['very_low', 'low', 'medium', 'high', 'very_high']
-        
-        data['popularity_category'] = pd.qcut(
-            data['popularity_score'], 
-            q=popularity_percentiles, 
-            labels=popularity_labels
-        )
-        
-        return dict(list(data.groupby('popularity_category')))
+中文词与词之间没有空格，必须先做分词才能进行特征提取。系统使用Jieba分词工具，采用精确模式（`cut_all=False`），分词逻辑封装在`_tokenize_impl()`方法中，以Spark UDF的形式并行执行。如果环境中没有安装Jieba，系统会退化为按字切分的方式，保证流程不会中断。
+
+系统在分词前加载了一份自定义词典，收录了"微博""热搜""超话""转发""点赞""评论""粉丝""大V""人工智能""深度学习""情感分析""舆情监控"等词汇。分词结果保存为`tokens`字段，同时统计每条微博的词数写入`word_count`。
+
+分词之后是停用词过滤。系统内置了一份停用词表，涵盖常见虚词、连词介词、代词、标点符号以及部分网络口语词。过滤时同时剔除长度小于2的词语，减少单字噪声。处理后的结果保存在`filtered_tokens`字段。
+
+分词与停用词过滤的详细流程如图5-4所示。
+
+### 图5-4 中文分词与停用词过滤流程图
+
+```mermaid
+flowchart TD
+    START(["开始"])
+    D_IN[/"cleaned_text"/]
+    C_JIEBA{"Jieba可用?"}
+    P_DICT["加载自定义词典"]
+    P_JIEBA["Jieba精确模式分词"]
+    P_CHAR["退化: 按字切分"]
+    D_TOKENS[/"tokens列表"/]
+    P_LOAD_STOP["加载停用词表<br/>内置 + 自定义外部文件"]
+    C_WORD{"词长≥2 且<br/>不在停用词表?"}
+    P_KEEP["保留该词"]
+    P_DROP["过滤该词"]
+    P_COUNT["统计词数写入word_count"]
+    D_OUT[/"filtered_tokens"/]
+    DONE(["结束"])
+
+    START --> D_IN --> C_JIEBA
+    C_JIEBA -->|"是"| P_DICT --> P_JIEBA --> D_TOKENS
+    C_JIEBA -->|"否"| P_CHAR --> D_TOKENS
+    D_TOKENS --> P_LOAD_STOP --> C_WORD
+    C_WORD -->|"是"| P_KEEP --> P_COUNT
+    C_WORD -->|"否"| P_DROP --> P_COUNT
+    P_COUNT --> D_OUT --> DONE
+
+    style START fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style DONE fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style D_IN fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style D_TOKENS fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style D_OUT fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style C_JIEBA fill:#fff9c4,stroke:#f9a825,stroke-width:3px
+    style C_WORD fill:#fff9c4,stroke:#f9a825,stroke-width:3px
 ```
 
-## 5.6 数据质量监控
+### 5.2.4 时间标准化与数值归一化
 
-### 5.6.1 质量指标体系
+时间字段的标准化由`standardize_time()`方法完成。系统通过Spark的`coalesce()`函数依次尝试多种解析格式，最终统一转换为标准时间戳，存入`timestamp`字段。解析完成后，系统还会提取发布小时（`hour`）、星期几（`day_of_week`）和是否周末（`is_weekend`）三个辅助特征。
 
-| 质量维度 | 具体指标 | 计算方法 | 目标值 |
-|---------|---------|----------|--------|
-| **完整性** | 数据完整率 | (有效记录数 / 总记录数) × 100% | ≥ 95% |
-| **完整性** | 字段缺失率 | (缺失字段数 / 总字段数) × 100% | ≤ 5% |
-| **准确性** | 重复数据率 | (重复记录数 / 总记录数) × 100% | ≤ 2% |
-| **准确性** | 格式一致性 | 符合格式的记录数 / 总记录数 | ≥ 98% |
-| **一致性** | 时间戳一致性 | 有效时间戳记录数 / 总记录数 | ≥ 99% |
-| **一致性** | 数值范围一致性 | 在合理范围内的记录数 / 总记录数 | ≥ 95% |
-| **及时性** | 数据新鲜度 | (当前时间 - 最新数据时间) | ≤ 1小时 |
-| **及时性** | 采集延迟 | 平均采集响应时间 | ≤ 2秒 |
+互动指标方面，系统的`normalize_numeric()`方法提供了两种归一化方式。默认使用Min-Max归一化，将数值映射到[0,1]区间：
 
-### 5.6.2 质量监控实现
+$$X_{norm} = \frac{X - X_{min}}{X_{max} - X_{min}} \quad \text{(5-1)}$$
 
-```python
-class DataQualityMonitor:
-    """数据质量监控器"""
-    
-    def __init__(self):
-        self.quality_metrics = {}
-        self.alert_thresholds = {
-            'completeness_rate': 0.95,
-            'duplicate_rate': 0.02,
-            'format_consistency': 0.98,
-            'freshness_hours': 1.0
-        }
-    
-    def monitor_data_quality(self, dataset):
-        """实时监控数据质量"""
-        current_metrics = self.assess_data_quality(dataset)
-        
-        # 检查是否触发预警
-        alerts = []
-        for metric, threshold in self.alert_thresholds.items():
-            if current_metrics.get(metric, 0) < threshold:
-                alerts.append({
-                    'metric': metric,
-                    'current_value': current_metrics[metric],
-                    'threshold': threshold,
-                    'severity': 'high' if current_metrics[metric] < threshold * 0.8 else 'medium'
-                })
-        
-        # 发送预警通知
-        if alerts:
-            self.send_quality_alerts(alerts)
-        
-        # 更新监控指标
-        self.quality_metrics = current_metrics
-        
-        return current_metrics, alerts
-    
-    def generate_quality_dashboard(self):
-        """生成质量监控仪表盘数据"""
-        dashboard_data = {
-            'overall_score': self.calculate_overall_quality_score(),
-            'trend_data': self.get_quality_trends(),
-            'alert_count': len(self.get_active_alerts()),
-            'last_update': datetime.now().isoformat(),
-            'metrics_breakdown': self.quality_metrics
-        }
-        
-        return dashboard_data
+当数据中存在较多异常值时，也可以选择Z-Score标准化：
+
+$$X_{std} = \frac{X - \mu}{\sigma} \quad \text{(5-2)}$$
+
+其中$\mu$为均值，$\sigma$为标准差。归一化后的指标作为三维度排序模型中互动热度维度的输入。
+
+### 5.2.5 文本特征提取与数据质量检查
+
+系统提供了三种特征提取方法：
+
+第一种是**TF-IDF**。使用Spark MLlib的HashingTF加IDF两步管线，将`filtered_tokens`映射为10000维的TF-IDF特征向量。其计算公式为：
+
+$$\text{TF-IDF}(t,d) = \text{TF}(t,d) \times \log\frac{N}{1 + \text{DF}(t)} \quad \text{(5-3)}$$
+
+第二种是**Word2Vec**。将每个词映射为100维的稠密向量，设置最小词频阈值为5。
+
+第三种是**CountVectorizer**，基于词袋模型构建词频特征，默认词表大小10000，最小文档频率为2.0。
+
+在特征提取完成后，`generate_quality_report()`方法会统计数据集的总记录数、各字段的空值数量、文本长度分布以及词数分布。
+
+特征提取的完整流程如图5-5所示。
+
+### 图5-5 文本特征提取流程图
+
+```mermaid
+flowchart TD
+    START(["开始"])
+    D_IN[/"filtered_tokens"/]
+
+    subgraph TFIDF ["TF-IDF特征"]
+        T1["HashingTF 10000维"] --> T2["IDF逆文档频率加权"]
+    end
+
+    subgraph W2V ["Word2Vec特征"]
+        W1["训练词向量 dim=100"] --> W2["文档向量均值池化"]
+    end
+
+    subgraph CV ["CountVectorizer"]
+        V1["词频矩阵 词表=10000"]
+    end
+
+    P_MERGE["合并多种特征向量"]
+    P_QUALITY["数据质量检查"]
+    C_PASS{"质量达标?"}
+    D_OUT[/"数值特征矩阵"/]
+    P_WARN["输出质量预警报告"]
+    DONE(["结束"])
+
+    START --> D_IN
+    D_IN --> TFIDF --> P_MERGE
+    D_IN --> W2V --> P_MERGE
+    D_IN --> CV --> P_MERGE
+    P_MERGE --> P_QUALITY --> C_PASS
+    C_PASS -->|"是"| D_OUT
+    C_PASS -->|"否"| P_WARN --> D_OUT
+    D_OUT --> DONE
+
+    style START fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style DONE fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style D_IN fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style D_OUT fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style C_PASS fill:#fff9c4,stroke:#f9a825,stroke-width:3px
+    style TFIDF fill:#f3e5f5,stroke:#7b1fa2
+    style W2V fill:#e8f5e9,stroke:#2e7d32
+    style CV fill:#fff3e0,stroke:#e65100
 ```
+
+### 5.2.6 数据集划分
+
+划分比例为8:1:1，即80%用于训练、10%用于验证、10%用于测试。划分时采用分层抽样，即分别从正面、负面、中性三类中各按8:1:1的比例抽取，然后合并成三个子集。训练脚本中将随机种子固定为42，保证每次运行得到相同的划分结果。划分完成后的数据以Parquet格式存储。
+
+数据集划分的完整流程如图5-6所示。
+
+### 图5-6 数据集划分流程图
+
+```mermaid
+flowchart TD
+    START(["开始"])
+    D_IN[/"标注数据集<br/>99,999条 三分类均衡"/]
+    P_GROUP["按类别分组<br/>正面·负面·中性各33,333条"]
+    P_SEED["设定随机种子 random_state=42"]
+    P_STRAT["分层抽样 每类独立按比例划分"]
+    C_RATIO{"各子集类别<br/>比例一致?"}
+    P_RESAMPLE["重新采样调整"]
+    P_MERGE_TRAIN["合并训练集 各类80%"]
+    P_MERGE_VAL["合并验证集 各类10%"]
+    P_MERGE_TEST["合并测试集 各类10%"]
+    D_TRAIN[/"训练集 79,999条"/]
+    D_VAL[/"验证集 10,000条"/]
+    D_TEST[/"测试集 10,000条"/]
+    DONE(["结束"])
+
+    START --> D_IN --> P_GROUP --> P_SEED --> P_STRAT --> C_RATIO
+    C_RATIO -->|"否"| P_RESAMPLE --> P_STRAT
+    C_RATIO -->|"是"| P_MERGE_TRAIN --> D_TRAIN --> DONE
+    C_RATIO -->|"是"| P_MERGE_VAL --> D_VAL --> DONE
+    C_RATIO -->|"是"| P_MERGE_TEST --> D_TEST --> DONE
+
+    style START fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style DONE fill:#e0f2f1,stroke:#00897b,stroke-width:2px
+    style D_IN fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style D_TRAIN fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style D_VAL fill:#fff3e0,stroke:#ef6c00,stroke-width:2px
+    style D_TEST fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style C_RATIO fill:#fff9c4,stroke:#f9a825,stroke-width:3px
+```
+
+### 表5-2 数据集划分结果统计
+
+| 子集 | 总样本数 | 正面 | 负面 | 中性 | 用途 |
+|:---:|:---:|:---:|:---:|:---:|------|
+| 训练集 | 79,999 | 26,666 | 26,666 | 26,667 | 模型参数学习 |
+| 验证集 | 10,000 | 3,334 | 3,333 | 3,333 | 超参调优与早停判断 |
+| 测试集 | 10,000 | 3,334 | 3,333 | 3,333 | 最终性能评估（完全隔离） |
+| **合计** | **99,999** | **33,334** | **33,332** | **33,333** | — |
+
+## 5.3 本章小结
+
+本章介绍了数据集的准备过程。标注数据集由weibo_senti_100k（约12万条，正/负二分类）和nCoV_100k（约10万条，正/负/中三分类）两个公开语料库合并而成，经MD5去重和均衡采样后形成约10万条三分类数据，正面、负面、中性各约3.3万条。系统功能测试数据则通过自身的爬虫模块从微博实时采集。
+
+预处理环节涵盖了数据去重（MD5精确去重、用户时间窗口去重、SimHash近似去重）、文本清洗（HTML标签、URL、@提及、话题标签处理，76种表情符号转换，繁简转换和全角半角统一）、中文分词与停用词过滤、时间标准化与互动指标归一化、以及TF-IDF、Word2Vec等多种特征提取方法。最后按照8:1:1的比例采用分层抽样将数据集划分为训练集、验证集和测试集，随机种子固定为42。经过这一系列处理，原始的、噪声较多的微博数据被转化为格式统一、质量可控的数据集，为后续的模型训练和系统测试打下了基础。

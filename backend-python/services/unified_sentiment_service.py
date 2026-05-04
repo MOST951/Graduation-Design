@@ -154,7 +154,12 @@ class LexiconAnalyzer(BaseSentimentAnalyzer):
 class BertAnalyzer(BaseSentimentAnalyzer):
     """BERT情感分析器（委托全局单例加载模型，避免重复下载）"""
     
-    def __init__(self, model_name: str = "bert-base-chinese"):
+    def __init__(self, model_name: str = None):
+        if model_name is None:
+            model_name = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                'models', 'chinese-bert-wwm-ext'
+            )
         self.model_name = model_name
         self.model = None
         self.tokenizer = None
@@ -185,11 +190,14 @@ class BertAnalyzer(BaseSentimentAnalyzer):
             import torch
             from transformers import BertTokenizer, BertForSequenceClassification
             
-            cache_dir = os.environ.get("TRANSFORMERS_CACHE", "./model_cache")
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            self.tokenizer = BertTokenizer.from_pretrained(self.model_name, cache_dir=cache_dir)
+            is_local = os.path.isdir(self.model_name)
+            load_kwargs = {"local_files_only": True} if is_local else {
+                "cache_dir": os.environ.get("TRANSFORMERS_CACHE", "./model_cache")
+            }
+            self.tokenizer = BertTokenizer.from_pretrained(self.model_name, **load_kwargs)
             self.model = BertForSequenceClassification.from_pretrained(
-                self.model_name, num_labels=3, cache_dir=cache_dir
+                self.model_name, num_labels=3, **load_kwargs
             )
             self.model.to(self.device)
             self.model.eval()
@@ -224,8 +232,8 @@ class BertAnalyzer(BaseSentimentAnalyzer):
                 pred = torch.argmax(probs, dim=-1).item()
                 confidence = probs[0][pred].item()
             
-            sentiment_map = {0: 'negative', 1: 'neutral', 2: 'positive'}
-            score_map = {0: -0.8, 1: 0.0, 2: 0.8}
+            sentiment_map = {0: 'negative', 1: 'positive', 2: 'neutral'}
+            score_map = {0: -0.8, 1: 0.8, 2: 0.0}
             
             return SentimentResult(
                 text=text,

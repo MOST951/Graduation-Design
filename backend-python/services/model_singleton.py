@@ -54,13 +54,30 @@ def _resolve_cache_dir() -> str:
 
 
 def _resolve_model_name() -> str:
-    """获取模型名称，优先从 config 读取"""
+    """
+    获取模型名称或本地路径，优先级：
+    1. config.model.default_sentiment_model
+    2. 本地 ./models/chinese-bert-wwm-ext 目录（如果存在）
+    3. bert-base-chinese（兜底）
+    """
+    # 尝试从 config 读取
     try:
         sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
         from config import config
-        return config.model.default_sentiment_model
+        candidate = config.model.default_sentiment_model
+        # 如果是本地路径，检查是否存在
+        if os.path.isdir(candidate) and os.path.isfile(os.path.join(candidate, "config.json")):
+            return candidate
     except Exception:
-        return "bert-base-chinese"
+        pass
+
+    # 尝试本地目录
+    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    local_model = os.path.join(backend_dir, "models", "chinese-bert-wwm-ext")
+    if os.path.isdir(local_model) and os.path.isfile(os.path.join(local_model, "config.json")):
+        return local_model
+
+    return "bert-base-chinese"
 
 
 # ==================== 单例状态 ====================
@@ -111,17 +128,19 @@ def _do_load() -> Tuple[Any, Any, Any]:
     model_name = _resolve_model_name()
     os.makedirs(cache_dir, exist_ok=True)
 
-    logger.info(f"[ModelSingleton] 加载模型: {model_name}  缓存目录: {cache_dir}")
+    is_local = os.path.isdir(model_name)
+    logger.info(f"[ModelSingleton] 加载模型: {model_name}  本地: {is_local}  缓存目录: {cache_dir}")
 
     device = _setup_device()
 
     start = time.time()
     try:
+        load_kwargs = {"local_files_only": True} if is_local else {"cache_dir": cache_dir}
         tokenizer = AutoTokenizer.from_pretrained(
-            model_name, cache_dir=cache_dir
+            model_name, **load_kwargs
         )
         model = AutoModelForSequenceClassification.from_pretrained(
-            model_name, num_labels=3, cache_dir=cache_dir
+            model_name, num_labels=3, **load_kwargs
         )
         model.to(device)
         model.eval()

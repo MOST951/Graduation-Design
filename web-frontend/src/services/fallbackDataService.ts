@@ -65,7 +65,7 @@ export class FallbackDataService {
     const now = new Date();
     return [
       { rank: 1, title: "微博舆情分析系统演示", hotValue: 9876543, label: "爆", url: "#", sentiment: "positive", trend: "up", isNew: true },
-      { rank: 2, title: "情感-热度双维度排序算法", hotValue: 8765432, label: "热", url: "#", sentiment: "positive", trend: "up" },
+      { rank: 2, title: "情感-热度三维度排序算法", hotValue: 8765432, label: "热", url: "#", sentiment: "positive", trend: "up" },
       { rank: 3, title: "ChineseBERT情感分析模型", hotValue: 7654321, label: "新", url: "#", sentiment: "neutral", trend: "stable" },
       { rank: 4, title: "Spark大数据实时处理", hotValue: 6543210, label: "热", url: "#", sentiment: "positive", trend: "up" },
       { rank: 5, title: "毕业设计项目展示", hotValue: 5432109, label: "荐", url: "#", sentiment: "positive", trend: "stable" },
@@ -78,13 +78,13 @@ export class FallbackDataService {
   }
 
   /**
-   * 模拟双维度排序话题数据
+   * 模拟三维度排序话题数据
    */
   static getMockRankedTopics(): RankedTopic[] {
     return [
       {
         topic_id: 1,
-        name: "情感-热度双维度排序",
+        name: "情感-热度三维度排序",
         keywords: ["情感分析", "热度排序", "综合得分", "创新算法"],
         composite_score: 0.923,
         sentiment_avg: 0.85,
@@ -239,9 +239,9 @@ export class FallbackDataService {
   }
 
   /**
-   * 模拟双维度配置
+   * 模拟三维度配置
    */
-  static getMockDualDimensionConfig() {
+  static getMockTriDimensionConfig() {
     return {
       sentiment_weight: 0.6,
       popularity_weight: 0.4,

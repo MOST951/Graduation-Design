@@ -1,10 +1,10 @@
 <template>
-  <div class="dual-dimension-ranking">
+  <div class="tri-dimension-ranking">
     <!-- 标题和配置 -->
     <div class="ranking-header">
       <h3>
         <el-icon><TrendCharts /></el-icon>
-        情感-热度双维度排序
+        情感-热度三维度排序
       </h3>
       <div class="header-actions">
         <el-button :icon="Refresh" :loading="loading" size="small" @click="loadRankedTopics">
@@ -124,7 +124,7 @@
     </div>
 
     <!-- 配置对话框 -->
-    <el-dialog v-model="showConfigDialog" title="双维度排序配置" width="500px">
+    <el-dialog v-model="showConfigDialog" title="三维度排序配置" width="500px">
       <el-form label-width="120px">
         <el-form-item label="情感权重">
           <el-slider 
@@ -171,7 +171,7 @@ import { ElMessage } from 'element-plus';
 import * as echarts from 'echarts';
 import { Refresh, Setting, TrendCharts, CaretTop, CaretBottom, Minus } from '@element-plus/icons-vue';
 import { useTopicsStore } from '@/store/topics';
-import type { RankedTopic, DualDimensionConfig } from '@/api/topics';
+import type { RankedTopic, TriDimensionConfig } from '@/api/topics';
 
 // Props
 const props = withDefaults(defineProps<{
@@ -182,19 +182,19 @@ const props = withDefaults(defineProps<{
 
 // Emits
 const emit = defineEmits<{
-  (e: 'config-change', config: DualDimensionConfig): void;
+  (e: 'config-change', config: TriDimensionConfig): void;
   (e: 'topic-select', topic: RankedTopic): void;
 }>();
 
 // Store
 const topicsStore = useTopicsStore();
-const { rankedTopics, dualDimensionConfig, isLoadingRankedTopics, isSavingConfig } = storeToRefs(topicsStore);
+const { rankedTopics, triDimensionConfig, isLoadingRankedTopics, isSavingConfig } = storeToRefs(topicsStore);
 
 // 本地状态
 const showConfigDialog = ref(false);
 
 // 配置表单（用于编辑）
-const configForm = reactive<DualDimensionConfig>({
+const configForm = reactive<TriDimensionConfig>({
   sentiment_weight: 0.6,
   popularity_weight: 0.4,
   time_decay_hours: 24
@@ -203,7 +203,7 @@ const configForm = reactive<DualDimensionConfig>({
 // 计算属性
 const loading = computed(() => isLoadingRankedTopics.value);
 const saving = computed(() => isSavingConfig.value);
-const config = computed(() => dualDimensionConfig.value);
+const config = computed(() => triDimensionConfig.value);
 
 // 图表引用
 const scatterChartRef = ref<HTMLElement>();
@@ -226,9 +226,9 @@ const loadRankedTopics = async () => {
 // 加载配置
 const loadConfig = async () => {
   try {
-    await topicsStore.fetchDualDimensionConfig();
+    await topicsStore.fetchTriDimensionConfig();
     // 同步到表单
-    Object.assign(configForm, dualDimensionConfig.value);
+    Object.assign(configForm, triDimensionConfig.value);
   } catch (error) {
     console.warn('加载配置失败，使用默认值');
   }
@@ -237,10 +237,10 @@ const loadConfig = async () => {
 // 保存配置
 const saveConfig = async () => {
   try {
-    await topicsStore.saveDualDimensionConfig(configForm);
+    await topicsStore.saveTriDimensionConfig(configForm);
     showConfigDialog.value = false;
     ElMessage.success('配置已保存');
-    emit('config-change', dualDimensionConfig.value);
+    emit('config-change', triDimensionConfig.value);
     updateCharts();
   } catch (error: any) {
     ElMessage.warning('保存失败: ' + error.message);
@@ -406,7 +406,7 @@ onMounted(async () => {
 });
 
 // 监听配置变化
-watch(dualDimensionConfig, () => {
+watch(triDimensionConfig, () => {
   updateCharts();
 }, { deep: true });
 
@@ -417,7 +417,7 @@ watch(rankedTopics, () => {
 </script>
 
 <style scoped lang="scss">
-.dual-dimension-ranking {
+.tri-dimension-ranking {
   padding: 20px;
 
   .ranking-header {

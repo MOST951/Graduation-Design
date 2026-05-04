@@ -166,7 +166,7 @@
                 <div class="legend-item">
                   <div class="legend-info">
                     <div class="legend-label">综合准确率</div>
-                    <div class="legend-value accuracy">88.6%</div>
+                    <div class="legend-value accuracy">86.2%</div>
                   </div>
                 </div>
               </div>
@@ -263,6 +263,12 @@
                   <div class="model-option">
                     <span>BERT模型</span>
                     <el-tag size="small" type="danger">推荐</el-tag>
+                  </div>
+                </el-option>
+                <el-option label="级联混合 (词典+BERT)" value="cascade">
+                  <div class="model-option">
+                    <span>级联混合</span>
+                    <el-tag size="small" type="primary">高精度</el-tag>
                   </div>
                 </el-option>
               </el-select>
@@ -372,7 +378,19 @@
                 <el-icon><TrendCharts /></el-icon>
                 <span>情感趋势</span>
               </div>
-              <el-tag type="info" size="small">24小时</el-tag>
+              <div class="header-right" style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:12px;color:#909399">时间范围</span>
+                <el-slider
+                  v-model="trendHoursRange"
+                  :min="4"
+                  :max="72"
+                  :step="4"
+                  :format-tooltip="(v: number) => `${v}小时`"
+                  style="width:120px"
+                  @change="updateTrendChart"
+                />
+                <el-tag type="info" size="small">{{ trendHoursRange }}h</el-tag>
+              </div>
             </div>
           </template>
           <div ref="trendChartRef" class="chart-container"></div>
@@ -407,7 +425,12 @@
                 <el-icon><List /></el-icon>
                 <span>分析结果</span>
               </div>
-              <el-tag type="primary" size="small">{{ analyzedWeibos.length }}条</el-tag>
+              <div class="header-right" style="display:flex;align-items:center;gap:6px;">
+                <el-tag type="primary" size="small">{{ analyzedWeibos.length }}条</el-tag>
+                <el-button size="small" text type="success" @click="exportToExcel" :disabled="analyzedWeibos.length === 0">
+                  导出Excel
+                </el-button>
+              </div>
             </div>
           </template>
           <div class="weibo-list">
@@ -572,6 +595,9 @@ const cascadeTrendChartRef = ref<HTMLElement>();
 // 
 const globalStopFlag = ref(false);
 let cascadeTrendChart: echarts.ECharts | null = null;
+
+// 趋势图时间范围（小时）
+const trendHoursRange = ref(24);
 
 // 批量进度
 const batchProgress = reactive({
@@ -1076,16 +1102,21 @@ const updateDistributionChart = () => {
 const updateTrendChart = () => {
   if (!trendChart) return;
   
-  const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`);
-  const positiveData = hours.map(() => Math.floor(Math.random() * 100 + 50));
-  const neutralData = hours.map(() => Math.floor(Math.random() * 80 + 30));
-  const negativeData = hours.map(() => Math.floor(Math.random() * 50 + 10));
+  const range = trendHoursRange.value;
+  const step = range <= 12 ? 1 : range <= 24 ? 1 : 2;
+  const labels = Array.from({ length: Math.ceil(range / step) }, (_, i) => {
+    const h = i * step;
+    return h < 24 ? `${h}:00` : `+${h - 24}h`;
+  });
+  const positiveData = labels.map(() => Math.floor(Math.random() * 100 + 50));
+  const neutralData = labels.map(() => Math.floor(Math.random() * 80 + 30));
+  const negativeData = labels.map(() => Math.floor(Math.random() * 50 + 10));
   
   trendChart.setOption({
     tooltip: { trigger: 'axis' },
     legend: { data: ['正面', '中性', '负面'], bottom: 0 },
     grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
-    xAxis: { type: 'category', data: hours },
+    xAxis: { type: 'category', data: labels, axisLabel: { rotate: range > 24 ? 45 : 0, fontSize: 10 } },
     yAxis: { type: 'value' },
     series: [
       { name: '正面', type: 'line', smooth: true, data: positiveData, itemStyle: { color: SUCCESS } },
@@ -1099,6 +1130,35 @@ const updateTrendChart = () => {
 const showWeiboDetail = (item: any) => {
   selectedWeibo.value = item;
   showDetailDialog.value = true;
+};
+
+// 导出Excel (CSV格式，浏览器直接下载)
+const exportToExcel = () => {
+  if (analyzedWeibos.value.length === 0) {
+    ElMessage.warning('暂无数据可导出');
+    return;
+  }
+  
+  const headers = ['序号', '用户', '文本内容', '情感标签', '情感得分', '发布时间'];
+  const rows = analyzedWeibos.value.map((item, idx) => [
+    idx + 1,
+    `"${(item.user?.screen_name || '匿名').replace(/"/g, '""')}"`,
+    `"${(item.text || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
+    getSentimentLabel(item.sentiment),
+    (item.sentiment_score || 0).toFixed(4),
+    item.created_at || '',
+  ]);
+  
+  const BOM = '\uFEFF';
+  const csv = BOM + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `情感分析结果_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success(`已导出 ${rows.length} 条数据`);
 };
 
 // 开始训练

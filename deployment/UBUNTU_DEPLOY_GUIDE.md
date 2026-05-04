@@ -1,7 +1,7 @@
 # 微博舆情情感分析系统 — Ubuntu 部署指南
 
-> **适配环境:** Ubuntu 20.04 LTS / Docker Compose v2.35+ / 1Panel  
-> **硬件要求:** 4GB 内存 / 2 核 CPU / 20GB 磁盘  
+> **适配环境:** Ubuntu 24.04 LTS / Docker Compose v2  
+> **硬件要求:** 4GB+ 内存 / 2+ 核 CPU / 20GB+ 磁盘  
 > **目录约定:** 下文统一以 `/root/weibo-analysis` 为项目根目录示例
 
 ---
@@ -18,7 +18,7 @@ scp -r ./weibo-sentiment-analysis root@<VM_IP>:/root/weibo-analysis
 cd /root && git clone <仓库地址> weibo-analysis
 ```
 
-### 2. 安装 Docker (如已有 1Panel 可跳过)
+### 2. 安装 Docker (如已安装可跳过)
 
 ```bash
 # 安装 Docker
@@ -35,90 +35,45 @@ docker --version
 docker compose version
 ```
 
-### 3. 配置环境变量
-
-```bash
-cd /root/weibo-analysis/deployment
-
-# 从模板复制
-cp .env.docker.example .env.docker
-
-# 编辑配置
-nano .env.docker
-```
-
-**开发测试默认值（已可直接启动）：**
-
-| 变量 | 默认值 |
-|------|--------|
-| `DB_USER` | `weibo_user` |
-| `DB_PASSWORD` | `123456` |
-| `DB_ROOT_PASSWORD` | `123456` |
-| `REDIS_PASSWORD` | `123456` |
-
-**生产环境必须修改的配置项：**
-
-| 变量 | 说明 | 示例值 |
-|------|------|--------|
-| `DB_PASSWORD` | 数据库密码 | `MyStr0ng!Pass` |
-| `DB_ROOT_PASSWORD` | Root 密码 | `R00t!Str0ng` |
-| `REDIS_PASSWORD` | Redis 密码 | `R3dis!Strong` |
-| `SECRET_KEY` | Flask 密钥 | 运行 `python3 -c "import secrets; print(secrets.token_hex(32))"` |
-| `JWT_SECRET` | JWT 密钥 | 同上方法生成 |
-
-> 注意：`.env` 中密码值不要加引号；仅当值包含空格或特殊字符时，使用单引号包裹。
-
-### 4. 修复文件权限
+### 3. 一键部署
 
 ```bash
 cd /root/weibo-analysis
 
-# 确保脚本可执行
-chmod +x docker-cluster.sh
+# 赋予执行权限
+chmod +x deploy.sh docker-cluster.sh
 chmod +x deployment/scripts/*.sh
 
-# 如果从 Windows 传来，修复换行符
-sudo apt-get install -y dos2unix
-find . -name "*.sh" -exec dos2unix {} \;
-find . -name "*.yml" -exec dos2unix {} \;
-find . -name "*.conf" -exec dos2unix {} \;
-find . -name ".env*" -exec dos2unix {} \;
+# 一键部署 (自动创建配置、修复换行符、构建镜像、启动服务)
+./deploy.sh
 ```
 
-### 5. 一键启动
+首次运行时，脚本会自动：
+- 从模板创建 `.env.docker`（默认密码 `123456`，可直接启动）
+- 自动生成 SECRET_KEY 和 JWT_SECRET
+- 修复 Windows 换行符
+- 构建 Docker 镜像（首次约 5-15 分钟）
+- 启动所有服务
+
+**生产环境必须修改密码：**
 
 ```bash
-cd /root/weibo-analysis
+# 编辑配置
+nano deployment/.env.docker
+# 修改 DB_PASSWORD, DB_ROOT_PASSWORD, SECRET_KEY, JWT_SECRET
 
-# 首次部署 (自动构建镜像 + 启动所有服务)
-./docker-cluster.sh
-
-# 等价的一键 Compose 命令（显式 --env-file + 全 profile）
-docker compose -f deployment/docker-compose.yml \
-  --env-file deployment/.env.docker \
-  --profile with-frontend \
-  --profile with-java-backend \
-  --profile with-spark \
-  --profile with-bigdata up -d
-
-# 查看状态
-./docker-cluster.sh status
-
-# 健康检查
-./docker-cluster.sh health
-
-# 一键验证 (MySQL/Redis/HBase/前后端)
-bash deployment/scripts/health-check.sh
+# 重启生效
+./deploy.sh restart
 ```
 
-### 6. 验证访问
+### 4. 验证访问
 
 假设虚拟机 IP 为 `192.168.1.100`：
 
 | 服务 | 地址 |
 |------|------|
 | 前端页面 | http://192.168.1.100:3001 |
-| Flask API | http://192.168.1.100:5000/api/health |
+| Flask API | http://192.168.1.100:5000/api/v2/health |
 | Java Backend | http://192.168.1.100:8081/api/actuator/health |
 | Spark Web UI | http://192.168.1.100:8080 |
 
@@ -127,42 +82,50 @@ bash deployment/scripts/health-check.sh
 ## 二、日常管理命令
 
 ```bash
-# 启动集群 (保留数据)
-./docker-cluster.sh start
+# 启动服务 (保留数据)
+./deploy.sh start
 
-# 停止集群 (保留数据)
-./docker-cluster.sh stop
+# 停止服务 (保留数据)
+./deploy.sh stop
 
-# 重启集群
-./docker-cluster.sh restart
+# 重启服务
+./deploy.sh restart
 
 # 查看实时日志
-./docker-cluster.sh logs
+./deploy.sh logs
 
 # 服务健康检查
-./docker-cluster.sh health
+./deploy.sh health
+
+# 查看服务状态
+./deploy.sh status
 
 # 销毁容器 (数据卷保留)
-./docker-cluster.sh down
+./deploy.sh down
 
-# 查看容器状态
-./docker-cluster.sh status
+# 彻底清理 (包含数据卷+镜像)
+./deploy.sh clean
 
-# 运行部署自检
-bash deployment/scripts/health-check.sh
+# 高级: 使用完整集群管理脚本 (含大数据服务管理)
+./docker-cluster.sh health
 ```
 
 ---
 
-## 三、1Panel 兼容说明
+## 三、部署模式说明
 
-本项目使用 Docker Compose 标准 API，完全兼容 1Panel 的 Docker 管理：
+通过 `.env.docker` 中的 `ENABLED_PROFILES` 控制启动哪些服务：
 
-- **容器名称前缀:** 所有容器以 `weibo_sentiment_` 开头，在 1Panel 容器列表中易于识别
-- **网络:** 使用独立的 `weibo-net` 桥接网络，不与 1Panel 其他应用冲突
-- **数据卷:** 使用命名卷 (named volumes)，1Panel 存储卷管理中可见
-- **端口:** 默认端口可在 `.env.docker` 中修改，避免与 1Panel 已有服务冲突
-- **不冲突:** 脚本仅管理 `weibo_sentiment_*` 容器，不影响 1Panel 管理的其他容器
+| 模式 | ENABLED_PROFILES | 服务 | 内存需求 |
+|------|-----------------|------|----------|
+| 轻量部署 | `with-frontend,with-java-backend` | Flask+Java+Vue+MySQL+Redis | 2GB+ |
+| 标准部署 | `with-frontend,with-java-backend,with-spark` | +Spark | 4GB+ |
+| 完整部署 | `with-frontend,with-java-backend,with-spark,with-bigdata` | +HDFS+HBase+ZooKeeper | 8GB+ |
+
+- **容器前缀:** `weibo_sentiment_*`
+- **网络:** 独立的 `weibo-net` 桥接网络
+- **数据卷:** 命名卷 (named volumes)，停止/重启不会丢失数据
+- **端口:** 均可在 `.env.docker` 中自定义
 
 ---
 
@@ -389,7 +352,7 @@ docker ps -a --filter "name=weibo_sentiment"
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                  Ubuntu 20.04 VM                     │
+│                  Ubuntu 24.04 VM                     │
 │                                                      │
 │  ┌───────────┐  ┌───────────┐  ┌───────────────┐   │
 │  │ Frontend  │  │ Flask API │  │ Java Backend  │   │
@@ -412,6 +375,7 @@ docker ps -a --filter "name=weibo_sentiment"
 
 ## 七、安全备注
 
-- `123456` 仅适用于开发测试环境。
-- 生产环境上线前，必须修改 `DB_PASSWORD`、`DB_ROOT_PASSWORD`、`REDIS_PASSWORD`、`SECRET_KEY`、`JWT_SECRET`。
-- 建议使用强随机密码，并避免将真实 `.env.docker` 提交到版本库。
+- `123456` 仅适用于开发测试环境
+- 生产环境上线前必须修改 `DB_PASSWORD`、`DB_ROOT_PASSWORD`、`SECRET_KEY`、`JWT_SECRET`
+- 密码生成方法: `python3 -c "import secrets; print(secrets.token_hex(32))"`
+- 切勿将 `.env.docker` 提交到版本库

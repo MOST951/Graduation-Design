@@ -290,6 +290,7 @@
                     <el-option label="#春节档电影#" value="movie" />
                     <el-option label="#健康生活#" value="health" />
                   </el-select>
+                  <el-switch v-model="showNickname" active-text="昵称" inactive-text="" size="small" style="margin:0 4px" @change="updatePropagationChart" />
                   <el-button size="small" @click="exportChart('propagation', 'png')">PNG</el-button>
                   <el-button size="small" @click="exportChart('propagation', 'pdf')">PDF</el-button>
                 </div>
@@ -448,6 +449,7 @@ const hotWeiboList = ref([
 // 传播路径
 const propagationGraphRef = ref<HTMLElement>();
 const propagationTopic = ref('tech');
+const showNickname = ref(true);
 const propagationStats = ref({ totalNodes: 42, totalEdges: 56, maxDepth: 5, avgRepost: 3.2 });
 const keyPropagationNodes = ref([
   { name: '科技媒体', reposts: 1280, followers: '520万' },
@@ -928,7 +930,7 @@ const initPropagationChart = () => {
       links: links,
       categories: categories,
       roam: true,
-      label: { show: true, position: 'right', fontSize: 10 },
+      label: { show: showNickname.value, position: 'right', fontSize: 10 },
       force: { repulsion: 200, gravity: 0.1, edgeLength: [50, 150], layoutAnimation: true },
       lineStyle: { color: 'source', curveness: 0.3, opacity: 0.6 },
       emphasis: { focus: 'adjacency', lineStyle: { width: 3 } },
@@ -1157,7 +1159,7 @@ const loadPropagationNetwork = async (weiboId: number) => {
           links: links,
           categories: categories,
           roam: true,
-          label: { show: true, position: 'right', fontSize: 10 },
+          label: { show: showNickname.value, position: 'right', fontSize: 10 },
           force: { repulsion: 300, gravity: 0.1, edgeLength: [80, 200], layoutAnimation: true },
           lineStyle: { color: 'source', curveness: 0.3, opacity: 0.7, width: 2 },
           emphasis: { 

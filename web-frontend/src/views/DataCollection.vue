@@ -41,7 +41,15 @@
         <el-button type="success" :icon="VideoPlay" @click="startCrawl" :loading="crawlLoading" :disabled="isRunning">
           仅采集数据
         </el-button>
-        <el-button type="danger" :icon="VideoPause" @click="stopCrawl" :disabled="!isRunning">
+        <el-button v-if="isRunning && !isPaused" type="warning" @click="pauseCrawl">
+          <el-icon><VideoPause /></el-icon>
+          暂停
+        </el-button>
+        <el-button v-if="isPaused" type="success" @click="resumeCrawl">
+          <el-icon><VideoPlay /></el-icon>
+          恢复
+        </el-button>
+        <el-button type="danger" :icon="VideoPause" @click="stopCrawl" :disabled="!isRunning && !isPaused">
           停止
         </el-button>
         <el-button :icon="Setting" @click="showConfigDialog = true">
@@ -50,8 +58,8 @@
       </el-button-group>
       
       <div class="status-info">
-        <el-tag :type="isRunning ? 'success' : 'info'" size="large">
-          {{ isRunning ? getPhaseLabel(currentPhase) : '空闲' }}
+        <el-tag :type="isPaused ? 'warning' : isRunning ? 'success' : 'info'" size="large">
+          {{ isPaused ? '已暂停' : isRunning ? getPhaseLabel(currentPhase) : '空闲' }}
         </el-tag>
         <span class="stats">已采集: <strong>{{ totalCollected }}</strong> 条</span>
       </div>
@@ -314,6 +322,32 @@
       </el-col>
     </el-row>
     
+    <!-- 采集完成汇总卡片 -->
+    <transition name="fade">
+      <el-card v-if="completionSummary" class="summary-card" shadow="hover" style="margin-top: 16px">
+        <template #header>
+          <div class="log-header">
+            <span>✅ 采集任务汇总</span>
+            <el-button text size="small" @click="completionSummary = null">关闭</el-button>
+          </div>
+        </template>
+        <el-row :gutter="16">
+          <el-col :span="6">
+            <el-statistic title="总采集量" :value="completionSummary.total_collected" suffix="条" />
+          </el-col>
+          <el-col :span="6">
+            <el-statistic title="总耗时" :value="completionSummary.elapsed_display" />
+          </el-col>
+          <el-col :span="6">
+            <el-statistic title="成功率" :value="completionSummary.success_rate" suffix="%" />
+          </el-col>
+          <el-col :span="6">
+            <el-statistic title="平均速率" :value="completionSummary.avg_speed" suffix="条/s" />
+          </el-col>
+        </el-row>
+      </el-card>
+    </transition>
+
     <!-- 爬虫配置对话框 -->
     <el-dialog v-model="showConfigDialog" title="高级爬虫配置" width="600px">
       <el-form label-width="120px">
@@ -346,7 +380,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { ElMessage } from 'element-plus';
 import { 
@@ -357,6 +391,7 @@ import { useWeiboStore } from '@/store/weibo';
 import { SUCCESS, PRIMARY, DANGER, INFO, WARNING } from '@/styles/colors';
 import { 
   getDataflowTaskStatus,
+  getCrawlTaskStatus,
   type DataflowTask
 } from '@/api/weibo';
 
@@ -366,12 +401,14 @@ const { dataflowTaskId, dataflowTask } = storeToRefs(weiboStore);
 
 // 本地状态
 const isRunning = ref(false);
+const isPaused = ref(false);
 const crawlLoading = ref(false);
 const crawlProgress = ref(0);
 const totalCollected = ref(0);
 const showConfigDialog = ref(false);
 const logContainer = ref<HTMLElement>();
 const logTable = ref();
+const completionSummary = ref<any>(null);
 
 // 数据流状态
 const currentPhase = ref<'idle' | 'crawl' | 'clean' | 'analyze' | 'rank' | 'done'>('idle');
@@ -382,7 +419,7 @@ const pipelineStages = reactive([
   { key: 'hdfs', name: 'HDFS存储', icon: Monitor, status: 'pending', progress: 0, count: 0 },
   { key: 'clean', name: 'Spark清洗', icon: DataAnalysis, status: 'pending', progress: 0, count: 0 },
   { key: 'analyze', name: '情感分析', icon: ChatDotRound, status: 'pending', progress: 0, count: 0 },
-  { key: 'rank', name: '双维度排序', icon: Sort, status: 'pending', progress: 0, count: 0 },
+  { key: 'rank', name: '三维度排序', icon: Sort, status: 'pending', progress: 0, count: 0 },
 ]);
 
 // 配置
@@ -454,7 +491,6 @@ const progressColors = [
 ];
 
 let crawlTaskId = '';
-let statusTimer: any = null;
 
 // 启动完整流水线（数据流连通）- 使用Store
 const startFullPipeline = async () => {
@@ -470,7 +506,7 @@ const startFullPipeline = async () => {
   resetPipelineStages();
   
   addLog('info', '🚀 启动完整数据处理流水线...');
-  addLog('info', `数据流: 微博爬虫 → HDFS → Spark清洗 → HBase → 双维度排序`);
+  addLog('info', `数据流: 微博爬虫 → HDFS → Spark清洗 → HBase → 三维度排序`);
   addLog('info', `关键词: ${config.keywords.join(', ') || '无'}`);
   
   try {
@@ -538,6 +574,9 @@ const updatePipelineFromTask = (task: DataflowTask) => {
     } else if (task.phases.crawl?.status === 'running') {
       pipelineStages[1].status = 'running';
       pipelineStages[1].progress = task.phases.crawl?.progress || 0;
+    } else if (task.phases.crawl?.status === 'failed') {
+      pipelineStages[1].status = 'failed';
+      pipelineStages[1].progress = 0;
     }
     
     // Spark清洗
@@ -548,7 +587,7 @@ const updatePipelineFromTask = (task: DataflowTask) => {
     pipelineStages[3].status = task.phases.analyze?.status || 'pending';
     pipelineStages[3].progress = task.phases.analyze?.progress || 0;
     
-    // 双维度排序
+    // 三维度排序
     pipelineStages[4].status = task.phases.rank?.status || 'pending';
     pipelineStages[4].progress = task.phases.rank?.progress || 0;
   }
@@ -559,11 +598,14 @@ const updatePipelineFromTask = (task: DataflowTask) => {
 
 // 轮询数据流任务状态
 let dataflowTimer: any = null;
+let dataflowErrorCount = 0;
 
 const startDataflowPolling = () => {
+  dataflowErrorCount = 0;
   dataflowTimer = setInterval(async () => {
     try {
       const status = await getDataflowTaskStatus(dataflowTaskId.value);
+      dataflowErrorCount = 0;
       dataflowTask.value = status;
       
       crawlProgress.value = status.progress;
@@ -586,23 +628,33 @@ const startDataflowPolling = () => {
       } else if (status.phase === 'analyze' && pipelineStages[3].status === 'running') {
         addLog('info', `🧠 情感分析中... ${status.phases?.analyze?.progress || 0}%`);
       } else if (status.phase === 'rank' && pipelineStages[4].status === 'running') {
-        addLog('info', `📈 双维度排序中... ${status.phases?.rank?.progress || 0}%`);
+        addLog('info', `📈 三维度排序中... ${status.phases?.rank?.progress || 0}%`);
       }
       
       if (status.status === 'completed') {
         addLog('success', `✅ 完整流水线执行完成！共处理 ${status.collected} 条数据`);
         addLog('success', `数据已写入HBase，可在热点话题页面查看排序结果`);
         isRunning.value = false;
+        isPaused.value = false;
         currentPhase.value = 'done';
         stopDataflowPolling();
+        fetchCompletionSummary();
       } else if (status.status === 'failed') {
         addLog('error', `❌ 流水线执行失败: ${status.error}`);
         isRunning.value = false;
+        isPaused.value = false;
         currentPhase.value = 'idle';
         stopDataflowPolling();
       }
     } catch (error) {
-      console.error('获取数据流状态失败:', error);
+      dataflowErrorCount++;
+      if (dataflowErrorCount <= 3) {
+        console.warn('获取数据流状态失败:', error);
+      }
+      if (dataflowErrorCount >= 3) {
+        console.warn('连续多次获取数据流状态失败，停止轮询');
+        stopDataflowPolling();
+      }
     }
   }, 2000);
 };
@@ -640,6 +692,7 @@ const startCrawl = async () => {
       keywords: config.keywords,
       pages: 3,
       crawlHot: config.crawlHotSearch,
+      dateRange: config.dateRange ? [config.dateRange[0], config.dateRange[1]] : null,
     });
     crawlTaskId = result.task_id;
     addLog('success', `任务创建成功: ${result.task_id}`);
@@ -652,8 +705,8 @@ const startCrawl = async () => {
       count: 0,
     });
     
-    // 开始轮询状态
-    startStatusPolling();
+    // 通过store开始轮询（切换页面不中断）
+    weiboStore.startTaskPolling(result.task_id);
     
   } catch (error: any) {
     addLog('error', `任务创建失败: ${error.message}`);
@@ -664,11 +717,43 @@ const startCrawl = async () => {
   }
 };
 
+// 暂停采集
+const pauseCrawl = async () => {
+  if (!crawlTaskId) return;
+  try {
+    await import('@/api/collection').then(m => m.pauseTask(crawlTaskId as any));
+    isPaused.value = true;
+    addLog('warn', '⏸️ 任务已暂停');
+    if (tasks.value.length > 0) {
+      tasks.value[0].status = 'paused';
+    }
+  } catch (error: any) {
+    addLog('error', `暂停失败: ${error.message}`);
+  }
+};
+
+// 恢复采集
+const resumeCrawl = async () => {
+  if (!crawlTaskId) return;
+  try {
+    await import('@/api/collection').then(m => m.resumeTask(crawlTaskId as any));
+    isPaused.value = false;
+    addLog('info', '▶️ 任务已恢复');
+    if (tasks.value.length > 0) {
+      tasks.value[0].status = 'running';
+    }
+  } catch (error: any) {
+    addLog('error', `恢复失败: ${error.message}`);
+  }
+};
+
 // 停止采集
 const stopCrawl = () => {
   isRunning.value = false;
+  isPaused.value = false;
   currentPhase.value = 'idle';
-  stopStatusPolling();
+  weiboStore.stopTaskPolling();
+  weiboStore.stopDataflowPolling();
   stopDataflowPolling();
   addLog('warn', '任务已停止');
   
@@ -677,50 +762,61 @@ const stopCrawl = () => {
   }
 };
 
-// 轮询任务状态 - 使用Store
-const startStatusPolling = () => {
-  statusTimer = setInterval(async () => {
-    try {
-      const status = await weiboStore.getTaskStatus(crawlTaskId);
-      
-      crawlProgress.value = status.progress || 0;
-      stats.success = status.collected_count || 0;
-      totalCollected.value = status.collected_count || 0;
-      
-      if (tasks.value.length > 0) {
-        tasks.value[0].count = status.collected;
-      }
-      
-      if (status.status === 'completed') {
-        addLog('success', `采集完成，共采集 ${status.collected} 条数据`);
-        isRunning.value = false;
-        stopStatusPolling();
-        if (tasks.value.length > 0) {
-          tasks.value[0].status = 'completed';
-        }
-      } else if (status.status === 'failed') {
-        addLog('error', `采集失败: ${status.error}`);
-        isRunning.value = false;
-        stopStatusPolling();
-        if (tasks.value.length > 0) {
-          tasks.value[0].status = 'failed';
-        }
-      } else {
-        // 模拟实时日志
-        if (Math.random() > 0.7) {
-          addLog('info', `已采集 ${status.collected} 条数据...`);
-        }
-      }
-    } catch (error) {
-      console.error('获取状态失败:', error);
+// 监听store中的任务状态变化，同步到本地UI
+watch(
+  () => weiboStore.collectionTasks,
+  (storeTasks) => {
+    // 找到当前正在跟踪的任务
+    if (!crawlTaskId) return;
+    const storeTask = storeTasks.find(t => t.id === crawlTaskId);
+    if (!storeTask) return;
+    
+    crawlProgress.value = storeTask.progress || 0;
+    stats.success = storeTask.count || 0;
+    totalCollected.value = storeTask.count || 0;
+    
+    if (tasks.value.length > 0) {
+      tasks.value[0].count = storeTask.count;
+      tasks.value[0].status = storeTask.status;
     }
-  }, 2000);
-};
+    
+    if (storeTask.status === 'completed' && isRunning.value) {
+      addLog('success', `采集完成，共采集 ${storeTask.count} 条数据`);
+      isRunning.value = false;
+      isPaused.value = false;
+      pipelineStages[0].status = 'completed';
+      pipelineStages[0].progress = 100;
+      // 尝试获取完成汇总
+      fetchCompletionSummary();
+    } else if (storeTask.status === 'failed' && isRunning.value) {
+      addLog('error', `采集失败: ${storeTask.error}`);
+      isRunning.value = false;
+      isPaused.value = false;
+    }
+  },
+  { deep: true }
+);
 
-const stopStatusPolling = () => {
-  if (statusTimer) {
-    clearInterval(statusTimer);
-    statusTimer = null;
+// 获取完成汇总
+const fetchCompletionSummary = async () => {
+  if (!crawlTaskId) return;
+  try {
+    const status = await getCrawlTaskStatus(crawlTaskId);
+    if (status.summary) {
+      completionSummary.value = status.summary;
+    } else {
+      // 本地简易计算
+      const elapsed = stats.success > 0 ? Math.round(stats.success / Math.max(stats.speed, 1)) : 0;
+      completionSummary.value = {
+        total_collected: totalCollected.value,
+        total_failed: stats.failed,
+        elapsed_display: `${Math.floor(elapsed / 60)}分${elapsed % 60}秒`,
+        success_rate: stats.success > 0 ? Math.round(stats.success / (stats.success + stats.failed) * 100) : 0,
+        avg_speed: stats.speed,
+      };
+    }
+  } catch {
+    // 静默处理
   }
 };
 
@@ -767,8 +863,23 @@ const getStatusType = (status: string) => {
     completed: 'success',
     failed: 'danger',
     stopped: 'warning',
+    interrupted: 'warning',
+    paused: 'warning',
   };
   return map[status] || 'info';
+};
+
+const getStatusLabel = (status: string) => {
+  const map: Record<string, string> = {
+    pending: '等待中',
+    running: '运行中',
+    completed: '已完成',
+    failed: '失败',
+    stopped: '已停止',
+    interrupted: '已中断',
+    paused: '已暂停',
+  };
+  return map[status] || status;
 };
 
 const getLogLevelType = (level: string) => {
@@ -806,7 +917,7 @@ const getPhaseLabel = (phase: string) => {
     'crawl': '数据采集中',
     'clean': 'Spark清洗中',
     'analyze': '情感分析中',
-    'rank': '双维度排序中',
+    'rank': '三维度排序中',
     'done': '已完成',
   };
   return labels[phase] || phase;
@@ -917,21 +1028,45 @@ const addKeyword = (keyword: string) => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   addLog('info', 'Data collection module ready');
-  addLog('info', 'Supports complete data flow: Weibo crawler -> HDFS -> Spark cleaning -> HBase -> dual dimension ranking');
+  addLog('info', 'Supports complete data flow: Weibo crawler -> HDFS -> Spark cleaning -> HBase -> tri dimension ranking');
   loadPreviewData();
   nextTick(() => {
     initRateChart();
     startRateTracking();
   });
-  // ... (rest of the code remains the same)
   window.addEventListener('resize', () => rateChart?.resize());
+  
+  // 从后端加载历史任务（持久化数据，跨登录保留）
+  await weiboStore.loadTaskHistory();
+  
+  // 用store中的历史任务填充本地UI表格
+  if (weiboStore.collectionTasks.length > 0) {
+    tasks.value = weiboStore.collectionTasks.map(t => ({
+      id: t.id.slice(-8),
+      keyword: t.keyword,
+      status: t.status,
+      count: t.count,
+    }));
+    // 计算总采集数
+    totalCollected.value = weiboStore.collectionTasks.reduce((sum, t) => sum + (t.count || 0), 0);
+  }
+  
+  // 如果有正在运行的任务，恢复本地UI状态
+  const running = weiboStore.collectionTasks.find(t => t.status === 'running');
+  if (running) {
+    isRunning.value = true;
+    crawlTaskId = running.id;
+    currentPhase.value = 'crawl';
+    pipelineStages[0].status = 'running';
+    addLog('info', `检测到运行中的任务: ${running.id}，自动恢复监控`);
+  }
 });
 
 onUnmounted(() => {
-  stopStatusPolling();
-  stopDataflowPolling();
+  // 注意：不再停止store级别的轮询，只清理组件内的定时器
+  if (dataflowTimer) { clearInterval(dataflowTimer); dataflowTimer = null; }
   if (rateTimer) clearInterval(rateTimer);
 });
 </script>
@@ -1288,5 +1423,28 @@ onUnmounted(() => {
       color: $text-secondary;
     }
   }
+}
+
+.summary-card {
+  border-left: 4px solid $success-color;
+  
+  :deep(.el-statistic__head) {
+    font-size: $font-size-extra-small;
+    color: $text-secondary;
+  }
+  
+  :deep(.el-statistic__content) {
+    font-size: 22px;
+    font-weight: $font-weight-bold;
+  }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

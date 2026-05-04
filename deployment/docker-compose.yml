@@ -1,7 +1,7 @@
 # ====================================================================
 # 微博情感分析系统 - Docker Compose 配置
 # ====================================================================
-# 兼容: Docker Compose v2.x (Ubuntu 20.04+ / 1Panel)
+# 兼容: Docker Compose v2.x (Ubuntu 24.04 / 1Panel)
 # 使用说明:
 #   1. cp .env.docker.example .env.docker && vim .env.docker
 #   2. docker compose --env-file .env.docker \
@@ -22,12 +22,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      java-backend:
-        condition: service_healthy
-        required: false
-      hbase-regionserver:
-        condition: service_healthy
-        required: false
     ports:
       - "${WEB_PORT:-5000}:5000"
     environment:
@@ -133,7 +127,7 @@ services:
       --maxmemory-policy allkeys-lru
       ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
     healthcheck:
-      test: ["CMD-SHELL", "if [ -n \"${REDIS_PASSWORD}\" ]; then redis-cli -a \"${REDIS_PASSWORD}\" ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -150,9 +144,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      hbase-regionserver:
-        condition: service_healthy
-        required: false
     ports:
       - "${JAVA_BACKEND_PORT:-8081}:8081"
     environment:

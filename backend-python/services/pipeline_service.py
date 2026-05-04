@@ -1,7 +1,7 @@
 """
 数据流水线服务 - 串联全流程
 ============================
-采集(MySQL) → 情感分析 → 双维度排序 → 结果入库
+采集(MySQL) → 情感分析 → 三维度排序 → 结果入库
 
 实现公式体系:
 - 公式4-3: 级联策略 S_final = S_dict if |S_dict| > θ else S_bert
@@ -318,11 +318,11 @@ class SentimentStage:
         return results
 
 
-# ==================== 双维度排序阶段 ====================
+# ==================== 三维度排序阶段 ====================
 
 class RankingStage:
     """
-    双维度排序阶段
+    三维度排序阶段
     
     公式4-4: N(S) = (|S| + 1) / 2
     公式4-5: H_raw = log₁₀(1 + λ_r·R + λ_c·C + λ_l·L), H_norm = H_raw / max_H
@@ -359,7 +359,7 @@ class RankingStage:
 
     def rank(self, weibos_with_sentiment: List[Dict]) -> List[Dict]:
         """
-        对已完成情感分析的微博进行双维度排序
+        对已完成情感分析的微博进行三维度排序
         
         输入每条需要: weibo_id, sentiment_score(hybrid_score), 
                       reposts_count, comments_count, attitudes_count, created_at
@@ -419,6 +419,7 @@ class RankingStage:
                 'time_decay': round(gamma, 4),
                 'alpha_weight': self.config.sentiment_weight,
                 'beta_weight': self.config.heat_weight,
+                'gamma_weight': self.config.timeliness_weight,
                 'composite_score': round(composite, 4),
                 'algorithm_version': 'v2.0.0',
             })
@@ -437,7 +438,7 @@ class PipelineService:
     """
     端到端流水线服务
     
-    采集(MySQL) → 情感分析 → 双维度排序 → 结果入库
+    采集(MySQL) → 情感分析 → 三维度排序 → 结果入库
     
     支持:
     - 同步/异步执行
@@ -469,7 +470,7 @@ class PipelineService:
         1. 从MySQL读取未处理微博
         2. 运行情感分析 (级联策略)
         3. 从MySQL读取待排序微博 (已有情感结果)
-        4. 运行双维度排序
+        4. 运行三维度排序
         5. 结果写回MySQL
         
         Returns:
@@ -510,7 +511,7 @@ class PipelineService:
 
             result['stages']['sentiment']['duration_s'] = round(time.time() - stage1_start, 2)
 
-            # ====== Stage 2: 双维度排序 ======
+            # ====== Stage 2: 三维度排序 ======
             stage2_start = time.time()
             unranked = db.get_unranked_weibos(limit=limit)
             result['stages']['ranking'] = {
@@ -518,12 +519,12 @@ class PipelineService:
             }
 
             if unranked:
-                logger.info(f"[Pipeline] 双维度排序阶段: 排序 {len(unranked)} 条微博")
+                logger.info(f"[Pipeline] 三维度排序阶段: 排序 {len(unranked)} 条微博")
                 ranked = self.ranking_stage.rank(unranked)
 
                 # 写入MySQL
                 batch_id = f"rank_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-                save_result = db.save_dual_dimension_results(ranked, batch_id)
+                save_result = db.save_tri_dimension_results(ranked, batch_id)
                 result['stages']['ranking']['saved'] = save_result['saved']
                 result['stages']['ranking']['errors'] = save_result['errors']
                 result['stages']['ranking']['batch_id'] = batch_id
@@ -531,7 +532,7 @@ class PipelineService:
                 # 返回Top 10排序结果供前端展示
                 result['top_ranked'] = ranked[:10]
             else:
-                logger.info("[Pipeline] 无待排序微博，跳过双维度排序阶段")
+                logger.info("[Pipeline] 无待排序微博，跳过三维度排序阶段")
                 result['stages']['ranking']['saved'] = 0
 
             result['stages']['ranking']['duration_s'] = round(time.time() - stage2_start, 2)
@@ -547,7 +548,7 @@ class PipelineService:
                 result['database_stats'] = {
                     'weibo_count': stats.get('weibo_core_data', 0),
                     'sentiment_count': stats.get('sentiment_analysis_results', 0),
-                    'ranking_count': stats.get('dual_dimension_ranking', 0),
+                    'ranking_count': stats.get('tri_dimension_ranking', 0),
                     'sentiment_distribution': stats.get('sentiment_distribution', []),
                 }
             except Exception:

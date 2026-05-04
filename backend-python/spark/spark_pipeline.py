@@ -206,12 +206,35 @@ class DataCleaner:
         '體': '体', '統': '统', '雙': '双', '離': '离', '難': '难',
     }
 
+    # 表情极性分类，用于 'tag' 模式
+    _POS_EMOJIS = {
+        '[笑cry]', '[哈哈]', '[嘻嘻]', '[偷笑]', '[太开心]', '[开心]',
+        '[赞]', '[good]', '[鼓掌]', '[心]', '[爱你]', '[给力]', '[加油]',
+    }
+    _NEG_EMOJIS = {
+        '[怒]', '[生气]', '[悲伤]', '[泪]', '[失望]', '[委屈]',
+        '[可怜]', '[黑线]', '[汗]', '[裂开]',
+    }
+
     @staticmethod
-    def clean_text_udf():
-        """创建文本清洗UDF"""
+    def clean_text_udf(emoji_mode: str = 'text'):
+        """
+        创建文本清洗UDF
+
+        Args:
+            emoji_mode: 表情处理模式
+                - 'text': 替换为情感文字描述（默认，与旧版行为一致）
+                - 'tag':  替换为极性标签 _EMO_POS_ / _EMO_NEG_ / _EMO_NEU_，
+                          避免将描述性文字注入正文造成情感强度失真
+                - 'remove': 直接删除所有 [表情]
+                - 'keep': 保留原始 [表情] 不做任何处理
+        """
         import re
         emoji_map = DataCleaner._EMOJI_MAP
+        pos_emojis = DataCleaner._POS_EMOJIS
+        neg_emojis = DataCleaner._NEG_EMOJIS
         t2s_map = DataCleaner._T2S_MAP
+        _emoji_mode = emoji_mode
         
         def clean_text(text: str) -> str:
             if not text:
@@ -229,10 +252,27 @@ class DataCleaner:
             # 去除话题标签但保留内容
             text = re.sub(r'#([^#]+)#', r'\1', text)
             
-            # 表情符号→文字描述（保留情感特征）
-            def _replace_emoji(m):
-                return emoji_map.get(m.group(0), m.group(0))
-            text = re.sub(r'\[[\w\u4e00-\u9fff]+\]', _replace_emoji, text)
+            # 表情符号处理（根据 emoji_mode 选择策略）
+            if _emoji_mode == 'remove':
+                text = re.sub(r'\[[\w\u4e00-\u9fff]+\]', '', text)
+            elif _emoji_mode == 'tag':
+                def _tag_emoji(m):
+                    e = m.group(0)
+                    if e in pos_emojis:
+                        return '_EMO_POS_'
+                    elif e in neg_emojis:
+                        return '_EMO_NEG_'
+                    elif e in emoji_map:
+                        return '_EMO_NEU_'
+                    return e
+                text = re.sub(r'\[[\w\u4e00-\u9fff]+\]', _tag_emoji, text)
+            elif _emoji_mode == 'keep':
+                pass  # 保留原始表情
+            else:
+                # 默认 'text' 模式：替换为中文描述
+                def _replace_emoji(m):
+                    return emoji_map.get(m.group(0), m.group(0))
+                text = re.sub(r'\[[\w\u4e00-\u9fff]+\]', _replace_emoji, text)
             
             # 繁体→简体
             text = ''.join(t2s_map.get(c, c) for c in text)
@@ -343,6 +383,11 @@ class FeatureExtractor:
     1. TF-IDF
     2. 词频统计
     3. 关键词提取
+
+    注：TF-IDF 和词频统计特征主要用于 Spark MLlib 辅助分析场景，
+    如热点话题挖掘、关键词排名和词云生成等，不直接作为 ChineseBERT
+    情感分析模型的输入。ChineseBERT 使用其内置 tokenizer 和
+    embedding 层，无需外部 TF-IDF/Word2Vec 特征。
     """
     
     @staticmethod
@@ -544,13 +589,13 @@ class SentimentPipeline:
             df = SentimentProcessor.process_sentiment(df)
             self._log_stage(PipelineStage.SENTIMENT, stage_start)
         
-        # 6. 双维度排序
+        # 6. 三维度排序
         if PipelineStage.RANK in stages:
             stage_start = time.time()
-            from .dual_dimension_model import SparkDualDimensionProcessor, DualDimensionConfig
+            from .tri_dimension_model import SparkTriDimensionProcessor, TriDimensionConfig
             
-            rank_config = DualDimensionConfig()
-            processor = SparkDualDimensionProcessor(spark, rank_config)
+            rank_config = TriDimensionConfig()
+            processor = SparkTriDimensionProcessor(spark, rank_config)
             df = processor.process_dataframe(df)
             self._log_stage(PipelineStage.RANK, stage_start)
         

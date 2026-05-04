@@ -4,7 +4,7 @@
 # 构建上下文: 项目根目录 (context: ..)
 # ====================================================================
 
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -34,10 +34,10 @@ RUN apt-get update \
 # 复制依赖文件 (注意: 构建上下文为项目根目录)
 COPY backend-python/requirements.txt .
 
-# 安装 Python 依赖
-RUN pip install --upgrade pip \
-    && pip install -r requirements.txt \
-    && pip install gunicorn
+# 安装 Python 依赖 (国内镜像加速)
+RUN pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
+    && pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
+    && pip install gunicorn -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
 
 # 复制应用代码
 COPY backend-python/ ./backend/

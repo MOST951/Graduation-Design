@@ -1,0 +1,1277 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微博情感分析系统 - 全局ER关系图（陈氏表示法）</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SimSun', 'STSong', 'Songti SC', serif;
+            background: #fff;
+            color: #000;
+            overflow: auto;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #334155;
+            padding: 20px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header .subtitle {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+        .tab-bar {
+            display: flex;
+            gap: 4px;
+            background: #1e293b;
+            border-radius: 10px;
+            padding: 4px;
+        }
+        .tab-btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: #94a3b8;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: #e2e8f0; background: #334155; }
+        .tab-btn.active {
+            background: #3b82f6;
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(59,130,246,0.3);
+        }
+
+        /* Canvas area */
+        .canvas-wrapper {
+            width: 100%;
+            height: calc(100vh - 80px);
+            overflow: auto;
+            position: relative;
+        }
+        .canvas {
+            min-width: 1800px;
+            min-height: 2400px;
+            position: relative;
+            padding: 40px;
+        }
+
+        /* Layer labels */
+        .layer {
+            position: absolute;
+            border-radius: 16px;
+            border: 1px solid;
+            padding: 20px;
+        }
+        .layer-title {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            padding: 4px 14px;
+            border-radius: 6px;
+            display: inline-block;
+            margin-bottom: 8px;
+        }
+
+        .layer-java { border-color: #22d3ee33; background: #22d3ee08; }
+        .layer-java .layer-title { background: #22d3ee22; color: #22d3ee; }
+
+        .layer-raw { border-color: #f59e0b33; background: #f59e0b08; }
+        .layer-raw .layer-title { background: #f59e0b22; color: #f59e0b; }
+
+        .layer-process { border-color: #3b82f633; background: #3b82f608; }
+        .layer-process .layer-title { background: #3b82f622; color: #3b82f6; }
+
+        .layer-business { border-color: #a78bfa33; background: #a78bfa08; }
+        .layer-business .layer-title { background: #a78bfa22; color: #a78bfa; }
+
+        .layer-system { border-color: #10b98133; background: #10b98108; }
+        .layer-system .layer-title { background: #10b98122; color: #10b981; }
+
+        .layer-grad { border-color: #f472b633; background: #f472b608; }
+        .layer-grad .layer-title { background: #f472b622; color: #f472b6; }
+
+        /* Entity cards */
+        .entity {
+            position: absolute;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            min-width: 220px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            overflow: hidden;
+            transition: transform 0.15s, box-shadow 0.15s;
+            cursor: default;
+            z-index: 10;
+        }
+        .entity:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .entity-header {
+            padding: 10px 14px;
+            font-size: 13px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .entity-header .icon {
+            width: 24px; height: 24px;
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        .entity-header .table-name {
+            font-size: 11px;
+            font-weight: 400;
+            color: #94a3b8;
+            margin-left: auto;
+        }
+        .entity-body {
+            padding: 6px 14px 12px;
+            font-size: 11px;
+            line-height: 1.8;
+            color: #cbd5e1;
+        }
+        .entity-body .field {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .field .badge {
+            font-size: 9px;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .badge-pk { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b44; }
+        .badge-fk { background: #3b82f622; color: #60a5fa; border: 1px solid #3b82f644; }
+        .badge-uk { background: #a78bfa22; color: #a78bfa; border: 1px solid #a78bfa44; }
+        .field .fname { color: #e2e8f0; font-weight: 500; }
+        .field .ftype { color: #64748b; margin-left: auto; font-size: 10px; }
+        .field-sep {
+            border-top: 1px solid #334155;
+            margin: 4px 0;
+        }
+
+        /* Colors for entity types */
+        .ent-java .entity-header { background: linear-gradient(135deg, #164e63, #0e7490); }
+        .ent-java .icon { background: #22d3ee33; color: #22d3ee; }
+
+        .ent-raw .entity-header { background: linear-gradient(135deg, #78350f, #92400e); }
+        .ent-raw .icon { background: #f59e0b33; color: #f59e0b; }
+
+        .ent-process .entity-header { background: linear-gradient(135deg, #1e3a5f, #1d4ed8); }
+        .ent-process .icon { background: #3b82f633; color: #60a5fa; }
+
+        .ent-business .entity-header { background: linear-gradient(135deg, #4c1d95, #6d28d9); }
+        .ent-business .icon { background: #a78bfa33; color: #a78bfa; }
+
+        .ent-system .entity-header { background: linear-gradient(135deg, #064e3b, #047857); }
+        .ent-system .icon { background: #10b98133; color: #10b981; }
+
+        .ent-grad .entity-header { background: linear-gradient(135deg, #831843, #be185d); }
+        .ent-grad .icon { background: #f472b633; color: #f472b6; }
+
+        /* SVG arrows */
+        svg.arrows {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+        svg.arrows line, svg.arrows path {
+            stroke-width: 2;
+            fill: none;
+        }
+        .arrow-fk { stroke: #3b82f6; }
+        .arrow-logic { stroke: #f59e0b; stroke-dasharray: 6 4; }
+        .arrow-trigger { stroke: #10b981; stroke-dasharray: 3 3; }
+
+        /* Legend */
+        .legend {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 16px 20px;
+            z-index: 200;
+            font-size: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        }
+        .legend h3 {
+            font-size: 13px;
+            margin-bottom: 10px;
+            color: #94a3b8;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0;
+        }
+        .legend-line {
+            width: 32px;
+            height: 2px;
+        }
+        .legend-line.solid-blue { background: #3b82f6; }
+        .legend-line.dashed-yellow { background: repeating-linear-gradient(90deg, #f59e0b 0 6px, transparent 6px 10px); }
+        .legend-line.dotted-green { background: repeating-linear-gradient(90deg, #10b981 0 3px, transparent 3px 6px); }
+        .legend-dot {
+            width: 14px; height: 14px; border-radius: 4px;
+        }
+
+        /* Stats bar */
+        .stats {
+            display: flex;
+            gap: 24px;
+            align-items: center;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-item .num {
+            font-size: 20px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stat-item .label {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        /* View panels */
+        .view-panel { display: none; }
+        .view-panel.active { display: block; }
+
+        /* Zoom controls */
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 4px;
+            z-index: 200;
+        }
+        .zoom-btn {
+            width: 36px; height: 36px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #94a3b8;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        .zoom-btn:hover { background: #334155; color: #e2e8f0; }
+        .zoom-label {
+            width: 52px; height: 36px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #94a3b8;
+            font-size: 12px;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* Full overview (Mermaid-style manually drawn) */
+        .overview-canvas { min-height: 2800px; }
+
+        /* Detail view table */
+        .detail-table {
+            width: 100%;
+            max-width: 1200px;
+            margin: 30px auto;
+            border-collapse: collapse;
+        }
+        .detail-table th, .detail-table td {
+            padding: 10px 16px;
+            border: 1px solid #334155;
+            text-align: left;
+            font-size: 13px;
+        }
+        .detail-table th {
+            background: #1e293b;
+            color: #94a3b8;
+            font-weight: 600;
+            position: sticky;
+            top: 80px;
+        }
+        .detail-table td { background: #0f172a; }
+        .detail-table tr:hover td { background: #1e293b; }
+        .fk-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .fk-tag.physical { background: #3b82f622; color: #60a5fa; border: 1px solid #3b82f644; }
+        .fk-tag.logical { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b44; }
+        .fk-tag.trigger { background: #10b98122; color: #10b981; border: 1px solid #10b98144; }
+
+        .section-title {
+            max-width: 1200px;
+            margin: 30px auto 0;
+            padding: 0 16px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #e2e8f0;
+        }
+        .section-desc {
+            max-width: 1200px;
+            margin: 8px auto 0;
+            padding: 0 16px;
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        /* Formula box */
+        .formula-box {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 24px;
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            border: 1px solid #334155;
+            border-radius: 12px;
+        }
+        .formula-box h3 {
+            color: #f59e0b;
+            font-size: 15px;
+            margin-bottom: 12px;
+        }
+        .formula {
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            color: #60a5fa;
+            padding: 12px 20px;
+            background: #0f172a;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            margin: 8px 0;
+            text-align: center;
+        }
+        .formula span.var { color: #a78bfa; }
+        .formula span.op { color: #f59e0b; }
+        .formula span.fn { color: #22d3ee; }
+
+        .param-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+        .param-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+        }
+        .param-card .param-name { color: #a78bfa; font-weight: 600; font-size: 13px; }
+        .param-card .param-val { color: #e2e8f0; font-size: 20px; font-weight: 800; margin: 4px 0; }
+        .param-card .param-desc { color: #64748b; font-size: 11px; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>微博情感分析系统 — 全局 ER 关系图</h1>
+        <div class="subtitle">基于Spark的分布式微博情感分析系统 · 毕业设计 · 罗森 2022407443</div>
+    </div>
+    <div class="stats">
+        <div class="stat-item"><div class="num">20+</div><div class="label">实体表</div></div>
+        <div class="stat-item"><div class="num">6</div><div class="label">数据层</div></div>
+        <div class="stat-item"><div class="num">12</div><div class="label">关联关系</div></div>
+        <div class="stat-item"><div class="num">5</div><div class="label">触发器</div></div>
+    </div>
+    <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('overview')">全局总览</button>
+        <button class="tab-btn" onclick="switchTab('java')">Java后端</button>
+        <button class="tab-btn" onclick="switchTab('python')">Python后端</button>
+        <button class="tab-btn" onclick="switchTab('detail')">关系明细</button>
+    </div>
+</div>
+
+<!-- ======================== VIEW: OVERVIEW ======================== -->
+<div id="view-overview" class="view-panel active">
+    <div class="canvas-wrapper" id="overview-wrapper">
+        <div class="canvas overview-canvas" id="overview-canvas" style="transform-origin: top left;">
+
+            <!-- SVG arrows drawn by JS -->
+            <svg class="arrows" id="overview-arrows"></svg>
+
+            <!-- Layer: Java Web Backend -->
+            <div class="layer layer-java" style="left:40px; top:30px; width:780px; height:280px;">
+                <span class="layer-title">Java Web 后端 (Spring Boot / JPA)</span>
+            </div>
+
+            <div class="entity ent-java" id="e-user-java" style="left:60px; top:80px; width:230px;">
+                <div class="entity-header">
+                    <span class="icon">U</span> User <span class="table-name">users</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">username</span><span class="ftype">VARCHAR(50)</span></div>
+                    <div class="field"><span class="fname">password</span><span class="ftype">VARCHAR(255)</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">email</span><span class="ftype">VARCHAR(100)</span></div>
+                    <div class="field"><span class="fname">roles / status</span><span class="ftype">VARCHAR</span></div>
+                    <div class="field"><span class="fname">created_at / updated_at</span><span class="ftype">TIMESTAMP</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-java" id="e-task-java" style="left:330px; top:80px; width:240px;">
+                <div class="entity-header">
+                    <span class="icon">T</span> CollectionTask <span class="table-name">collection_task</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">user_id → User</span><span class="ftype">BIGINT</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">taskName / keywords</span><span class="ftype">TEXT</span></div>
+                    <div class="field"><span class="fname">status</span><span class="ftype">VARCHAR(20)</span></div>
+                    <div class="field"><span class="fname">startTime / endTime</span><span class="ftype">TIMESTAMP</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-java" id="e-result-java" style="left:60px; top:195px; width:240px;">
+                <div class="entity-header">
+                    <span class="icon">S</span> SentimentResult <span class="table-name">sentiment_result</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">task_id → Task</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">weiboId</span><span class="ftype">VARCHAR(50)</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">content / sentiment</span></div>
+                    <div class="field"><span class="fname">confidence / publishTime</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-java" id="e-spark" style="left:340px; top:218px; width:220px;">
+                <div class="entity-header">
+                    <span class="icon">J</span> SparkJob <span class="table-name">spark_jobs</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">jobId</span><span class="ftype">VARCHAR(255)</span></div>
+                    <div class="field"><span class="fname">jobName / status</span></div>
+                    <div class="field"><span class="fname">submitTime / finishTime</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-java" id="e-syslog" style="left:600px; top:80px; width:200px;">
+                <div class="entity-header">
+                    <span class="icon">L</span> SystemLog <span class="table-name">system_log</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="fname">username</span><span class="ftype">VARCHAR(50)</span></div>
+                    <div class="field"><span class="fname">operation / method</span></div>
+                    <div class="field"><span class="fname">params / executionTime</span></div>
+                    <div class="field"><span class="fname">ipAddress</span></div>
+                </div>
+            </div>
+
+            <!-- Layer: Raw Data -->
+            <div class="layer layer-raw" style="left:40px; top:340px; width:780px; height:310px;">
+                <span class="layer-title">第一层: 原始数据层 (Raw Data)</span>
+            </div>
+
+            <div class="entity ent-raw" id="e-weibo-raw" style="left:60px; top:390px; width:260px;">
+                <div class="entity-header">
+                    <span class="icon">W</span> 原始微博 <span class="table-name">weibo_raw</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id, crawl_time</span><span class="ftype">复合主键</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">weibo_id</span><span class="ftype">VARCHAR(64)</span></div>
+                    <div class="field"><span class="fname">content</span><span class="ftype">TEXT</span></div>
+                    <div class="field"><span class="fname">user_id → user_raw</span><span class="ftype">VARCHAR(64)</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">reposts / comments / attitudes</span></div>
+                    <div class="field"><span class="fname">topic / keyword / source</span></div>
+                    <div class="field"><span class="fname">is_processed / is_deleted</span></div>
+                    <div class="field"><span class="fname">data_source</span><span class="ftype">ENUM</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-raw" id="e-user-raw" style="left:370px; top:390px; width:220px;">
+                <div class="entity-header">
+                    <span class="icon">P</span> 微博用户 <span class="table-name">user_raw</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">user_id</span><span class="ftype">VARCHAR(64)</span></div>
+                    <div class="field"><span class="fname">screen_name</span><span class="ftype">VARCHAR(128)</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">verified / verified_type</span></div>
+                    <div class="field"><span class="fname">followers / friends_count</span></div>
+                    <div class="field"><span class="fname">location / gender</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-raw" id="e-interaction" style="left:60px; top:545px; width:250px;">
+                <div class="entity-header">
+                    <span class="icon">I</span> 互动数据 <span class="table-name">interaction_raw</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id, crawl_time</span><span class="ftype">复合主键</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">interaction_id</span><span class="ftype">VARCHAR(64)</span></div>
+                    <div class="field"><span class="fname">weibo_id → weibo_raw</span><span class="ftype">VARCHAR(64)</span></div>
+                    <div class="field"><span class="fname">user_id → user_raw</span><span class="ftype">VARCHAR(64)</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">interaction_type</span><span class="ftype">ENUM</span></div>
+                    <div class="field"><span class="fname">content / like_count</span></div>
+                </div>
+            </div>
+
+            <!-- Layer: Processed Data -->
+            <div class="layer layer-process" style="left:40px; top:680px; width:780px; height:340px;">
+                <span class="layer-title">第二层: 处理数据层 (Processed Data) — Python 核心数据链</span>
+            </div>
+
+            <div class="entity ent-process" id="e-weibo-core" style="left:60px; top:730px; width:260px;">
+                <div class="entity-header">
+                    <span class="icon">C</span> 微博核心数据 <span class="table-name">weibo_core_data</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">weibo_id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="fname">content / user_name</span></div>
+                    <div class="field"><span class="fname">reposts / comments / attitudes</span></div>
+                    <div class="field"><span class="fname">keyword / batch_id</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">is_processed</span><span class="ftype">← trigger</span></div>
+                    <div class="field"><span class="fname">is_ranked</span><span class="ftype">← trigger</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-process" id="e-sentiment-py" style="left:390px; top:730px; width:260px;">
+                <div class="entity-header">
+                    <span class="icon">A</span> 情感分析结果 <span class="table-name">sentiment_analysis_results</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">weibo_id → core_data</span><span class="ftype">BIGINT</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">dict_score / bert_score</span></div>
+                    <div class="field"><span class="fname">hybrid_score</span><span class="ftype">DECIMAL</span></div>
+                    <div class="field"><span class="fname">sentiment_class</span><span class="ftype">ENUM</span></div>
+                    <div class="field"><span class="fname">confidence / intensity</span></div>
+                    <div class="field"><span class="fname">analysis_method</span><span class="ftype">ENUM</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-process" id="e-ranking" style="left:390px; top:910px; width:260px;">
+                <div class="entity-header">
+                    <span class="icon">R</span> 三维度排序 <span class="table-name">tri_dimension_ranking</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">weibo_id → core_data</span><span class="ftype">BIGINT</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">sentiment_score</span><span class="ftype">DECIMAL</span></div>
+                    <div class="field"><span class="fname">popularity_score</span><span class="ftype">DECIMAL</span></div>
+                    <div class="field"><span class="fname">composite_score</span><span class="ftype">DECIMAL</span></div>
+                    <div class="field"><span class="fname">time_decay / ranking_position</span></div>
+                    <div class="field"><span class="fname">alpha=0.6 / beta=0.4</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-process" id="e-processed" style="left:60px; top:910px; width:260px;">
+                <div class="entity-header">
+                    <span class="icon">P</span> 清洗后微博 <span class="table-name">weibo_processed</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id, process_time</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">weibo_id → weibo_raw</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">clean_content</span><span class="ftype">TEXT</span></div>
+                    <div class="field"><span class="fname">word_segments / keywords</span><span class="ftype">JSON</span></div>
+                    <div class="field"><span class="fname">quality_score / is_valid</span></div>
+                    <div class="field"><span class="fname">spark_job_id</span></div>
+                </div>
+            </div>
+
+            <!-- Layer: Business -->
+            <div class="layer layer-business" style="left:860px; top:340px; width:460px; height:390px;">
+                <span class="layer-title">第三层: 业务数据层 (Business Data)</span>
+            </div>
+
+            <div class="entity ent-business" id="e-hot-topics" style="left:880px; top:390px; width:220px;">
+                <div class="entity-header">
+                    <span class="icon">H</span> 热点话题 <span class="table-name">hot_topics</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">topic_id</span><span class="ftype">VARCHAR(64)</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">title / category</span></div>
+                    <div class="field"><span class="fname">hot_value / hot_rank</span></div>
+                    <div class="field"><span class="fname">weibo_count</span></div>
+                    <div class="field"><span class="fname">positive / negative_ratio</span></div>
+                    <div class="field"><span class="fname">trend</span><span class="ftype">ENUM</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-business" id="e-propagation" style="left:880px; top:560px; width:220px;">
+                <div class="entity-header">
+                    <span class="icon">G</span> 传播路径 <span class="table-name">propagation_paths</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="fname">source_weibo_id</span></div>
+                    <div class="field"><span class="fname">source_user_id</span></div>
+                    <div class="field"><span class="fname">target_weibo/user_id</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">propagation_type / depth</span></div>
+                    <div class="field"><span class="fname">influence_score</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-business" id="e-alert" style="left:1130px; top:390px; width:180px;">
+                <div class="entity-header">
+                    <span class="icon">!</span> 预警事件 <span class="table-name">alert_events</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">alert_id</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">alert_type / level</span></div>
+                    <div class="field"><span class="fname">related_topic</span></div>
+                    <div class="field"><span class="fname">negative_ratio</span></div>
+                    <div class="field"><span class="fname">status</span><span class="ftype">ENUM</span></div>
+                </div>
+            </div>
+
+            <!-- Layer: System & Crawl -->
+            <div class="layer layer-system" style="left:860px; top:760px; width:460px; height:370px;">
+                <span class="layer-title">第四层: 系统管理 & 爬虫日志</span>
+            </div>
+
+            <div class="entity ent-system" id="e-batch-log" style="left:880px; top:810px; width:210px;">
+                <div class="entity-header">
+                    <span class="icon">B</span> 爬虫批次 <span class="table-name">crawl_batch_log</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">batch_id</span><span class="ftype">VARCHAR(64)</span></div>
+                    <div class="field"><span class="fname">task_name / task_type</span></div>
+                    <div class="field"><span class="fname">status</span><span class="ftype">ENUM</span></div>
+                    <div class="field"><span class="fname">total / success / failure</span></div>
+                    <div class="field"><span class="fname">start_time / end_time</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-system" id="e-request-log" style="left:1130px; top:810px; width:180px;">
+                <div class="entity-header">
+                    <span class="icon">Q</span> 请求日志 <span class="table-name">crawl_request_log</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">batch_id</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">url / status_code</span></div>
+                    <div class="field"><span class="fname">response_time_ms</span></div>
+                    <div class="field"><span class="fname">success / error</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-system" id="e-quality-log" style="left:880px; top:960px; width:210px;">
+                <div class="entity-header">
+                    <span class="icon">D</span> 质量日志 <span class="table-name">data_quality_log</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">batch_id</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">quality_score</span></div>
+                    <div class="field"><span class="fname">issues</span><span class="ftype">JSON</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-system" id="e-sys-config" style="left:1130px; top:960px; width:180px;">
+                <div class="entity-header">
+                    <span class="icon">S</span> 系统配置 <span class="table-name">system_configs</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">config_key</span></div>
+                    <div class="field"><span class="fname">config_value / type</span></div>
+                </div>
+            </div>
+
+            <!-- Layer: Graduation -->
+            <div class="layer layer-grad" style="left:40px; top:1080px; width:780px; height:210px;">
+                <span class="layer-title">第五层: 毕业设计统计层</span>
+            </div>
+
+            <div class="entity ent-grad" id="e-grad-stats" style="left:60px; top:1130px; width:220px;">
+                <div class="entity-header">
+                    <span class="icon">G</span> 统计报告 <span class="table-name">graduation_statistics</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">stat_id</span></div>
+                    <div class="field"><span class="fname">stat_type / stat_data</span></div>
+                    <div class="field"><span class="fname">total / positive / negative</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-grad" id="e-perf" style="left:310px; top:1130px; width:220px;">
+                <div class="entity-header">
+                    <span class="icon">M</span> 性能指标 <span class="table-name">performance_metrics</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="fname">metric_type / metric_name</span></div>
+                    <div class="field"><span class="fname">metric_value / component</span></div>
+                    <div class="field"><span class="fname">p50 / p95 / p99</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-grad" id="e-validation" style="left:560px; top:1130px; width:240px;">
+                <div class="entity-header">
+                    <span class="icon">V</span> 验证结果 <span class="table-name">validation_results</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="fname">validation_type</span><span class="ftype">ENUM</span></div>
+                    <div class="field"><span class="fname">accuracy / f1_score</span></div>
+                    <div class="field"><span class="fname">confusion_matrix</span><span class="ftype">JSON</span></div>
+                </div>
+            </div>
+
+            <!-- Auth user (Python) -->
+            <div class="entity ent-system" id="e-auth-user" style="left:860px; top:1150px; width:200px;">
+                <div class="entity-header">
+                    <span class="icon">U</span> 系统用户 <span class="table-name">users (Python)</span>
+                </div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">username</span></div>
+                    <div class="field"><span class="fname">password_hash / salt</span></div>
+                    <div class="field"><span class="fname">role / status / nickname</span></div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- ======================== VIEW: JAVA ======================== -->
+<div id="view-java" class="view-panel">
+    <div class="canvas-wrapper">
+        <div class="canvas" style="min-height:700px;">
+            <svg class="arrows" id="java-arrows"></svg>
+
+            <div class="entity ent-java" id="ej-user" style="left:80px; top:60px; width:260px;">
+                <div class="entity-header"><span class="icon">U</span> User <span class="table-name">users</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT AUTO_INCREMENT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">username</span><span class="ftype">VARCHAR(50) NOT NULL</span></div>
+                    <div class="field"><span class="fname">password</span><span class="ftype">VARCHAR(255) NOT NULL</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">email</span><span class="ftype">VARCHAR(100)</span></div>
+                    <div class="field"><span class="fname">roles</span><span class="ftype">VARCHAR(255) NOT NULL</span></div>
+                    <div class="field"><span class="fname">status</span><span class="ftype">VARCHAR(20) NOT NULL</span></div>
+                    <div class="field"><span class="fname">created_at</span><span class="ftype">TIMESTAMP</span></div>
+                    <div class="field"><span class="fname">updated_at</span><span class="ftype">TIMESTAMP</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-java" id="ej-task" style="left:440px; top:60px; width:280px;">
+                <div class="entity-header"><span class="icon">T</span> CollectionTask <span class="table-name">collection_task</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT AUTO_INCREMENT</span></div>
+                    <div class="field"><span class="fname">task_name</span><span class="ftype">VARCHAR(255) NOT NULL</span></div>
+                    <div class="field"><span class="fname">keywords</span><span class="ftype">TEXT NOT NULL</span></div>
+                    <div class="field"><span class="fname">status</span><span class="ftype">VARCHAR(20) NOT NULL</span></div>
+                    <div class="field"><span class="fname">start_time / end_time</span><span class="ftype">TIMESTAMP</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">user_id → users.id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="fname">created_at / updated_at</span><span class="ftype">TIMESTAMP</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-java" id="ej-result" style="left:440px; top:300px; width:280px;">
+                <div class="entity-header"><span class="icon">S</span> SentimentResult <span class="table-name">sentiment_result</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT AUTO_INCREMENT</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">task_id → collection_task.id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">weibo_id</span><span class="ftype">VARCHAR(50) NOT NULL</span></div>
+                    <div class="field"><span class="fname">content</span><span class="ftype">TEXT</span></div>
+                    <div class="field"><span class="fname">sentiment</span><span class="ftype">VARCHAR(20)</span></div>
+                    <div class="field"><span class="fname">confidence</span><span class="ftype">DOUBLE</span></div>
+                    <div class="field"><span class="fname">publish_time</span><span class="ftype">TIMESTAMP</span></div>
+                    <div class="field"><span class="fname">created_at</span><span class="ftype">TIMESTAMP</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-java" id="ej-spark" style="left:80px; top:300px; width:260px;">
+                <div class="entity-header"><span class="icon">J</span> SparkJob <span class="table-name">spark_jobs</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT AUTO_INCREMENT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">job_id</span><span class="ftype">VARCHAR(255) NOT NULL</span></div>
+                    <div class="field"><span class="fname">job_name</span><span class="ftype">VARCHAR(255) NOT NULL</span></div>
+                    <div class="field"><span class="fname">status</span><span class="ftype">VARCHAR(255) NOT NULL</span></div>
+                    <div class="field"><span class="fname">submit_time</span><span class="ftype">DATETIME</span></div>
+                    <div class="field"><span class="fname">finish_time</span><span class="ftype">DATETIME</span></div>
+                    <div class="field"><span class="fname">arguments</span><span class="ftype">TEXT</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-java" id="ej-log" style="left:80px; top:520px; width:260px;">
+                <div class="entity-header"><span class="icon">L</span> SystemLog <span class="table-name">system_log</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT AUTO_INCREMENT</span></div>
+                    <div class="field"><span class="fname">username</span><span class="ftype">VARCHAR(50)</span></div>
+                    <div class="field"><span class="fname">operation</span><span class="ftype">VARCHAR(255)</span></div>
+                    <div class="field"><span class="fname">method</span><span class="ftype">VARCHAR(255)</span></div>
+                    <div class="field"><span class="fname">params</span><span class="ftype">TEXT</span></div>
+                    <div class="field"><span class="fname">execution_time</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="fname">ip_address</span><span class="ftype">VARCHAR(50)</span></div>
+                    <div class="field"><span class="fname">created_at</span><span class="ftype">TIMESTAMP</span></div>
+                </div>
+            </div>
+
+            <!-- Relation labels -->
+            <div style="position:absolute;left:360px;top:100px;color:#22d3ee;font-size:13px;font-weight:700;background:#22d3ee15;padding:4px 10px;border-radius:6px;">1:N (user_id)</div>
+            <div style="position:absolute;left:540px;top:260px;color:#22d3ee;font-size:13px;font-weight:700;background:#22d3ee15;padding:4px 10px;border-radius:6px;">1:N (task_id)</div>
+            <div style="position:absolute;left:200px;top:498px;color:#f59e0b;font-size:12px;background:#f59e0b15;padding:3px 8px;border-radius:6px;">逻辑关联 (username)</div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== VIEW: PYTHON ======================== -->
+<div id="view-python" class="view-panel">
+    <div class="canvas-wrapper">
+        <div class="canvas" style="min-height:900px;">
+            <svg class="arrows" id="python-arrows"></svg>
+
+            <div class="formula-box" style="position:relative; margin:20px 40px 30px;">
+                <h3>核心创新: 三维度排序公式</h3>
+                <div class="formula">
+                    <span class="var">C<sub>score</sub></span> <span class="op">=</span>
+                    <span class="var">α</span> <span class="op">×</span> <span class="fn">|</span><span class="var">sentiment_score</span><span class="fn">|</span>
+                    <span class="op">+</span>
+                    <span class="var">β</span> <span class="op">×</span> <span class="var">popularity_score</span> <span class="op">×</span> <span class="var">γ(t)</span>
+                </div>
+                <div class="param-grid">
+                    <div class="param-card">
+                        <div class="param-name">α (情感权重)</div>
+                        <div class="param-val">0.60</div>
+                        <div class="param-desc">sentiment_analysis_results.hybrid_score</div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-name">β (热度权重)</div>
+                        <div class="param-val">0.40</div>
+                        <div class="param-desc">归一化(reposts + comments + attitudes)</div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-name">γ(t) 时间衰减</div>
+                        <div class="param-val">e<sup>-λt</sup></div>
+                        <div class="param-desc">半衰期 24h, tri_dimension_ranking.time_decay</div>
+                    </div>
+                    <div class="param-card">
+                        <div class="param-name">数据来源</div>
+                        <div class="param-val">3 表联合</div>
+                        <div class="param-desc">weibo_core_data → sentiment → ranking</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Python entities shown in flow -->
+            <div class="entity ent-process" id="ep-core" style="left:80px; top:300px; width:280px;">
+                <div class="entity-header"><span class="icon">C</span> 微博核心数据 <span class="table-name">weibo_core_data</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT AUTO_INCREMENT</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">weibo_id</span><span class="ftype">BIGINT NOT NULL</span></div>
+                    <div class="field"><span class="fname">content</span><span class="ftype">TEXT NOT NULL</span></div>
+                    <div class="field"><span class="fname">user_id / user_name</span></div>
+                    <div class="field"><span class="fname">reposts / comments / attitudes</span></div>
+                    <div class="field"><span class="fname">keyword / batch_id</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">is_processed</span><span class="ftype">← 触发器自动置1</span></div>
+                    <div class="field"><span class="fname">is_ranked</span><span class="ftype">← 触发器自动置1</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-process" id="ep-sentiment" style="left:480px; top:300px; width:280px;">
+                <div class="entity-header"><span class="icon">A</span> 情感分析结果 <span class="table-name">sentiment_analysis_results</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">weibo_id → core_data</span><span class="ftype">CASCADE</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">(weibo_id, analysis_method)</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">dict_score</span><span class="ftype">DECIMAL(5,4)</span></div>
+                    <div class="field"><span class="fname">bert_score</span><span class="ftype">DECIMAL(5,4)</span></div>
+                    <div class="field"><span class="fname">hybrid_score</span><span class="ftype">DECIMAL(5,4)</span></div>
+                    <div class="field"><span class="fname">sentiment_class</span><span class="ftype">ENUM(pos/neu/neg)</span></div>
+                    <div class="field"><span class="fname">confidence / intensity</span></div>
+                    <div class="field"><span class="fname">analysis_method</span><span class="ftype">ENUM</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-process" id="ep-ranking" style="left:480px; top:560px; width:280px;">
+                <div class="entity-header"><span class="icon">R</span> 三维度排序 <span class="table-name">tri_dimension_ranking</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span><span class="ftype">BIGINT</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">weibo_id → core_data</span><span class="ftype">CASCADE</span></div>
+                    <div class="field"><span class="badge badge-uk">UK</span><span class="fname">(weibo_id, batch_id)</span></div>
+                    <div class="field-sep"></div>
+                    <div class="field"><span class="fname">sentiment_score</span><span class="ftype">DECIMAL(5,4)</span></div>
+                    <div class="field"><span class="fname">popularity_score</span><span class="ftype">DECIMAL(8,4)</span></div>
+                    <div class="field"><span class="fname">composite_score</span><span class="ftype">DECIMAL(8,4)</span></div>
+                    <div class="field"><span class="fname">time_decay</span><span class="ftype">DECIMAL(3,2)</span></div>
+                    <div class="field"><span class="fname">ranking_position</span><span class="ftype">INT</span></div>
+                    <div class="field"><span class="fname">alpha=0.60 / beta=0.40</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-system" id="ep-batch" style="left:80px; top:560px; width:280px;">
+                <div class="entity-header"><span class="icon">B</span> 爬虫批次日志 <span class="table-name">crawl_batch_log</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">batch_id</span><span class="ftype">VARCHAR(64)</span></div>
+                    <div class="field"><span class="fname">task_name / task_type</span></div>
+                    <div class="field"><span class="fname">keywords</span><span class="ftype">JSON</span></div>
+                    <div class="field"><span class="fname">status</span><span class="ftype">ENUM</span></div>
+                    <div class="field"><span class="fname">total / success / failure</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-system" id="ep-request" style="left:80px; top:740px; width:240px;">
+                <div class="entity-header"><span class="icon">Q</span> 请求日志 <span class="table-name">crawl_request_log</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">batch_id → batch_log</span><span class="ftype">CASCADE</span></div>
+                    <div class="field"><span class="fname">url / status_code</span></div>
+                    <div class="field"><span class="fname">response_time_ms / success</span></div>
+                </div>
+            </div>
+
+            <div class="entity ent-system" id="ep-quality" style="left:380px; top:740px; width:240px;">
+                <div class="entity-header"><span class="icon">D</span> 质量日志 <span class="table-name">data_quality_log</span></div>
+                <div class="entity-body">
+                    <div class="field"><span class="badge badge-pk">PK</span><span class="fname">id</span></div>
+                    <div class="field"><span class="badge badge-fk">FK</span><span class="fname">batch_id → batch_log</span><span class="ftype">SET NULL</span></div>
+                    <div class="field"><span class="fname">quality_score / issues</span></div>
+                </div>
+            </div>
+
+            <!-- Relation labels for Python view -->
+            <div style="position:absolute;left:390px;top:360px;color:#3b82f6;font-size:12px;font-weight:700;background:#3b82f615;padding:4px 10px;border-radius:6px;">
+                1:1 FK (weibo_id) CASCADE
+            </div>
+            <div style="position:absolute;left:390px;top:620px;color:#3b82f6;font-size:12px;font-weight:700;background:#3b82f615;padding:4px 10px;border-radius:6px;">
+                1:N FK (weibo_id) CASCADE
+            </div>
+            <div style="position:absolute;left:220px;top:520px;color:#f59e0b;font-size:12px;background:#f59e0b15;padding:3px 8px;border-radius:6px;">
+                逻辑关联 (batch_id)
+            </div>
+            <div style="position:absolute;left:140px;top:725px;color:#3b82f6;font-size:11px;font-weight:600;background:#3b82f615;padding:3px 8px;border-radius:6px;">1:N FK</div>
+            <div style="position:absolute;left:440px;top:725px;color:#3b82f6;font-size:11px;font-weight:600;background:#3b82f615;padding:3px 8px;border-radius:6px;">1:N FK</div>
+            <div style="position:absolute;left:660px;top:450px;color:#10b981;font-size:11px;background:#10b98115;padding:3px 8px;border-radius:6px;">触发器→is_processed=1</div>
+            <div style="position:absolute;left:660px;top:700px;color:#10b981;font-size:11px;background:#10b98115;padding:3px 8px;border-radius:6px;">触发器→is_ranked=1</div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================== VIEW: DETAIL ======================== -->
+<div id="view-detail" class="view-panel">
+    <div class="canvas-wrapper" style="padding: 0 20px;">
+        <div class="section-title" style="margin-top:20px;">外键约束总览</div>
+        <div class="section-desc">系统中所有物理外键、逻辑关联和触发器关系</div>
+
+        <table class="detail-table">
+            <thead>
+                <tr>
+                    <th>类型</th>
+                    <th>来源表</th>
+                    <th>来源字段</th>
+                    <th>目标表</th>
+                    <th>目标字段</th>
+                    <th>基数</th>
+                    <th>级联策略</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td><span class="fk-tag physical">物理FK</span></td><td>collection_task</td><td>user_id</td><td>users (Java)</td><td>id</td><td>N:1</td><td>—</td></tr>
+                <tr><td><span class="fk-tag physical">物理FK</span></td><td>sentiment_result</td><td>task_id</td><td>collection_task</td><td>id</td><td>N:1</td><td>—</td></tr>
+                <tr><td><span class="fk-tag physical">物理FK</span></td><td>sentiment_analysis_results</td><td>weibo_id</td><td>weibo_core_data</td><td>weibo_id</td><td>1:1</td><td>CASCADE DELETE/UPDATE</td></tr>
+                <tr><td><span class="fk-tag physical">物理FK</span></td><td>tri_dimension_ranking</td><td>weibo_id</td><td>weibo_core_data</td><td>weibo_id</td><td>N:1</td><td>CASCADE DELETE/UPDATE</td></tr>
+                <tr><td><span class="fk-tag physical">物理FK</span></td><td>crawl_request_log</td><td>batch_id</td><td>crawl_batch_log</td><td>batch_id</td><td>N:1</td><td>CASCADE DELETE/UPDATE</td></tr>
+                <tr><td><span class="fk-tag physical">物理FK</span></td><td>data_quality_log</td><td>batch_id</td><td>crawl_batch_log</td><td>batch_id</td><td>N:1</td><td>SET NULL / CASCADE</td></tr>
+                <tr><td><span class="fk-tag logical">逻辑关联</span></td><td>weibo_core_data</td><td>batch_id</td><td>crawl_batch_log</td><td>batch_id</td><td>N:1</td><td>—</td></tr>
+                <tr><td><span class="fk-tag logical">逻辑关联</span></td><td>weibo_raw</td><td>user_id</td><td>user_raw</td><td>user_id</td><td>N:1</td><td>—</td></tr>
+                <tr><td><span class="fk-tag logical">逻辑关联</span></td><td>interaction_raw</td><td>weibo_id</td><td>weibo_raw</td><td>weibo_id</td><td>N:1</td><td>—</td></tr>
+                <tr><td><span class="fk-tag logical">逻辑关联</span></td><td>interaction_raw</td><td>user_id</td><td>user_raw</td><td>user_id</td><td>N:1</td><td>—</td></tr>
+                <tr><td><span class="fk-tag logical">逻辑关联</span></td><td>weibo_processed</td><td>weibo_id</td><td>weibo_raw</td><td>weibo_id</td><td>1:1</td><td>—</td></tr>
+                <tr><td><span class="fk-tag logical">逻辑关联</span></td><td>system_log</td><td>username</td><td>users (Java)</td><td>username</td><td>N:1</td><td>—</td></tr>
+                <tr><td><span class="fk-tag logical">逻辑关联</span></td><td>hot_topics</td><td>title</td><td>weibo_raw</td><td>topic</td><td>1:N</td><td>—</td></tr>
+                <tr><td><span class="fk-tag logical">逻辑关联</span></td><td>alert_events</td><td>related_topic</td><td>hot_topics</td><td>title</td><td>N:1</td><td>—</td></tr>
+                <tr><td><span class="fk-tag trigger">触发器</span></td><td>sentiment_analysis_results</td><td>INSERT</td><td>weibo_core_data</td><td>is_processed → 1</td><td>—</td><td>AFTER INSERT</td></tr>
+                <tr><td><span class="fk-tag trigger">触发器</span></td><td>tri_dimension_ranking</td><td>INSERT</td><td>weibo_core_data</td><td>is_ranked → 1</td><td>—</td><td>AFTER INSERT</td></tr>
+                <tr><td><span class="fk-tag trigger">触发器</span></td><td>weibo_processed</td><td>INSERT</td><td>weibo_raw</td><td>is_processed → 1</td><td>—</td><td>AFTER INSERT</td></tr>
+                <tr><td><span class="fk-tag trigger">触发器</span></td><td>sentiment_results</td><td>INSERT</td><td>hot_topics</td><td>weibo_count++</td><td>—</td><td>AFTER INSERT</td></tr>
+                <tr><td><span class="fk-tag trigger">触发器</span></td><td>tri_dimension_ranking</td><td>BEFORE INSERT</td><td>(self)</td><td>auto-calc composite_score</td><td>—</td><td>BEFORE INSERT</td></tr>
+            </tbody>
+        </table>
+
+        <div class="formula-box" style="margin-top:40px;">
+            <h3>核心创新点: 情感-热度三维度排序模型</h3>
+            <div class="formula">
+                <span class="var">C<sub>score</sub></span> <span class="op">=</span>
+                <span class="var">α</span> <span class="op">×</span> <span class="fn">|</span><span class="var">S<sub>sentiment</sub></span><span class="fn">|</span>
+                <span class="op">+</span>
+                <span class="var">β</span> <span class="op">×</span> <span class="var">P<sub>popularity</sub></span> <span class="op">×</span> <span class="var">γ(t)</span>
+            </div>
+            <div class="param-grid">
+                <div class="param-card">
+                    <div class="param-name">α — 情感权重</div>
+                    <div class="param-val">0.60</div>
+                    <div class="param-desc">来源: sentiment_analysis_results.hybrid_score<br>方法: 词典(0.4) + BERT(0.6) 混合</div>
+                </div>
+                <div class="param-card">
+                    <div class="param-name">β — 热度权重</div>
+                    <div class="param-val">0.40</div>
+                    <div class="param-desc">来源: weibo_core_data 互动数据<br>归一化: log(reposts + comments + attitudes + 1)</div>
+                </div>
+                <div class="param-card">
+                    <div class="param-name">γ(t) — 时间衰减</div>
+                    <div class="param-val">e<sup style="font-size:14px">-λt</sup></div>
+                    <div class="param-desc">半衰期: 24小时<br>存储: tri_dimension_ranking.time_decay</div>
+                </div>
+                <div class="param-card">
+                    <div class="param-name">输出</div>
+                    <div class="param-val">0~1</div>
+                    <div class="param-desc">存储: tri_dimension_ranking.composite_score<br>排名: ranking_position (批次内)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-title" style="margin-top:40px;">数据分层架构</div>
+        <div class="section-desc">6层数据架构, 从采集到展示的完整数据流</div>
+        <table class="detail-table" style="margin-bottom:60px;">
+            <thead>
+                <tr><th>层级</th><th>表名</th><th>中文名</th><th>分区策略</th><th>核心索引</th></tr>
+            </thead>
+            <tbody>
+                <tr><td style="color:#f59e0b">原始数据层</td><td>weibo_raw</td><td>原始微博</td><td>按月分区 (crawl_time)</td><td>UK(weibo_id), IDX(keyword, created_at)</td></tr>
+                <tr><td style="color:#f59e0b">原始数据层</td><td>user_raw</td><td>微博用户</td><td>—</td><td>UK(user_id), IDX(followers_count)</td></tr>
+                <tr><td style="color:#f59e0b">原始数据层</td><td>interaction_raw</td><td>互动数据</td><td>按月分区 (crawl_time)</td><td>UK(interaction_id), IDX(weibo_id)</td></tr>
+                <tr><td style="color:#3b82f6">处理数据层</td><td>weibo_core_data</td><td>微博核心数据</td><td>—</td><td>UK(weibo_id), FULLTEXT(content)</td></tr>
+                <tr><td style="color:#3b82f6">处理数据层</td><td>weibo_processed</td><td>清洗后微博</td><td>按月分区 (process_time)</td><td>UK(weibo_id), IDX(quality_score)</td></tr>
+                <tr><td style="color:#3b82f6">处理数据层</td><td>sentiment_analysis_results</td><td>情感分析结果</td><td>按月分区 (analysis_time)</td><td>UK(weibo_id), IDX(sentiment_class)</td></tr>
+                <tr><td style="color:#3b82f6">处理数据层</td><td>tri_dimension_ranking</td><td>三维度排序</td><td>按月分区 (calculation_time)</td><td>UK(weibo_id,batch), IDX(composite DESC)</td></tr>
+                <tr><td style="color:#a78bfa">业务数据层</td><td>hot_topics</td><td>热点话题</td><td>—</td><td>UK(topic_id), IDX(hot_rank)</td></tr>
+                <tr><td style="color:#a78bfa">业务数据层</td><td>propagation_paths</td><td>传播路径</td><td>—</td><td>UK(path_id), IDX(source_weibo_id)</td></tr>
+                <tr><td style="color:#a78bfa">业务数据层</td><td>alert_events</td><td>预警事件</td><td>—</td><td>UK(alert_id), IDX(alert_level, status)</td></tr>
+                <tr><td style="color:#10b981">系统管理层</td><td>crawl_batch_log</td><td>爬虫批次</td><td>—</td><td>PK(batch_id), IDX(status)</td></tr>
+                <tr><td style="color:#10b981">系统管理层</td><td>crawl_request_log</td><td>请求日志</td><td>按月分区 (request_time)</td><td>IDX(batch_id, success)</td></tr>
+                <tr><td style="color:#10b981">系统管理层</td><td>data_quality_log</td><td>质量日志</td><td>—</td><td>IDX(overall_score, quality_level)</td></tr>
+                <tr><td style="color:#10b981">系统管理层</td><td>system_configs</td><td>系统配置</td><td>—</td><td>UK(config_key)</td></tr>
+                <tr><td style="color:#10b981">系统管理层</td><td>user_management</td><td>用户管理</td><td>—</td><td>UK(username), UK(email)</td></tr>
+                <tr><td style="color:#f472b6">毕设统计层</td><td>graduation_statistics</td><td>统计报告</td><td>—</td><td>UK(stat_id), IDX(stat_type)</td></tr>
+                <tr><td style="color:#f472b6">毕设统计层</td><td>performance_metrics</td><td>性能指标</td><td>按月分区 (record_time)</td><td>UK(metric_id), IDX(metric_type)</td></tr>
+                <tr><td style="color:#f472b6">毕设统计层</td><td>validation_results</td><td>验证结果</td><td>—</td><td>UK(validation_id), IDX(accuracy)</td></tr>
+                <tr><td style="color:#f472b6">毕设统计层</td><td>backup_logs</td><td>备份日志</td><td>—</td><td>UK(backup_id)</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Legend -->
+<div class="legend" id="legend">
+    <h3>图例</h3>
+    <div class="legend-item"><div class="legend-line solid-blue"></div><span>物理外键 (FK)</span></div>
+    <div class="legend-item"><div class="legend-line dashed-yellow"></div><span>逻辑关联</span></div>
+    <div class="legend-item"><div class="legend-line dotted-green"></div><span>触发器</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#22d3ee33;border:1px solid #22d3ee;"></div><span>Java 后端</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f59e0b33;border:1px solid #f59e0b;"></div><span>原始数据层</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3b82f633;border:1px solid #3b82f6;"></div><span>处理数据层</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#a78bfa33;border:1px solid #a78bfa;"></div><span>业务数据层</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#10b98133;border:1px solid #10b981;"></div><span>系统管理层</span></div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f472b633;border:1px solid #f472b6;"></div><span>毕设统计层</span></div>
+</div>
+
+<!-- Zoom controls -->
+<div class="zoom-controls">
+    <button class="zoom-btn" onclick="zoom(-0.1)">−</button>
+    <div class="zoom-label" id="zoom-label">100%</div>
+    <button class="zoom-btn" onclick="zoom(0.1)">+</button>
+    <button class="zoom-btn" onclick="resetZoom()" style="font-size:12px;">↺</button>
+</div>
+
+<script>
+    let currentZoom = 1;
+    const views = ['overview', 'java', 'python', 'detail'];
+
+    function switchTab(view) {
+        document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+            btn.classList.toggle('active', views[i] === view);
+        });
+        views.forEach(v => {
+            document.getElementById('view-' + v).classList.toggle('active', v === view);
+        });
+        // Show/hide legend for detail view
+        document.getElementById('legend').style.display = view === 'detail' ? 'none' : 'block';
+        // Draw arrows for the active view
+        setTimeout(() => drawArrows(view), 50);
+    }
+
+    function zoom(delta) {
+        currentZoom = Math.max(0.3, Math.min(2, currentZoom + delta));
+        document.querySelectorAll('.canvas').forEach(c => {
+            c.style.transform = `scale(${currentZoom})`;
+        });
+        document.getElementById('zoom-label').textContent = Math.round(currentZoom * 100) + '%';
+    }
+
+    function resetZoom() {
+        currentZoom = 1;
+        document.querySelectorAll('.canvas').forEach(c => {
+            c.style.transform = 'scale(1)';
+        });
+        document.getElementById('zoom-label').textContent = '100%';
+    }
+
+    // Draw SVG arrows between entities
+    function drawArrows(view) {
+        if (view === 'detail') return;
+
+        const svgId = view === 'overview' ? 'overview-arrows' : view === 'java' ? 'java-arrows' : 'python-arrows';
+        const svg = document.getElementById(svgId);
+        if (!svg) return;
+        svg.innerHTML = '';
+
+        const arrows = getArrowsForView(view);
+        arrows.forEach(a => {
+            const from = document.getElementById(a.from);
+            const to = document.getElementById(a.to);
+            if (!from || !to) return;
+
+            const fr = from.getBoundingClientRect();
+            const tr = to.getBoundingClientRect();
+            const canvas = svg.closest('.canvas').getBoundingClientRect();
+
+            let x1 = (fr.left + fr.width / 2 - canvas.left) / currentZoom;
+            let y1 = (fr.top + fr.height / 2 - canvas.top) / currentZoom;
+            let x2 = (tr.left + tr.width / 2 - canvas.left) / currentZoom;
+            let y2 = (tr.top + tr.height / 2 - canvas.top) / currentZoom;
+
+            // Edge-to-edge connection
+            if (a.side === 'right-left') {
+                x1 = (fr.right - canvas.left) / currentZoom;
+                x2 = (tr.left - canvas.left) / currentZoom;
+            } else if (a.side === 'bottom-top') {
+                y1 = (fr.bottom - canvas.top) / currentZoom;
+                y2 = (tr.top - canvas.top) / currentZoom;
+            } else if (a.side === 'right-top') {
+                x1 = (fr.right - canvas.left) / currentZoom;
+                y2 = (tr.top - canvas.top) / currentZoom;
+            }
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', x1);
+            line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2);
+            line.setAttribute('y2', y2);
+            line.setAttribute('class', a.cls);
+            line.setAttribute('marker-end', 'url(#arrow-' + a.color + ')');
+            svg.appendChild(line);
+        });
+
+        // Add arrow markers
+        ['blue', 'yellow', 'green'].forEach(color => {
+            const colors = { blue: '#3b82f6', yellow: '#f59e0b', green: '#10b981' };
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            marker.setAttribute('id', 'arrow-' + color);
+            marker.setAttribute('markerWidth', '10');
+            marker.setAttribute('markerHeight', '8');
+            marker.setAttribute('refX', '9');
+            marker.setAttribute('refY', '4');
+            marker.setAttribute('orient', 'auto');
+            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            poly.setAttribute('points', '0 0, 10 4, 0 8');
+            poly.setAttribute('fill', colors[color]);
+            marker.appendChild(poly);
+            defs.appendChild(marker);
+            svg.appendChild(defs);
+        });
+    }
+
+    function getArrowsForView(view) {
+        if (view === 'overview') return [
+            // Java relations
+            { from: 'e-user-java', to: 'e-task-java', cls: 'arrow-fk', color: 'blue', side: 'right-left' },
+            { from: 'e-task-java', to: 'e-result-java', cls: 'arrow-fk', color: 'blue', side: 'bottom-top' },
+            { from: 'e-user-java', to: 'e-syslog', cls: 'arrow-logic', color: 'yellow', side: 'right-left' },
+            // Raw relations
+            { from: 'e-weibo-raw', to: 'e-user-raw', cls: 'arrow-logic', color: 'yellow', side: 'right-left' },
+            { from: 'e-interaction', to: 'e-weibo-raw', cls: 'arrow-logic', color: 'yellow', side: 'bottom-top' },
+            // Process relations
+            { from: 'e-weibo-core', to: 'e-sentiment-py', cls: 'arrow-fk', color: 'blue', side: 'right-left' },
+            { from: 'e-weibo-core', to: 'e-ranking', cls: 'arrow-fk', color: 'blue', side: 'right-left' },
+            // Trigger
+            { from: 'e-sentiment-py', to: 'e-weibo-core', cls: 'arrow-trigger', color: 'green', side: 'bottom-top' },
+            { from: 'e-ranking', to: 'e-weibo-core', cls: 'arrow-trigger', color: 'green', side: 'right-left' },
+            // Business relations
+            { from: 'e-hot-topics', to: 'e-alert', cls: 'arrow-logic', color: 'yellow', side: 'right-left' },
+            // System relations
+            { from: 'e-batch-log', to: 'e-request-log', cls: 'arrow-fk', color: 'blue', side: 'right-left' },
+            { from: 'e-batch-log', to: 'e-quality-log', cls: 'arrow-fk', color: 'blue', side: 'bottom-top' },
+        ];
+        if (view === 'java') return [
+            { from: 'ej-user', to: 'ej-task', cls: 'arrow-fk', color: 'blue', side: 'right-left' },
+            { from: 'ej-task', to: 'ej-result', cls: 'arrow-fk', color: 'blue', side: 'bottom-top' },
+            { from: 'ej-user', to: 'ej-log', cls: 'arrow-logic', color: 'yellow', side: 'bottom-top' },
+        ];
+        if (view === 'python') return [
+            { from: 'ep-core', to: 'ep-sentiment', cls: 'arrow-fk', color: 'blue', side: 'right-left' },
+            { from: 'ep-core', to: 'ep-ranking', cls: 'arrow-fk', color: 'blue', side: 'right-left' },
+            { from: 'ep-batch', to: 'ep-request', cls: 'arrow-fk', color: 'blue', side: 'bottom-top' },
+            { from: 'ep-batch', to: 'ep-quality', cls: 'arrow-fk', color: 'blue', side: 'bottom-top' },
+            { from: 'ep-core', to: 'ep-batch', cls: 'arrow-logic', color: 'yellow', side: 'bottom-top' },
+        ];
+        return [];
+    }
+
+    // Initial draw
+    setTimeout(() => drawArrows('overview'), 200);
+    window.addEventListener('resize', () => {
+        const active = views.find(v => document.getElementById('view-' + v).classList.contains('active'));
+        drawArrows(active);
+    });
+</script>
+
+</body>
+</html>

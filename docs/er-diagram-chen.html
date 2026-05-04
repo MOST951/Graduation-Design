@@ -1,0 +1,295 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>微博情感分析系统 - 全局ER图（陈氏表示法）</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#fff;overflow:auto;font-family:'SimSun','STSong','Songti SC','Microsoft YaHei',serif}
+h1{text-align:center;font-size:18px;padding:16px 0 2px;letter-spacing:2px}
+.sub{text-align:center;font-size:12px;color:#666;margin-bottom:6px}
+canvas{display:block;margin:0 auto;cursor:grab}
+canvas:active{cursor:grabbing}
+.tools{position:fixed;bottom:14px;right:14px;display:flex;gap:4px;z-index:10}
+.tools button{padding:5px 12px;border:1px solid #999;background:#fff;cursor:pointer;font-size:12px;border-radius:3px}
+.tools button:hover{background:#eee}
+</style>
+</head>
+<body>
+<h1>微博情感分析系统 全局E-R图</h1>
+<div class="sub">基于Spark的分布式微博情感分析与三维度排序系统 &mdash; 陈氏（Chen）表示法</div>
+<canvas id="c"></canvas>
+<div class="tools">
+    <button onclick="z(0.15)">放大+</button>
+    <button onclick="z(-0.15)">缩小−</button>
+    <button onclick="scale=0.58;offX=0;offY=0;draw()">适应</button>
+    <button onclick="scale=1;offX=0;offY=0;draw()">1:1</button>
+    <button onclick="exportImg()">导出PNG</button>
+</div>
+<script>
+const W=2400, H=1600;
+const canvas=document.getElementById('c'), ctx=canvas.getContext('2d');
+let scale=0.58, offX=0, offY=0, drag=false, last={x:0,y:0};
+
+function fit(){
+    const dpr=devicePixelRatio||1;
+    const cw=innerWidth, ch=innerHeight-56;
+    canvas.style.width=cw+'px'; canvas.style.height=ch+'px';
+    canvas.width=cw*dpr; canvas.height=ch*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0); draw();
+}
+addEventListener('resize',fit);
+canvas.onwheel=e=>{e.preventDefault();z(e.deltaY<0?.08:-.08)};
+canvas.onmousedown=e=>{drag=true;last={x:e.clientX,y:e.clientY}};
+canvas.onmousemove=e=>{if(!drag)return;offX+=e.clientX-last.x;offY+=e.clientY-last.y;last={x:e.clientX,y:e.clientY};draw()};
+canvas.onmouseup=canvas.onmouseleave=()=>drag=false;
+function z(d){scale=Math.max(.2,Math.min(2.5,scale+d));draw()}
+
+function exportImg(){
+    const ec=document.createElement('canvas');ec.width=W*2;ec.height=H*2;
+    const c=ec.getContext('2d');c.scale(2,2);c.fillStyle='#fff';c.fillRect(0,0,W,H);
+    drawAll(c); const a=document.createElement('a');a.download='微博情感分析系统_ER图.png';
+    a.href=ec.toDataURL('image/png');a.click();
+}
+
+/* ====================================================================
+   DATA — Entities with MANUAL attribute angle/distance specifications
+   ==================================================================== */
+// Helper: degree → radian
+const R=d=>d*Math.PI/180;
+
+// Each attr: [name, angleDeg, distance, isPK]
+const entities = [
+  { id:'user', name:'系统用户', x:240, y:300, w:100, h:38, attrs:[
+    ['用户ID',  210, 95, true],
+    ['用户名',  250, 100],
+    ['密码哈希',180, 105],
+    ['昵称',    150, 90],
+    ['邮箱',    120, 100],
+    ['角色',    90,  95],
+    ['状态',    60,  100],
+    ['创建时间',30,  110],
+  ]},
+  { id:'task', name:'采集任务', x:240, y:640, w:100, h:38, attrs:[
+    ['任务ID',   210, 95, true],
+    ['任务名称', 250, 105],
+    ['关键词',   180, 95],
+    ['状态',     145, 90],
+    ['开始时间', 115, 100],
+    ['结束时间', 80,  100],
+  ]},
+  { id:'weibo', name:'微博数据', x:730, y:480, w:100, h:38, attrs:[
+    ['微博ID',    140, 105, true],
+    ['内容',      115, 95],
+    ['发布时间',  90,  110],
+    ['用户昵称',  65,  105],
+    ['转发数',    40,  100],
+    ['评论数',    15,  105],
+    ['点赞数',    350, 100],
+    ['采集关键词',325, 105],
+    ['是否已分析',305, 110],
+    ['是否已排序',280, 100],
+  ]},
+  { id:'sentiment', name:'情感分析结果', x:1220, y:280, w:130, h:38, attrs:[
+    ['分析ID',   120, 100, true],
+    ['词典得分', 90,  105],
+    ['BERT得分', 60,  100],
+    ['混合得分', 30,  105],
+    ['情感分类', 0,   100],
+    ['置信度',   330, 100],
+    ['情感强度', 300, 105],
+    ['分析方法', 270, 100],
+    ['模型版本', 240, 105],
+  ]},
+  { id:'ranking', name:'三维度排序', x:1220, y:680, w:120, h:38, attrs:[
+    ['排序ID',     240, 100, true],
+    ['情感得分',   270, 105],
+    ['热度得分',   300, 100],
+    ['综合得分',   330, 105],
+    ['排名位次',   0,   100],
+    ['时间衰减',   30,  105],
+    ['情感权重α',  60,  100],
+    ['热度权重β',  90,  105],
+    ['算法版本',   120, 100],
+  ]},
+  { id:'batch', name:'爬虫批次', x:730, y:920, w:100, h:38, attrs:[
+    ['批次ID',   220, 100, true],
+    ['任务名称', 260, 105],
+    ['任务类型', 190, 95],
+    ['状态',     290, 95],
+    ['采集总数', 320, 100],
+    ['成功数',   160, 90],
+    ['失败数',   130, 95],
+  ]},
+  { id:'request', name:'请求日志', x:1180, y:1060, w:100, h:38, attrs:[
+    ['请求ID',   300, 95, true],
+    ['请求URL',  330, 100],
+    ['状态码',   0,   95],
+    ['响应时间', 30,  100],
+    ['是否成功', 60,  95],
+    ['错误信息', 90,  100],
+  ]},
+  { id:'hottopic', name:'热点话题', x:1700, y:480, w:100, h:38, attrs:[
+    ['话题ID',   330, 100, true],
+    ['标题',     0,   95],
+    ['分类',     30,  100],
+    ['热度值',   60,  95],
+    ['热搜排名', 90,  100],
+    ['微博数',   120, 95],
+    ['正面比例', 150, 100],
+    ['负面比例', 180, 95],
+    ['趋势',     210, 100],
+  ]},
+  { id:'alert', name:'预警事件', x:2020, y:260, w:100, h:38, attrs:[
+    ['预警ID',   350, 95, true],
+    ['预警类型', 20,  100],
+    ['预警级别', 50,  95],
+    ['标题',     80,  90],
+    ['负面比例', 110, 100],
+    ['状态',     140, 95],
+  ]},
+  { id:'spark', name:'Spark作业', x:240, y:960, w:110, h:38, attrs:[
+    ['作业ID',   210, 95, true],
+    ['作业名称', 180, 100],
+    ['状态',     150, 90],
+    ['提交时间', 120, 100],
+    ['完成时间', 90,  95],
+    ['参数',     60,  90],
+  ]},
+  { id:'quality', name:'数据质量', x:440, y:1160, w:100, h:38, attrs:[
+    ['检查ID',   210, 90, true],
+    ['检查类型', 250, 95],
+    ['质量得分', 180, 90],
+    ['问题详情', 150, 95],
+    ['问题数量', 290, 90],
+  ]},
+  { id:'sysconfig', name:'系统配置', x:1700, y:920, w:100, h:38, attrs:[
+    ['配置ID',   340, 90, true],
+    ['配置键',   10,  95],
+    ['配置值',   40,  90],
+    ['配置类型', 70,  95],
+    ['描述',     100, 90],
+  ]},
+];
+
+const rels = [
+    { from:'user', to:'task',      name:'创建',     cf:'1', ct:'n' },
+    { from:'weibo',to:'sentiment', name:'情感分析', cf:'1', ct:'1' },
+    { from:'weibo',to:'ranking',   name:'排序计算', cf:'1', ct:'n' },
+    { from:'weibo',to:'batch',     name:'归属',     cf:'n', ct:'1' },
+    { from:'weibo',to:'hottopic',  name:'关联',     cf:'n', ct:'1' },
+    { from:'batch',to:'request',   name:'包含',     cf:'1', ct:'n' },
+    { from:'batch',to:'quality',   name:'检查',     cf:'1', ct:'n' },
+    { from:'hottopic',to:'alert',  name:'触发',     cf:'1', ct:'n' },
+    { from:'task', to:'spark',     name:'调度',     cf:'1', ct:'1' },
+];
+
+/* ====================================================================
+   DRAWING PRIMITIVES
+   ==================================================================== */
+const eMap = Object.fromEntries(entities.map(e=>[e.id,e]));
+
+function drawOval(c, cx, cy, rx, ry, txt, isPK){
+    c.fillStyle='#fff'; c.strokeStyle='#000'; c.lineWidth=1.1;
+    c.beginPath(); c.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); c.fill(); c.stroke();
+    c.fillStyle='#000';
+    c.font='12px "SimSun","STSong","Microsoft YaHei",serif';
+    c.textAlign='center'; c.textBaseline='middle';
+    c.fillText(txt, cx, cy);
+    if(isPK){
+        const tw=c.measureText(txt).width;
+        c.beginPath(); c.moveTo(cx-tw/2,cy+7); c.lineTo(cx+tw/2,cy+7); c.stroke();
+    }
+}
+
+function drawRect(c, cx, cy, w, h, txt){
+    c.fillStyle='#fff'; c.strokeStyle='#000'; c.lineWidth=1.8;
+    c.fillRect(cx-w/2, cy-h/2, w, h);
+    c.strokeRect(cx-w/2, cy-h/2, w, h);
+    c.fillStyle='#000';
+    c.font='bold 14px "SimSun","STSong","Microsoft YaHei",serif';
+    c.textAlign='center'; c.textBaseline='middle';
+    c.fillText(txt, cx, cy);
+}
+
+function drawDiamond(c, cx, cy, s, txt){
+    c.fillStyle='#fff'; c.strokeStyle='#000'; c.lineWidth=1.6;
+    c.beginPath();
+    c.moveTo(cx, cy-s); c.lineTo(cx+s, cy);
+    c.lineTo(cx, cy+s); c.lineTo(cx-s, cy);
+    c.closePath(); c.fill(); c.stroke();
+    c.fillStyle='#000';
+    c.font='12px "SimSun","STSong","Microsoft YaHei",serif';
+    c.textAlign='center'; c.textBaseline='middle';
+    c.fillText(txt, cx, cy);
+}
+
+function line(c, x1,y1,x2,y2, dash){
+    c.strokeStyle='#000'; c.lineWidth=1.2;
+    if(dash) c.setLineDash(dash); else c.setLineDash([]);
+    c.beginPath(); c.moveTo(x1,y1); c.lineTo(x2,y2); c.stroke();
+    c.setLineDash([]);
+}
+
+/* ====================================================================
+   DRAW ALL
+   ==================================================================== */
+function drawAll(c){
+    // 1) relationship lines + diamonds + cardinality
+    rels.forEach(r=>{
+        const f=eMap[r.from], t=eMap[r.to];
+        const mx=(f.x+t.x)/2, my=(f.y+t.y)/2;
+        line(c, f.x, f.y, t.x, t.y);
+        drawDiamond(c, mx, my, 30, r.name);
+
+        // cardinality
+        const dx=t.x-f.x, dy=t.y-f.y;
+        const len=Math.sqrt(dx*dx+dy*dy)||1;
+        const nx=dx/len, ny=dy/len;
+        const px=-ny*14, py=nx*14;
+        c.font='bold 15px "SimSun","STSong","Microsoft YaHei",serif';
+        c.fillStyle='#000'; c.textAlign='center'; c.textBaseline='middle';
+        c.fillText(r.cf, f.x+nx*70+px, f.y+ny*70+py);
+        c.fillText(r.ct, t.x-nx*70+px, t.y-ny*70+py);
+    });
+
+    // 2) attributes (lines + ovals)
+    entities.forEach(e=>{
+        (e.attrs||[]).forEach(a=>{
+            const ang=R(a[1]), dist=a[2], isPK=!!a[3];
+            const ax=e.x+Math.cos(ang)*dist, ay=e.y-Math.sin(ang)*dist;
+            line(c, e.x, e.y, ax, ay);
+            const txtLen=a[0].length;
+            const rx=Math.max(28, txtLen*7.5+8), ry=17;
+            drawOval(c, ax, ay, rx, ry, a[0], isPK);
+        });
+    });
+
+    // 3) entity rectangles on top
+    entities.forEach(e=>{
+        drawRect(c, e.x, e.y, e.w, e.h, e.name);
+    });
+
+    // 4) Caption
+    c.fillStyle='#333';
+    c.font='14px "SimSun","STSong","Microsoft YaHei",serif';
+    c.textAlign='center';
+    c.fillText('图  微博情感分析系统全局E-R图', W/2, H-40);
+    c.font='12px "SimSun","STSong","Microsoft YaHei",serif';
+    c.fillStyle='#888';
+    c.fillText('矩形＝实体    椭圆＝属性    菱形＝联系    下划线＝主键    1 / n＝基数', W/2, H-20);
+}
+
+function draw(){
+    const cw=+canvas.style.width.replace('px','');
+    const ch=+canvas.style.height.replace('px','');
+    ctx.clearRect(0,0,cw,ch);
+    ctx.save(); ctx.translate(offX,offY); ctx.scale(scale,scale);
+    drawAll(ctx);
+    ctx.restore();
+}
+
+fit();
+</script>
+</body>
+</html>

@@ -24,7 +24,7 @@
         <module>sentiment-analysis</module>
         <module>model-training</module>
         <module>web-backend</module>
-        <module>deployment</module>
+        <!-- <module>deployment</module> --> <!-- deployment is not a Maven module -->
     </modules>
 
     <!-- =============================================================== -->

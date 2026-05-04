@@ -1,5 +1,5 @@
 <template>
-  <div class="dual-dimension-comparison">
+  <div class="tri-dimension-comparison">
     <!-- 顶部控制栏 -->
     <div class="control-bar">
       <div class="time-range">
@@ -34,22 +34,22 @@
 
     <!-- 对比视图 -->
     <el-row :gutter="20" class="comparison-view">
-      <!-- 左侧：双维度排序 -->
+      <!-- 左侧：三维度排序 -->
       <el-col :span="10">
-        <el-card class="ranking-card dual" shadow="hover">
+        <el-card class="ranking-card tri" shadow="hover">
           <template #header>
             <div class="card-header">
               <span class="title">
                 <el-icon><DataAnalysis /></el-icon>
-                双维度排序
+                三维度排序
               </span>
               <el-tag type="success" size="small">情感×热度</el-tag>
             </div>
           </template>
           <div v-loading="loading" class="ranking-list">
             <div 
-              v-for="(item, index) in dualRanking" 
-              :key="'dual-' + index"
+              v-for="(item, index) in triRanking" 
+              :key="'tri-' + index"
               class="ranking-item"
               :class="{ highlight: isSignificantChange(item.topic) }"
               @click="selectTopic(item)"
@@ -65,7 +65,7 @@
                 </div>
               </div>
               <div class="score">
-                <div class="score-value">{{ item.dualScore.toFixed(2) }}</div>
+                <div class="score-value">{{ item.triScore.toFixed(2) }}</div>
                 <div class="score-label">综合分</div>
               </div>
             </div>
@@ -261,15 +261,15 @@ let scatterChart: echarts.ECharts | null = null;
 let trendChart: echarts.ECharts | null = null;
 
 // 数据
-const dualRanking = ref<any[]>([]);
+const triRanking = ref<any[]>([]);
 const traditionalRanking = ref<any[]>([]);
 const risingTopics = ref<any[]>([]);
 
 // 计算属性
 const rankChanges = computed(() => {
-  return dualRanking.value.map(dualItem => {
-    const tradIndex = traditionalRanking.value.findIndex(t => t.topic === dualItem.topic);
-    return tradIndex >= 0 ? tradIndex - dualRanking.value.indexOf(dualItem) : 0;
+  return triRanking.value.map(triItem => {
+    const tradIndex = traditionalRanking.value.findIndex(t => t.topic === triItem.topic);
+    return tradIndex >= 0 ? tradIndex - triRanking.value.indexOf(triItem) : 0;
   });
 });
 
@@ -282,9 +282,9 @@ const diffStats = computed(() => {
   const maxChange = Math.max(...changes.map(Math.abs), 0);
   
   // 计算新进Top10的话题数
-  const dualTop10 = new Set(dualRanking.value.slice(0, 10).map(t => t.topic));
+  const triTop10 = new Set(triRanking.value.slice(0, 10).map(t => t.topic));
   const tradTop10 = new Set(traditionalRanking.value.slice(0, 10).map(t => t.topic));
-  const newInTop10 = [...dualTop10].filter(t => !tradTop10.has(t)).length;
+  const newInTop10 = [...triTop10].filter(t => !tradTop10.has(t)).length;
   
   return { changedCount, avgChange, maxChange, newInTop10 };
 });
@@ -305,7 +305,7 @@ const loadData = async () => {
     
     if (response.ok) {
       const data = await response.json();
-      dualRanking.value = data.data?.dual || [];
+      triRanking.value = data.data?.tri || [];
       traditionalRanking.value = data.data?.traditional || [];
       risingTopics.value = data.data?.rising || [];
     } else {
@@ -328,20 +328,20 @@ const generateMockData = () => {
     '乡村振兴', '养老问题', '食品安全', '网络安全', '文化传承'
   ];
   
-  // 生成双维度排序数据
-  dualRanking.value = topics.map(topic => {
+  // 生成三维度排序数据
+  triRanking.value = topics.map(topic => {
     const sentiment = Math.random() * 2 - 1;
     const heat = Math.random() * 100;
     const reposts = Math.floor(Math.random() * 10000);
     const comments = Math.floor(Math.random() * 5000);
     const likes = Math.floor(Math.random() * 50000);
-    const dualScore = 0.6 * Math.abs(sentiment) * 100 + 0.4 * heat;
+    const triScore = 0.6 * Math.abs(sentiment) * 100 + 0.4 * heat;
     
-    return { topic, sentiment, heat, reposts, comments, likes, dualScore };
-  }).sort((a, b) => b.dualScore - a.dualScore);
+    return { topic, sentiment, heat, reposts, comments, likes, triScore };
+  }).sort((a, b) => b.triScore - a.triScore);
   
   // 生成传统排序数据
-  traditionalRanking.value = [...dualRanking.value].sort((a, b) => b.heat - a.heat);
+  traditionalRanking.value = [...triRanking.value].sort((a, b) => b.heat - a.heat);
   
   // 生成快速上升话题
   risingTopics.value = [
@@ -360,11 +360,11 @@ const initScatterChart = () => {
   
   scatterChart = echarts.init(scatterChartRef.value);
   
-  const scatterData = dualRanking.value.map(item => ({
+  const scatterData = triRanking.value.map(item => ({
     name: item.topic,
     value: [item.heat, Math.abs(item.sentiment) * 100],
     sentiment: item.sentiment,
-    dualScore: item.dualScore,
+    triScore: item.triScore,
     itemStyle: {
       color: item.sentiment > 0 ? '#67c23a' : item.sentiment < 0 ? '#f56c6c' : '#909399'
     }
@@ -380,7 +380,7 @@ const initScatterChart = () => {
           热度: ${data.value[0].toFixed(1)}<br/>
           情感强度: ${data.value[1].toFixed(1)}<br/>
           情感倾向: ${data.sentiment > 0 ? '正面' : data.sentiment < 0 ? '负面' : '中性'}<br/>
-          综合得分: ${data.dualScore.toFixed(2)}
+          综合得分: ${data.triScore.toFixed(2)}
         `;
       }
     },
@@ -418,7 +418,7 @@ const initScatterChart = () => {
       {
         type: 'scatter',
         data: scatterData,
-        symbolSize: (data: any) => Math.max(10, data[2] || data.dualScore / 2),
+        symbolSize: (data: any) => Math.max(10, data[2] || data.triScore / 2),
         emphasis: {
           focus: 'self',
           itemStyle: {
@@ -456,7 +456,7 @@ const initScatterChart = () => {
   
   scatterChart.on('click', (params: any) => {
     if (params.data) {
-      const topic = dualRanking.value.find(t => t.topic === params.data.name);
+      const topic = triRanking.value.find(t => t.topic === params.data.name);
       if (topic) {
         selectTopic(topic);
       }
@@ -536,7 +536,7 @@ const selectTopic = (topic: any) => {
 };
 
 const isSignificantChange = (topic: string) => {
-  const index = dualRanking.value.findIndex(t => t.topic === topic);
+  const index = triRanking.value.findIndex(t => t.topic === topic);
   return Math.abs(rankChanges.value[index] || 0) >= 3;
 };
 
@@ -563,7 +563,7 @@ const exportChart = () => {
   });
   
   const link = document.createElement('a');
-  link.download = `dual_dimension_scatter_${Date.now()}.png`;
+  link.download = `tri_dimension_scatter_${Date.now()}.png`;
   link.href = url;
   link.click();
   
@@ -572,9 +572,9 @@ const exportChart = () => {
 
 const exportCSV = () => {
   const headers = ['排名', '话题', '情感值', '热度', '综合得分', '传统排名'];
-  const rows = dualRanking.value.map((item, index) => {
+  const rows = triRanking.value.map((item, index) => {
     const tradRank = traditionalRanking.value.findIndex(t => t.topic === item.topic) + 1;
-    return [index + 1, item.topic, item.sentiment.toFixed(2), item.heat.toFixed(0), item.dualScore.toFixed(2), tradRank];
+    return [index + 1, item.topic, item.sentiment.toFixed(2), item.heat.toFixed(0), item.triScore.toFixed(2), tradRank];
   });
   
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -592,11 +592,11 @@ const exportCSV = () => {
 
 const generateReport = () => {
   reportContent.value = `
-    <h2>双维度排序对比分析报告</h2>
+    <h2>三维度排序对比分析报告</h2>
     <p><strong>生成时间:</strong> ${new Date().toLocaleString('zh-CN')}</p>
     
     <h3>1. 概述</h3>
-    <p>本报告对比了双维度排序（情感×热度）与传统热度排序的差异。</p>
+    <p>本报告对比了三维度排序（情感×热度）与传统热度排序的差异。</p>
     
     <h3>2. 差异统计</h3>
     <ul>
@@ -608,15 +608,15 @@ const generateReport = () => {
     
     <h3>3. Top5话题对比</h3>
     <table border="1" style="border-collapse: collapse; width: 100%;">
-      <tr><th>双维度排名</th><th>话题</th><th>综合得分</th><th>传统排名</th></tr>
-      ${dualRanking.value.slice(0, 5).map((item, i) => {
+      <tr><th>三维度排名</th><th>话题</th><th>综合得分</th><th>传统排名</th></tr>
+      ${triRanking.value.slice(0, 5).map((item, i) => {
         const tradRank = traditionalRanking.value.findIndex(t => t.topic === item.topic) + 1;
-        return `<tr><td>${i + 1}</td><td>${item.topic}</td><td>${item.dualScore.toFixed(2)}</td><td>${tradRank}</td></tr>`;
+        return `<tr><td>${i + 1}</td><td>${item.topic}</td><td>${item.triScore.toFixed(2)}</td><td>${tradRank}</td></tr>`;
       }).join('')}
     </table>
     
     <h3>4. 结论</h3>
-    <p>双维度排序能够更好地识别具有强烈情感倾向的话题，有助于舆情监控和热点分析。</p>
+    <p>三维度排序能够更好地识别具有强烈情感倾向的话题，有助于舆情监控和热点分析。</p>
   `;
   showReportDialog.value = true;
 };
@@ -665,7 +665,7 @@ watch(selectedTopic, (val) => {
 </script>
 
 <style scoped lang="scss">
-.dual-dimension-comparison {
+.tri-dimension-comparison {
   padding: 20px;
 }
 
@@ -711,7 +711,7 @@ watch(selectedTopic, (val) => {
     }
   }
   
-  &.dual .card-header .title {
+  &.tri .card-header .title {
     color: #67c23a;
   }
   

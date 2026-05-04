@@ -251,7 +251,7 @@ export function connectRealtimeSentiment(
   };
   
   ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
+    console.warn('WebSocket connection unavailable');
     onError?.(error);
   };
   

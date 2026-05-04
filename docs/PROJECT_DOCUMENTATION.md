@@ -1,4 +1,4 @@
-# 基于Spark的微博舆情情感分析系统
+﻿# 基于Spark的微博舆情情感分析系统
 
 ## 项目文档
 
@@ -45,14 +45,14 @@
 1. **数据采集**：实现稳定高效的微博数据采集，支持热搜榜、关键词搜索等多种采集方式
 2. **数据清洗**：基于Spark分布式框架，实现数据去重、文本清洗、中文分词等预处理
 3. **情感分析**：融合词典方法和深度学习模型，实现高准确率的情感分类
-4. **双维度排序**：创新性地提出情感-热度双维度排序模型，综合考虑情感强度和传播热度
+4. **三维度排序**：创新性地提出情感-热度三维度排序模型，综合考虑情感强度和传播热度
 5. **可视化展示**：提供直观的数据可视化界面，支持多维度的舆情分析展示
 
 ### 1.3 核心创新点
 
-**情感-热度双维度排序模型**：
+**情感-热度三维度排序模型**：
 
-传统舆情分析系统通常只关注单一维度（如时间、热度或情感），本系统创新性地提出双维度排序模型：
+传统舆情分析系统通常只关注单一维度（如时间、热度或情感），本系统创新性地提出三维度排序模型：
 
 ```
 Score_rank(w) = ω₁·N(S) + ω₂·H_norm(w) + ω₃·γ(t)
@@ -68,7 +68,7 @@ Score_rank(w) = ω₁·N(S) + ω₂·H_norm(w) + ω₃·γ(t)
 | 特点 | 说明 |
 |------|------|
 | 分布式处理 | 基于Spark的并行化数据处理，支持大规模数据 |
-| 级联情感分析 | 词典优先+BERT精确分析（级联策略），准确率达88.6%，速度提升3.7倍 |
+| 级联情感分析 | 词典优先+BERT精确分析（级联策略），准确率达86.2%，速度提升2.6倍 |
 | 实时流处理 | Spark Streaming支持实时舆情监控 |
 | 模块化设计 | 各模块独立，通过REST API通信 |
 | 多存储后端 | HDFS+HBase+MySQL分层存储 |
@@ -83,7 +83,7 @@ Score_rank(w) = ω₁·N(S) + ω₂·H_norm(w) + ω₃·γ(t)
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        前端展示层 (Vue 3 + TypeScript)               │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
-│  │ 仪表板   │ │ 情感分析 │ │ 双维度   │ │ 热点话题 │ │ 实时监控 │ │
+│  │ 仪表板   │ │ 情感分析 │ │ 三维度   │ │ 热点话题 │ │ 实时监控 │ │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
 └──────────────────────────┬──────────────────────────────────────────┘
                            │ HTTP/REST (Axios)
@@ -92,7 +92,7 @@ Score_rank(w) = ω₁·N(S) + ω₂·H_norm(w) + ω₃·γ(t)
 ┌───────────────────────┐   ┌─────────────────────────────────────────┐
 │ Java后端 (Spring Boot)│   │       Python后端 (Flask :5000)           │
 │  :8081                │   │  ┌──────────┐ ┌──────────┐ ┌─────────┐ │
-│  ┌─────────┐          │   │  │情感分析  │ │双维度排序│ │数据采集 │ │
+│  ┌─────────┐          │   │  │情感分析  │ │三维度排序│ │数据采集 │ │
 │  │认证/用户│          │   │  │ API      │ │ API      │ │ API     │ │
 │  │Spark提交│          │   │  └──────────┘ └──────────┘ └─────────┘ │
 │  └─────────┘          │   │  ┌──────────┐ ┌──────────┐ ┌─────────┐ │
@@ -220,7 +220,7 @@ weibo-sentiment-analysis/
 │   ├── requirements.txt             # Python依赖
 │   ├── api/                         # REST API蓝图 (17个模块)
 │   │   ├── sentiment.py             # 情感分析API (/api/sentiment/*)
-│   │   ├── dual_dimension_api.py    # 双维度排序API (/api/dual/*)
+│   │   ├── tri_dimension_api.py    # 三维度排序API (/api/tri-dimension/*)
 │   │   ├── pipeline_api.py          # 流水线API (/api/pipeline/*)
 │   │   ├── collection.py            # 数据采集API (/api/collection/*)
 │   │   ├── crawler.py               # 爬虫API (/api/v2/crawl/*)
@@ -245,8 +245,8 @@ weibo-sentiment-analysis/
 │   │   ├── query_service.py         # 查询服务
 │   │   └── ...                      # 其他服务模块
 │   ├── spark/                       # Spark处理脚本
-│   │   ├── dual_dimension_model_v2.py  # 双维度排序模型 v2
-│   │   ├── enhanced_dual_dimension.py  # 增强型双维度
+│   │   ├── tri_dimension_model_v2.py  # 三维度排序模型 v2
+│   │   ├── enhanced_tri_dimension.py  # 增强型三维度
 │   │   ├── sentiment_analyzer.py       # 词典情感分析
 │   │   ├── chinese_bert_sentiment.py   # ChineseBERT情感分析
 │   │   ├── data_cleaner.py             # 数据清洗 (SimHash去重)
@@ -449,7 +449,7 @@ USE weibo_prod;
 | | `system_log` | 系统日志表 |
 | **Python后端** | `weibo_core_data` | ★ 微博核心数据表 |
 | | `sentiment_analysis_results` | ★ 情感分析结果表 (级联策略) |
-| | `dual_dimension_ranking` | ★ 双维度排序结果表 |
+| | `tri_dimension_ranking` | ★ 三维度排序结果表 |
 | | `crawl_batch_log` | 爬虫批次日志表 |
 | | `crawl_request_log` | 爬虫请求日志表 |
 | | `data_quality_log` | 数据质量日志表 |
@@ -593,7 +593,7 @@ S_{\text{bert}}(T), & \text{otherwise}
 
 其中 \(\theta\) 为置信度阈值。通过验证集搜索（以准确率为优化目标），本文确定 \(\theta = 0.7\)。当词典得分的绝对值大于0.7时，认为词典判断已足够可靠，直接采用词典结果；否则，调用ChineseBERT模型进行二次精确分析。
 
-该策略使得约65%的微博文本仅通过词典方法即可完成情感分析，仅35%的复杂样本需调用BERT，整体推理速度相比纯BERT提升约3.7倍，同时最终准确率达到88.6%，优于单一词典方法（78.3%）。
+该策略使得约77.5%的微博文本仅通过词典方法即可完成情感分析，仅22.5%的复杂样本需调用BERT，整体推理速度相比纯BERT提升约2.6倍，同时最终准确率达到86.2%，优于单一词典方法（79.2%）。
 
 #### 4.2.2 情感‑热度‑时效三维度排序模型
 
@@ -770,7 +770,7 @@ class StreamingSentimentAnalyzer:
         """处理微批数据"""
         # 1. 数据清洗
         # 2. 情感分析
-        # 3. 双维度排序
+        # 3. 三维度排序
         # 4. 存储结果
 ```
 
@@ -977,12 +977,12 @@ Response:
 }
 ```
 
-### 5.4 双维度排序接口
+### 5.4 三维度排序接口
 
 #### 获取排序结果
 
 ```http
-GET /api/dual/rank?keyword=热搜关键词&limit=50
+GET /api/tri-dimension/rank?keyword=热搜关键词&limit=50
 
 Response:
 {
@@ -1013,12 +1013,12 @@ Response:
 #### 基于MySQL数据排序
 
 ```http
-POST /api/dual/run-db
+POST /api/tri-dimension/run-db
 
 Response:
 {
     "code": 200,
-    "message": "双维度排序完成",
+    "message": "三维度排序完成",
     "data": {
         "total_ranked": 150,
         "top_items": [...],
@@ -1030,7 +1030,7 @@ Response:
 #### 获取MySQL排序结果
 
 ```http
-GET /api/dual/ranking-from-db?limit=50
+GET /api/tri-dimension/ranking-from-db?limit=50
 
 Response:
 {
@@ -1055,7 +1055,7 @@ Response:
 #### 获取算法公式说明
 
 ```http
-GET /api/dual/formula
+GET /api/tri-dimension/formula
 
 Response:
 {
@@ -1138,7 +1138,7 @@ Response:
     "data": {
         "weibo_core_data": {"total": 5000, "unprocessed": 200, "unranked": 300},
         "sentiment_analysis_results": {"total": 4800},
-        "dual_dimension_ranking": {"total": 4700}
+        "tri_dimension_ranking": {"total": 4700}
     }
 }
 ```
@@ -1230,7 +1230,7 @@ data: {"type": "alert", "data": {...}}
            ├──────────────────────────┐                               │
            ▼                          ▼                               │
 ┌──────────────────────────┐  ┌────────────────────────────┐         │
-│sentiment_analysis_results│  │ dual_dimension_ranking  ★  │         │
+│sentiment_analysis_results│  │ tri_dimension_ranking  ★  │         │
 ├──────────────────────────┤  ├────────────────────────────┤         │
 │ id (PK)                  │  │ id (PK)                    │         │
 │ weibo_id (UK联合)        │  │ weibo_id (UK联合)          │         │
@@ -1357,7 +1357,7 @@ data: {"type": "alert", "data": {...}}
 | keyword | VARCHAR(128) | 采集关键词 |
 | batch_id | VARCHAR(64) | 采集批次ID |
 | **is_processed** | TINYINT | 是否已情感分析 (0/1) |
-| **is_ranked** | TINYINT | 是否已双维度排序 (0/1) |
+| **is_ranked** | TINYINT | 是否已三维度排序 (0/1) |
 | graduation_batch | TINYINT | 毕业设计批次 |
 | student_id | VARCHAR(20) | 学号 (2022407443) |
 
@@ -1389,9 +1389,9 @@ data: {"type": "alert", "data": {...}}
 
 **唯一键**: `(weibo_id, analysis_method)`
 
-#### dual_dimension_ranking表 ★
+#### tri_dimension_ranking表 ★
 
-双维度排序结果表，存储综合得分和排名，为本系统的**核心创新点**。
+三维度排序结果表，存储综合得分和排名，为本系统的**核心创新点**。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -1483,7 +1483,7 @@ data: {"type": "alert", "data": {...}}
 | 数据采集 | /collection | DataCollection.vue | 采集任务管理 |
 | 数据预处理 | /preprocess | DataPreprocess.vue | 数据清洗 |
 | 情感分析 | /sentiment | SentimentAnalysis.vue | 情感分析结果 |
-| 双维度分析 | /dual-dimension | DualDimensionAnalysis.vue | 双维度排序 |
+| 三维度分析 | /tri-dimension | TriDimensionAnalysis.vue | 三维度排序 |
 | 热点话题 | /topics | HotTopics.vue | 热点追踪 |
 | 实时监控 | /realtime | RealTimeMonitor.vue | 实时舆情 |
 | 数据可视化 | /visualization | Visualization.vue | 图表展示 |
@@ -1498,7 +1498,7 @@ data: {"type": "alert", "data": {...}}
 | 柱状图 | 情感分布对比 | ECharts |
 | 饼图 | 情感占比 | ECharts |
 | 词云图 | 热点关键词 | ECharts |
-| 散点图 | 双维度分布 | ECharts |
+| 散点图 | 三维度分布 | ECharts |
 | 热力图 | 时间分布 | ECharts |
 | 地图 | 地域分布 | ECharts |
 | 雷达图 | 多维度对比 | ECharts |
@@ -1769,7 +1769,7 @@ FLASK_ENV=production python app.py
 2. 流水线自动执行三个阶段：
    - **阶段1**：读取 `weibo_core_data` 中 `is_processed=0` 的微博
    - **阶段2**：执行级联情感分析（词典优先，BERT兜底），结果写入 `sentiment_analysis_results`
-   - **阶段3**：执行三维度排序（情感+热度+时效），结果写入 `dual_dimension_ranking`
+   - **阶段3**：执行三维度排序（情感+热度+时效），结果写入 `tri_dimension_ranking`
 3. 通过 `GET /api/pipeline/stats` 查看各表数据量
 4. 通过 `GET /api/pipeline/ranking?limit=20` 查看最新排名
 
@@ -1781,13 +1781,13 @@ FLASK_ENV=production python app.py
 4. 查看情感分布图表（正面/中性/负面）
 5. 查看级联策略命中统计（词典占比 vs BERT占比）
 
-#### 双维度排序
+#### 三维度排序
 
-1. 进入"双维度分析"页面
-2. 调用 `POST /api/dual/run-db` 执行排序
+1. 进入"三维度分析"页面
+2. 调用 `POST /api/tri-dimension/run-db` 执行排序
 3. 调整权重参数（ω₁=情感, ω₂=热度, ω₃=时效）
-4. 查看综合排序结果（`GET /api/dual/ranking-from-db`）
-5. 查看算法公式说明（`GET /api/dual/formula`）
+4. 查看综合排序结果（`GET /api/tri-dimension/ranking-from-db`）
+5. 查看算法公式说明（`GET /api/tri-dimension/formula`）
 
 #### 实时监控
 
@@ -1898,15 +1898,15 @@ npm run dev
 2. 减小数据分区大小
 3. 使用本地模式测试：`SPARK_MASTER=local[*]`
 
-### Q9: 双维度排序结果异常
+### Q9: 三维度排序结果异常
 
 **问题**: composite_score值不合理或排名错误
 
 **解决**:
 1. 确认权重参数满足 ω₁+ω₂+ω₃=1（默认0.4+0.4+0.2）
-2. 检查算法参数：`GET /api/dual/formula`
+2. 检查算法参数：`GET /api/tri-dimension/formula`
 3. 确认 λ_r=1, λ_c=2, λ_l=1（热度权重）
-4. 检查配置文件：`backend-python/spark/conf/dual_dimension_config.json`
+4. 检查配置文件：`backend-python/spark/conf/tri_dimension_config.json`
 
 ---
 
@@ -1943,7 +1943,7 @@ npm run dev
 |------|---------|------|
 | collection_bp | /api/collection | api/collection.py |
 | sentiment_bp | /api/sentiment | api/sentiment.py |
-| dual_bp | /api/dual | api/dual_dimension_api.py |
+| tri_bp | /api/tri-dimension | api/tri_dimension_api.py |
 | pipeline_bp | /api/pipeline | api/pipeline_api.py |
 | topics_bp | /api/topics | api/topics.py |
 | monitor_bp | /api/monitor | api/monitor.py |

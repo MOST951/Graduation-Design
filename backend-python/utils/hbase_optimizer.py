@@ -667,7 +667,7 @@ class HBaseOptimizer:
                 'cf:sentiment': str(sentiment),
                 'cf:heat': str(heat),
                 'cf:rank': str(i + 1),
-                'cf:dual_score': str(0.6 * abs(sentiment) + 0.4 * (heat / 100000))
+                'cf:tri_score': str(0.4 * ((abs(sentiment) + 1) / 2) + 0.4 * min(1.0, heat / 100000) + 0.2 * 1.0)
             })
         
         return results

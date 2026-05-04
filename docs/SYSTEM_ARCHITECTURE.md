@@ -1,4 +1,4 @@
-# 微博舆情情感分析系统 - 系统架构文档
+﻿# 微博舆情情感分析系统 - 系统架构文档
 
 ## 项目信息
 - **作者**: 罗森
@@ -11,7 +11,7 @@
 本系统是一套完整的微博舆情情感分析平台，采用分布式架构设计，实现从数据采集、清洗、情感分析到可视化展示的全流程处理。
 
 ### 核心创新点
-**情感-热度双维度排序模型**：
+**情感-热度三维度排序模型**：
 ```
 composite_score = α × sentiment_score + β × popularity_score + γ × timeliness_score
 ```
@@ -79,7 +79,7 @@ composite_score = α × sentiment_score + β × popularity_score + γ × timelin
 ```
 ├── sentiment_analyzer.py       # 词典情感分析
 ├── chinese_bert_sentiment.py   # ChineseBERT深度学习
-├── dual_dimension_model.py     # 双维度排序模型
+├── tri_dimension_model.py     # 三维度排序模型
 └── streaming_analyzer.py       # 实时流处理
 ```
 
@@ -105,7 +105,7 @@ composite_score = α × sentiment_score + β × popularity_score + γ × timelin
 ├── src/views/
 │   ├── Dashboard.vue              # 仪表板
 │   ├── SentimentAnalysis.vue      # 情感分析
-│   ├── DualDimensionAnalysis.vue  # 双维度分析
+│   ├── TriDimensionAnalysis.vue  # 三维度分析
 │   ├── HotTopics.vue              # 热点话题
 │   ├── RealTimeMonitor.vue        # 实时监控
 │   └── ...
@@ -142,11 +142,11 @@ composite_score = α × sentiment_score + β × popularity_score + γ × timelin
 | `/api/sentiment/batch` | POST | 批量分析 |
 | `/api/sentiment/statistics` | GET | 情感统计 |
 
-### 双维度排序接口
+### 三维度排序接口
 | 接口 | 方法 | 说明 |
 |------|------|------|
-| `/api/dual-dimension/rank` | GET | 获取排序结果 |
-| `/api/dual-dimension/config` | POST | 配置权重参数 |
+| `/api/tri-dimension/rank` | GET | 获取排序结果 |
+| `/api/tri-dimension/config` | POST | 配置权重参数 |
 
 ## 五、部署架构
 
@@ -214,7 +214,7 @@ weibo-sentiment-analysis/
 - [x] 数据清洗与预处理
 - [x] 词典情感分析
 - [x] ChineseBERT集成
-- [x] 双维度排序模型
+- [x] 三维度排序模型
 - [x] Flask后端API
 - [x] Vue前端界面
 - [x] 用户认证系统

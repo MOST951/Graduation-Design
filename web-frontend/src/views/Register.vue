@@ -172,8 +172,10 @@ import { useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { User, Lock, View, Hide, DataAnalysis, TrendCharts, Histogram, Cpu, Message, Key } from '@element-plus/icons-vue';
 import apiClient from '@/api/index';
+import { useAuthStore } from '@/store/auth';
 
 const router = useRouter();
+const authStore = useAuthStore();
 
 // 表单状态
 const registerFormRef = ref<FormInstance>();
@@ -276,7 +278,7 @@ const sendCode = async () => {
       
       // 开发环境显示验证码
       if (response.data.data?.debug_code) {
-        ElMessage.info(`验证码: ${response.data.data.debug_code}`, { duration: 10000 });
+        ElMessage.info({ message: `开发模式验证码: ${response.data.data.debug_code}`, duration: 10000, showClose: true });
       }
       
       // 开始倒计时
@@ -319,6 +321,8 @@ const handleRegister = () => {
           ElMessage.success('注册成功！');
           
           const userData = response.data.data;
+          authStore.setToken(userData.accessToken);
+          authStore.setUser(userData.user);
           localStorage.setItem('isLoggedIn', 'true');
           localStorage.setItem('username', userData.user.username);
           localStorage.setItem('userEmail', userData.user.email);

@@ -63,7 +63,7 @@ export interface WeiboData {
 export interface CrawlTask {
   id: string;
   task_id?: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'interrupted' | 'pending' | 'paused';
   keywords: string[];
   pages: number;
   crawl_hot: boolean;
@@ -73,6 +73,14 @@ export interface CrawlTask {
   end_time?: string;
   result_file?: string;
   error?: string;
+  summary?: {
+    total_collected: number;
+    total_failed: number;
+    elapsed_seconds: number;
+    elapsed_display: string;
+    success_rate: number;
+    avg_speed: number;
+  };
 }
 
 /** 分析统计 */
@@ -132,7 +140,7 @@ export interface RankedWeiboItem {
   id: string;
   text: string;
   rank: number;
-  dual_score: number;
+  tri_score: number;
   sentiment_score: number;
   heat_score: number;
   reposts_count: number;
@@ -413,13 +421,15 @@ const mockTasks: Map<string, CrawlTask> = new Map();
 export async function startCrawlTask(
   keywords: string[],
   pages: number = 3,
-  crawlHot: boolean = true
+  crawlHot: boolean = true,
+  dateRange?: [string, string] | null
 ): Promise<CrawlTask> {
   try {
     const response = await apiClient.post('/weibo/crawl/start', {
       keywords,
       pages,
-      crawl_hot: crawlHot
+      crawl_hot: crawlHot,
+      ...(dateRange ? { start_date: dateRange[0], end_date: dateRange[1] } : {}),
     });
     return response.data.data;
   } catch (error) {
@@ -861,7 +871,7 @@ export function getSentimentLabel(sentiment: string): string {
 
 // ==================== 完整数据流连通 API ====================
 // 解决中期检查表中"爬虫数据未与各个模块连通"问题
-// 数据流：微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 双维度排序 → 前端展示
+// 数据流：微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 三维度排序 → 前端展示
 
 /** 数据流任务阶段状态 */
 export interface DataflowPhase {
@@ -937,7 +947,7 @@ export interface DataflowOverview {
 
 /**
  * 启动完整数据采集与处理流程
- * 数据流：微博爬虫 → HDFS → Spark清洗 → HBase → 双维度排序
+ * 数据流：微博爬虫 → HDFS → Spark清洗 → HBase → 三维度排序
  */
 export async function startDataflowTask(params: {
   keywords?: string[];
@@ -1079,7 +1089,7 @@ function generateMockRankedData(count: number): RankedWeiboItem[] {
     id: `ranked_${i}`,
     text: `这是第${i + 1}条排序后的微博内容...`,
     rank: i + 1,
-    dual_score: Math.random() * 0.5 + 0.5,
+    tri_score: Math.random() * 0.5 + 0.5,
     sentiment_score: Math.random() * 2 - 1,
     heat_score: Math.random() * 10,
     reposts_count: Math.floor(Math.random() * 1000),
@@ -1137,7 +1147,7 @@ export async function getDataflowOverview(): Promise<DataflowOverview> {
           { name: 'HDFS存储', status: 'active', count: 10 },
           { name: 'Spark清洗', status: 'active', count: 3 },
           { name: 'HBase存储', status: 'active', count: 100 },
-          { name: '双维度排序', status: 'active', count: 2 },
+          { name: '三维度排序', status: 'active', count: 2 },
         ],
       },
       crawl_stats: { total: 5, completed: 3, running: 1, failed: 1 },

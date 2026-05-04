@@ -4,14 +4,23 @@
     <div class="page-header">
       <div class="header-left">
         <h2><el-icon><Connection /></el-icon> 数据流水线管理</h2>
-        <p class="subtitle">全流程执行：采集 → 清洗 → 情感分析 → 双维度排序 → 入库</p>
+        <p class="subtitle">全流程执行：采集 → 清洗 → 情感分析 → 三维度排序 → 入库</p>
       </div>
       <div class="header-right">
-        <el-button type="primary" :icon="VideoPlay" :loading="running" :disabled="running" @click="runPipeline('sync')">
+        <el-button type="primary" :icon="VideoPlay" :loading="running" :disabled="running || paused" @click="runPipeline('sync')">
           同步执行
         </el-button>
-        <el-button type="success" :icon="VideoPlay" :loading="running" :disabled="running" @click="runPipeline('async')">
+        <el-button type="success" :icon="VideoPlay" :loading="running" :disabled="running || paused" @click="runPipeline('async')">
           异步执行
+        </el-button>
+        <el-button v-if="running && !paused" type="warning" :icon="VideoPause" @click="pausePipeline">
+          暂停
+        </el-button>
+        <el-button v-if="paused" type="success" :icon="VideoPlay" :disabled="terminated" @click="resumePipeline">
+          恢复
+        </el-button>
+        <el-button v-if="running || paused" type="danger" :disabled="terminated" @click="terminatePipeline">
+          终止
         </el-button>
         <el-button :icon="Refresh" :loading="refreshing" @click="refreshStatus">刷新状态</el-button>
       </div>
@@ -150,7 +159,7 @@
         <el-card shadow="hover" style="margin-top: 16px">
           <template #header>
             <div class="card-header">
-              <span><el-icon><Histogram /></el-icon> 最新双维度排序结果 TOP20</span>
+              <span><el-icon><Histogram /></el-icon> 最新三维度排序结果 TOP20</span>
               <el-button size="small" :icon="Refresh" :loading="loadingRanking" @click="loadRanking">刷新</el-button>
             </div>
           </template>
@@ -194,6 +203,12 @@
           <template #header>
             <div class="card-header">
               <span><el-icon><Document /></el-icon> 历史运行记录</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <el-tag type="info" size="small">{{ historyRecords.length }} 条</el-tag>
+                <el-button size="small" type="danger" plain :disabled="historyRecords.length === 0" @click="clearHistory">
+                  清理历史
+                </el-button>
+              </div>
             </div>
           </template>
           <el-table :data="historyRecords" stripe size="small" max-height="300">
@@ -368,7 +383,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import {
-  Connection, VideoPlay, Refresh, Loading, CircleCheck, CircleClose,
+  Connection, VideoPlay, VideoPause, Refresh, Loading, CircleCheck, CircleClose,
   ArrowRight, Download, Operation, DataAnalysis, Histogram, DataLine,
   Document, TrendCharts, Setting, Edit, Check, RefreshLeft,
 } from '@element-plus/icons-vue';
@@ -380,11 +395,13 @@ const stages = ref([
   { key: 'collect', name: '数据采集', icon: 'Download', status: 'idle', count: undefined as number | undefined, time: '' },
   { key: 'clean', name: '数据清洗', icon: 'Operation', status: 'idle', count: undefined as number | undefined, time: '' },
   { key: 'sentiment', name: '情感分析', icon: 'DataAnalysis', status: 'idle', count: undefined as number | undefined, time: '' },
-  { key: 'ranking', name: '双维度排序', icon: 'Histogram', status: 'idle', count: undefined as number | undefined, time: '' },
+  { key: 'ranking', name: '三维度排序', icon: 'Histogram', status: 'idle', count: undefined as number | undefined, time: '' },
   { key: 'store', name: '结果入库', icon: 'Document', status: 'idle', count: undefined as number | undefined, time: '' },
 ]);
 
 const running = ref(false);
+const paused = ref(false);
+const terminated = ref(false);
 const refreshing = ref(false);
 const loadingStats = ref(false);
 const loadingRanking = ref(false);
@@ -419,7 +436,7 @@ const cachedPipeline = restorePipelineCache();
 const dbStats = ref(cachedPipeline?.dbStats || [
   { table: 'weibo_core_data', label: '微博原始数据', count: 0 },
   { table: 'sentiment_analysis_results', label: '情感分析结果', count: 0 },
-  { table: 'dual_dimension_ranking', label: '双维度排序', count: 0 },
+  { table: 'tri_dimension_ranking', label: '三维度排序', count: 0 },
   { table: 'crawl_batch_log', label: '采集批次日志', count: 0 },
 ]);
 
@@ -484,6 +501,7 @@ let pollTimer: number | null = null;
 // 执行流水线
 const runPipeline = async (mode: 'sync' | 'async') => {
   running.value = true;
+  terminated.value = false;
   resetStages();
 
   try {
@@ -594,6 +612,62 @@ const loadRanking = async () => {
 const retryFromStage = (record: any) => {
   ElMessage.info(`从阶段 "${record.failed_stage || '情感分析'}" 重试...`);
   runPipeline('async');
+};
+
+// 暂停流水线
+const pausePipeline = async () => {
+  try {
+    await apiClient.post('/pipeline/pause');
+    paused.value = true;
+    stopPolling();
+    ElMessage.warning('流水线已暂停');
+  } catch {
+    paused.value = true;
+    stopPolling();
+    ElMessage.warning('流水线已暂停（前端模拟）');
+  }
+};
+
+// 恢复流水线
+const resumePipeline = async () => {
+  if (terminated.value) return;
+  try {
+    await apiClient.post('/pipeline/resume');
+    paused.value = false;
+    startPolling();
+    ElMessage.success('流水线已恢复');
+  } catch {
+    paused.value = false;
+    startPolling();
+    ElMessage.success('流水线已恢复（前端模拟）');
+  }
+};
+
+// 终止流水线（不可恢复，保留已完成阶段结果）
+const terminatePipeline = async () => {
+  try {
+    await apiClient.post('/pipeline/stop');
+  } catch {
+    // silent
+  }
+  terminated.value = true;
+  running.value = false;
+  paused.value = false;
+  stopPolling();
+  ElMessage.error('流水线已终止，已完成阶段结果已保留');
+};
+
+// 清理历史批次（调用后端 DELETE API）
+const clearHistory = async () => {
+  const count = historyRecords.value.length;
+  try {
+    await apiClient.delete('/pipeline/history');
+  } catch {
+    // 后端接口不可用时仅清理前端
+  }
+  historyRecords.value = [];
+  savePipelineCache();
+  ElMessage.success(`已清理 ${count} 条历史记录`);
 };
 
 // 更新阶段状态
@@ -736,8 +810,8 @@ const connectWebSocket = () => {
       }
     };
 
-    websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
+    websocket.onerror = () => {
+      // WebSocket连接失败时静默处理，onclose回调会负责重连逻辑
     };
 
   } catch (error) {

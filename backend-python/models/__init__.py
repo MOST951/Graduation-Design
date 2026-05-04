@@ -31,7 +31,7 @@ from .model_manager import (
     get_sentiment_lexicon,
     get_bert_analyzer,
     get_hybrid_analyzer,
-    get_dual_dimension_model,
+    get_tri_dimension_model,
     with_model,
     ensure_model_loaded,
 )
@@ -86,7 +86,7 @@ __all__ = [
     'get_sentiment_lexicon',
     'get_bert_analyzer',
     'get_hybrid_analyzer',
-    'get_dual_dimension_model',
+    'get_tri_dimension_model',
     'with_model',
     'ensure_model_loaded',
     # BERT模块

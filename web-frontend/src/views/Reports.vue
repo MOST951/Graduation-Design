@@ -7,7 +7,7 @@
           <el-icon><Document /></el-icon>
           舆情分析报告
         </h2>
-        <p class="header-desc">基于情感-热度双维度排序模型的智能舆情报告生成</p>
+        <p class="header-desc">基于情感-热度三维度排序模型的智能舆情报告生成</p>
       </div>
       <div class="header-actions">
         <el-button type="primary" :icon="Plus" :loading="generating" @click="handleQuickGenerate">
@@ -73,7 +73,7 @@
             <div class="card-header">
               <span><el-icon><Setting /></el-icon> 报告生成配置</span>
               <el-tag type="success" effect="plain">
-                <el-icon><CircleCheck /></el-icon> 核心创新点：双维度排序
+                <el-icon><CircleCheck /></el-icon> 核心创新点：三维度排序
               </el-tag>
             </div>
           </template>
@@ -123,7 +123,7 @@
               />
             </el-form-item>
 
-            <!-- 双维度排序配置（核心创新点） -->
+            <!-- 三维度排序配置（核心创新点） -->
             <el-form-item label="排序权重">
               <div class="weight-config">
                 <div class="weight-item">
@@ -164,7 +164,7 @@
                 <el-checkbox value="overview">数据概览</el-checkbox>
                 <el-checkbox value="sentiment">情感分布</el-checkbox>
                 <el-checkbox value="hotTopics">热点话题</el-checkbox>
-                <el-checkbox value="dualRanking">双维度排序</el-checkbox>
+                <el-checkbox value="triRanking">三维度排序</el-checkbox>
                 <el-checkbox value="wordcloud">词云分析</el-checkbox>
                 <el-checkbox value="timeline">时间趋势</el-checkbox>
                 <el-checkbox value="conclusion">分析结论</el-checkbox>
@@ -307,7 +307,7 @@ const reportConfig = reactive({
   dateRange: [] as Date[],
   sentimentWeight: 60,
   popularityWeight: 40,
-  sections: ['overview', 'sentiment', 'hotTopics', 'dualRanking', 'wordcloud', 'conclusion'],
+  sections: ['overview', 'sentiment', 'hotTopics', 'triRanking', 'wordcloud', 'conclusion'],
   format: 'html',
 });
 
@@ -453,13 +453,13 @@ const generatePreviewHTML = () => {
         <li>负面情感：约 20%</li>
       </ul>
       
-      <h2 style="color: #409EFF; margin-top: 30px;">三、双维度排序结果</h2>
+      <h2 style="color: #409EFF; margin-top: 30px;">三、三维度排序结果</h2>
       <p style="background: #ecf5ff; padding: 15px; border-radius: 4px;">
         <strong>核心创新点：</strong>综合得分 = ${reportConfig.sentimentWeight}% × 情感强度 + ${reportConfig.popularityWeight}% × 传播热度
       </p>
       
       <h2 style="color: #409EFF; margin-top: 30px;">四、分析结论</h2>
-      <p>根据双维度排序模型分析，当前舆情整体趋势平稳，建议持续关注热点话题动态。</p>
+      <p>根据三维度排序模型分析，当前舆情整体趋势平稳，建议持续关注热点话题动态。</p>
     </div>
   `;
 };

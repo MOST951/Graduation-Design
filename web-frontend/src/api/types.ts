@@ -155,7 +155,7 @@ export interface CreateTaskRequest {
 }
 
 // ====================  ====================
-export interface DualDimensionScore {
+export interface TriDimensionScore {
   id: number;
   content: string;
   sentimentScore: number;
@@ -172,7 +172,7 @@ export interface DualDimensionScore {
   };
 }
 
-export interface DualDimensionConfig {
+export interface TriDimensionConfig {
   weights: {
     sentiment: number;
     popularity: number;
@@ -189,9 +189,9 @@ export interface DualDimensionConfig {
   };
 }
 
-export interface DualDimensionResponse {
-  results: DualDimensionScore[];
-  config: DualDimensionConfig;
+export interface TriDimensionResponse {
+  results: TriDimensionScore[];
+  config: TriDimensionConfig;
   stats: {
     totalItems: number;
     averageScore: number;
@@ -451,7 +451,7 @@ export interface LogFilter {
 export interface ExportRequest {
   type: 'csv' | 'json' | 'excel' | 'pdf';
   data: {
-    source: 'sentiment' | 'collection' | 'dual-dimension' | 'logs';
+    source: 'sentiment' | 'collection' | 'tri-dimension' | 'logs';
     filters?: Record<string, unknown>;
     fields?: string[];
   };

@@ -1,7 +1,7 @@
 """
-情感-热度双维度排序模型 API接口
+情感-热度三维度排序模型 API接口
 
-提供完整的双维度分析功能：
+提供完整的三维度分析功能：
 1. 数据分析接口
 2. 配置管理接口
 3. 四象限统计接口
@@ -20,10 +20,10 @@ import sys
 # 添加路径
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from spark.dual_dimension_model_v2 import (
-    DualDimensionModelV2,
-    DualDimensionConfigV2,
-    process_weibo_dual_dimension,
+from spark.tri_dimension_model_v2 import (
+    TriDimensionModelV2,
+    TriDimensionConfigV2,
+    process_weibo_tri_dimension,
     Quadrant
 )
 
@@ -42,7 +42,7 @@ except ImportError:
     PIPELINE_AVAILABLE = False
 
 # 创建蓝图
-dual_bp = Blueprint('dual_dimension', __name__, url_prefix='/api/dual')
+tri_bp = Blueprint('tri_dimension', __name__, url_prefix='/api/tri-dimension')
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -52,13 +52,14 @@ logger = logging.getLogger(__name__)
 saved_configs = {
     'default': {
         'name': '默认配置',
-        'sentiment_weight': 0.5,
-        'heat_weight': 0.5,
+        'sentiment_weight': 0.4,
+        'heat_weight': 0.4,
+        'timeliness_weight': 0.2,
         'repost_weight': 1.0,
         'comment_weight': 2.0,
         'like_weight': 1.0,
         'time_decay_enabled': True,
-        'decay_half_life_hours': 24.0,
+        'decay_half_life_hours': 12.0,
         'influence_enabled': True,
         'verified_bonus': 1.5,
         'sentiment_threshold': 0.5,
@@ -66,13 +67,14 @@ saved_configs = {
     },
     'sentiment_first': {
         'name': '情感优先',
-        'sentiment_weight': 0.7,
-        'heat_weight': 0.3,
+        'sentiment_weight': 0.6,
+        'heat_weight': 0.25,
+        'timeliness_weight': 0.15,
         'repost_weight': 1.0,
         'comment_weight': 2.0,
         'like_weight': 1.0,
         'time_decay_enabled': True,
-        'decay_half_life_hours': 24.0,
+        'decay_half_life_hours': 12.0,
         'influence_enabled': True,
         'verified_bonus': 1.5,
         'sentiment_threshold': 0.5,
@@ -80,8 +82,9 @@ saved_configs = {
     },
     'heat_first': {
         'name': '热度优先',
-        'sentiment_weight': 0.3,
-        'heat_weight': 0.7,
+        'sentiment_weight': 0.25,
+        'heat_weight': 0.55,
+        'timeliness_weight': 0.2,
         'repost_weight': 1.0,
         'comment_weight': 2.0,
         'like_weight': 1.0,
@@ -97,10 +100,10 @@ saved_configs = {
 
 # ==================== 分析接口 ====================
 
-@dual_bp.route('/analyze', methods=['POST'])
-def analyze_dual_dimension():
+@tri_bp.route('/analyze', methods=['POST'])
+def analyze_tri_dimension():
     """
-    双维度分析接口
+    三维度分析接口
     
     Body参数:
         data: 微博数据列表
@@ -131,7 +134,7 @@ def analyze_dual_dimension():
             config = {**saved_configs[config_name], **config}
         
         # 执行分析
-        result = process_weibo_dual_dimension(weibo_data, config)
+        result = process_weibo_tri_dimension(weibo_data, config)
         
         # 限制返回数量
         if top_k and top_k > 0:
@@ -146,14 +149,14 @@ def analyze_dual_dimension():
         })
         
     except Exception as e:
-        logger.error(f'双维度分析失败: {e}', exc_info=True)
+        logger.error(f'三维度分析失败: {e}', exc_info=True)
         return jsonify({
             'code': 500,
             'message': str(e)
         }), 500
 
 
-@dual_bp.route('/analyze/single', methods=['POST'])
+@tri_bp.route('/analyze/single', methods=['POST'])
 def analyze_single_post():
     """
     分析单条微博
@@ -193,7 +196,7 @@ def analyze_single_post():
         }]
         
         config = req_data.get('config', {})
-        result = process_weibo_dual_dimension(post_data, config)
+        result = process_weibo_tri_dimension(post_data, config)
         
         if result['ranked_posts']:
             post_result = result['ranked_posts'][0]
@@ -218,7 +221,7 @@ def analyze_single_post():
 
 # ==================== 配置接口 ====================
 
-@dual_bp.route('/config', methods=['GET'])
+@tri_bp.route('/config', methods=['GET'])
 def get_config():
     """获取当前配置"""
     config_name = request.args.get('name', 'default')
@@ -236,7 +239,7 @@ def get_config():
         }), 404
 
 
-@dual_bp.route('/config/list', methods=['GET'])
+@tri_bp.route('/config/list', methods=['GET'])
 def list_configs():
     """获取所有配置列表"""
     configs = []
@@ -255,7 +258,7 @@ def list_configs():
     })
 
 
-@dual_bp.route('/config', methods=['POST'])
+@tri_bp.route('/config', methods=['POST'])
 def save_config():
     """
     保存配置
@@ -276,23 +279,26 @@ def save_config():
             }), 400
         
         # 验证权重
-        sentiment_weight = req_data.get('sentiment_weight', 0.5)
-        heat_weight = req_data.get('heat_weight', 0.5)
+        sentiment_weight = req_data.get('sentiment_weight', 0.4)
+        heat_weight = req_data.get('heat_weight', 0.4)
+        timeliness_weight = req_data.get('timeliness_weight', 0.2)
         
-        total = sentiment_weight + heat_weight
+        total = sentiment_weight + heat_weight + timeliness_weight
         if abs(total - 1.0) > 0.001:
             sentiment_weight /= total
             heat_weight /= total
+            timeliness_weight /= total
         
         config = {
             'name': req_data.get('name', key),
             'sentiment_weight': sentiment_weight,
             'heat_weight': heat_weight,
+            'timeliness_weight': timeliness_weight,
             'repost_weight': req_data.get('repost_weight', 1.0),
             'comment_weight': req_data.get('comment_weight', 2.0),
             'like_weight': req_data.get('like_weight', 1.0),
             'time_decay_enabled': req_data.get('time_decay_enabled', True),
-            'decay_half_life_hours': req_data.get('decay_half_life_hours', 24.0),
+            'decay_half_life_hours': req_data.get('decay_half_life_hours', 12.0),
             'influence_enabled': req_data.get('influence_enabled', True),
             'verified_bonus': req_data.get('verified_bonus', 1.5),
             'sentiment_threshold': req_data.get('sentiment_threshold', 0.5),
@@ -315,7 +321,7 @@ def save_config():
         }), 500
 
 
-@dual_bp.route('/config/<key>', methods=['DELETE'])
+@tri_bp.route('/config/<key>', methods=['DELETE'])
 def delete_config(key):
     """删除配置"""
     if key == 'default':
@@ -339,7 +345,7 @@ def delete_config(key):
 
 # ==================== 四象限接口 ====================
 
-@dual_bp.route('/quadrant/info', methods=['GET'])
+@tri_bp.route('/quadrant/info', methods=['GET'])
 def get_quadrant_info():
     """获取四象限说明信息"""
     quadrant_info = {
@@ -380,7 +386,7 @@ def get_quadrant_info():
     })
 
 
-@dual_bp.route('/quadrant/statistics', methods=['POST'])
+@tri_bp.route('/quadrant/statistics', methods=['POST'])
 def get_quadrant_statistics():
     """
     获取四象限统计
@@ -400,7 +406,7 @@ def get_quadrant_statistics():
                 'message': '数据不能为空'
             }), 400
         
-        result = process_weibo_dual_dimension(weibo_data, config)
+        result = process_weibo_tri_dimension(weibo_data, config)
         
         return jsonify({
             'code': 200,
@@ -422,7 +428,7 @@ def get_quadrant_statistics():
 
 # ==================== 散点图数据接口 ====================
 
-@dual_bp.route('/scatter', methods=['POST'])
+@tri_bp.route('/scatter', methods=['POST'])
 def get_scatter_data():
     """
     获取散点图数据
@@ -444,7 +450,7 @@ def get_scatter_data():
                 'message': '数据不能为空'
             }), 400
         
-        result = process_weibo_dual_dimension(weibo_data, config)
+        result = process_weibo_tri_dimension(weibo_data, config)
         
         # 限制数量
         scatter_data = result['scatter_data'][:limit]
@@ -476,10 +482,10 @@ def get_scatter_data():
 
 # ==================== MySQL数据排序接口 ====================
 
-@dual_bp.route('/run-db', methods=['POST'])
+@tri_bp.route('/run-db', methods=['POST'])
 def run_ranking_on_db():
     """
-    对MySQL中已完成情感分析的微博执行双维度排序并写回结果
+    对MySQL中已完成情感分析的微博执行三维度排序并写回结果
     
     Body参数:
         limit: 处理数量上限（默认500）
@@ -510,11 +516,11 @@ def run_ranking_on_db():
 
         from datetime import datetime as dt
         batch_id = f"rank_{dt.now().strftime('%Y%m%d%H%M%S')}"
-        save_result = db.save_dual_dimension_results(ranked, batch_id)
+        save_result = db.save_tri_dimension_results(ranked, batch_id)
 
         return jsonify({
             'code': 200,
-            'message': f'双维度排序完成，处理{save_result["saved"]}条',
+            'message': f'三维度排序完成，处理{save_result["saved"]}条',
             'data': {
                 'input_count': len(unranked),
                 'saved': save_result['saved'],
@@ -528,7 +534,7 @@ def run_ranking_on_db():
         return jsonify({'code': 500, 'message': str(e)}), 500
 
 
-@dual_bp.route('/ranking-from-db', methods=['GET'])
+@tri_bp.route('/ranking-from-db', methods=['GET'])
 def get_ranking_from_db():
     """从MySQl查询最新排序结果"""
     try:
@@ -545,10 +551,10 @@ def get_ranking_from_db():
                    r.algorithm_version, w.content, w.user_name,
                    w.reposts_count, w.comments_count, w.attitudes_count,
                    w.created_at as weibo_created_at
-            FROM dual_dimension_ranking r
+            FROM tri_dimension_ranking r
             JOIN weibo_core_data w ON r.weibo_id = w.weibo_id
             WHERE r.batch_id = (
-                SELECT batch_id FROM dual_dimension_ranking
+                SELECT batch_id FROM tri_dimension_ranking
                 ORDER BY calculation_time DESC LIMIT 1
             )
             ORDER BY r.ranking_position ASC
@@ -579,7 +585,7 @@ def get_ranking_from_db():
 
 # ==================== 公式说明接口 ====================
 
-@dual_bp.route('/formula', methods=['GET'])
+@tri_bp.route('/formula', methods=['GET'])
 def get_formula_info():
     """获取算法公式说明 (v2.0 级联策略+半衰期)"""
     formula_info = {
@@ -629,7 +635,7 @@ def get_formula_info():
 
 # ==================== 健康检查 ====================
 
-@dual_bp.route('/health', methods=['GET'])
+@tri_bp.route('/health', methods=['GET'])
 def health_check():
     """健康检查"""
     return jsonify({
@@ -637,7 +643,7 @@ def health_check():
         'message': 'success',
         'data': {
             'status': 'healthy',
-            'module': 'dual_dimension',
+            'module': 'tri_dimension',
             'version': '2.0',
             'timestamp': datetime.now().isoformat()
         }

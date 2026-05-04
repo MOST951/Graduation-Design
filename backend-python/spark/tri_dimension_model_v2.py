@@ -1,10 +1,10 @@
 """
-情感-热度双维度排序模型 V2.0
+情感-热度三维度排序模型 V2.0
 
 增强功能：
 1. 情感维度：极性 + 强度 + 词典/深度学习混合
 2. 热度维度：互动加权 + 时间衰减 + 用户影响力
-3. 双维度融合：加权公式 + 动态权重 + 四象限分类
+3. 三维度融合：加权公式 + 动态权重 + 四象限分类
 
 作者：毕业设计
 日期：2024-12
@@ -95,32 +95,33 @@ class WeiboPost:
     heat_score: float = 0.0               # 热度得分
     influence_factor: float = 0.0         # 影响力因子
     time_decay_factor: float = 0.0        # 时间衰减因子
-    dual_score: float = 0.0               # 双维度综合得分
+    tri_score: float = 0.0               # 三维度综合得分
     quadrant: str = ""                    # 四象限分类
     rank: int = 0
 
 
 @dataclass 
-class DualDimensionConfigV2:
-    """双维度模型配置V2"""
+class TriDimensionConfigV2:
+    """三维度模型配置V2"""
     
     # ===== 情感维度配置 =====
-    sentiment_weight: float = 0.5         # 情感权重 α
+    sentiment_weight: float = 0.4         # 情感权重 ω₁ - 论文4.2.2
     use_deep_learning: bool = True        # 是否使用深度学习
     lexicon_weight: float = 0.4           # 词典方法权重
     dl_weight: float = 0.6                # 深度学习权重
     
     # ===== 热度维度配置 =====
-    heat_weight: float = 0.5              # 热度权重 β
+    heat_weight: float = 0.4              # 热度权重 ω₂ - 论文4.2.2
     
     # 互动权重
     repost_weight: float = 1.0            # 转发权重 λ_r
     comment_weight: float = 2.0           # 评论权重
     like_weight: float = 1.0              # 点赞权重
     
-    # 时间衰减
+    # 时效性维度
+    timeliness_weight: float = 0.2        # 时效性权重 ω₃ - 论文4.2.2
     time_decay_enabled: bool = True
-    decay_half_life_hours: float = 24.0   # 半衰期（小时）
+    decay_half_life_hours: float = 12.0   # 半衰期H=12小时 - 论文4.2.2
     
     # 用户影响力
     influence_enabled: bool = True
@@ -143,10 +144,11 @@ class DualDimensionConfigV2:
     
     def validate(self):
         """验证配置"""
-        total = self.sentiment_weight + self.heat_weight
+        total = self.sentiment_weight + self.heat_weight + self.timeliness_weight
         if abs(total - 1.0) > 0.001:
             self.sentiment_weight /= total
             self.heat_weight /= total
+            self.timeliness_weight /= total
         
         if self.use_deep_learning:
             dl_total = self.lexicon_weight + self.dl_weight
@@ -317,7 +319,7 @@ class HeatCalculator:
     
     @staticmethod
     def calculate_interaction_score(reposts: int, comments: int, likes: int,
-                                    config: DualDimensionConfigV2) -> float:
+                                    config: TriDimensionConfigV2) -> float:
         """
         计算互动得分
         
@@ -336,7 +338,7 @@ class HeatCalculator:
     @staticmethod
     def calculate_time_decay(created_at: datetime, 
                              reference_time: datetime,
-                             config: DualDimensionConfigV2) -> float:
+                             config: TriDimensionConfigV2) -> float:
         """
         计算时间衰减因子（公式4-6）
         
@@ -355,7 +357,7 @@ class HeatCalculator:
     
     @staticmethod
     def calculate_influence_factor(user: UserInfo, 
-                                   config: DualDimensionConfigV2) -> float:
+                                   config: TriDimensionConfigV2) -> float:
         """
         计算用户影响力因子
         
@@ -383,7 +385,7 @@ class HeatCalculator:
     @staticmethod
     def calculate_heat_score(post: WeiboPost, 
                              reference_time: datetime,
-                             config: DualDimensionConfigV2) -> Tuple[float, float, float]:
+                             config: TriDimensionConfigV2) -> Tuple[float, float, float]:
         """
         计算综合热度得分
         
@@ -409,14 +411,14 @@ class HeatCalculator:
         return heat_score, time_decay, influence
 
 
-# ==================== 双维度排序模型 ====================
+# ==================== 三维度排序模型 ====================
 
-class DualDimensionModelV2:
+class TriDimensionModelV2:
     """
-    情感-热度双维度排序模型V2
+    情感-热度三维度排序模型V2
     
     核心公式：
-    DualScore = α × NormalizedSentiment + β × NormalizedHeat
+    TriScore = α × NormalizedSentiment + β × NormalizedHeat
     
     四象限分类：
     - 高情感-高热度：重点关注的热门情绪内容
@@ -425,8 +427,8 @@ class DualDimensionModelV2:
     - 低情感-低热度：一般性内容
     """
     
-    def __init__(self, config: Optional[DualDimensionConfigV2] = None):
-        self.config = config or DualDimensionConfigV2()
+    def __init__(self, config: Optional[TriDimensionConfigV2] = None):
+        self.config = config or TriDimensionConfigV2()
         self.config.validate()
     
     def analyze_sentiment(self, text: str, dl_result: Optional[Dict] = None) -> Tuple[str, float, float]:
@@ -476,16 +478,18 @@ class DualDimensionModelV2:
         else:
             return Quadrant.LOW_SENTIMENT_LOW_HEAT
     
-    def calculate_dual_score(self, sentiment_normalized: float,
-                             heat_normalized: float) -> float:
+    def calculate_tri_score(self, sentiment_normalized: float,
+                             heat_normalized: float,
+                             time_decay_factor: float = 1.0) -> float:
         """
-        计算双维度综合得分
+        计算三维度综合得分
         
-        公式：DualScore = α × Sentiment + β × Heat
+        公式(4-3): Score = ω₁×Intensity + ω₂×H_norm + ω₃×γ(Δt)
         """
         return (
             self.config.sentiment_weight * sentiment_normalized +
-            self.config.heat_weight * heat_normalized
+            self.config.heat_weight * heat_normalized +
+            self.config.timeliness_weight * time_decay_factor
         )
     
     def process_post(self, post: WeiboPost,
@@ -516,8 +520,8 @@ class DualDimensionModelV2:
         quadrant = self.classify_quadrant(sentiment_norm, heat_norm)
         post.quadrant = quadrant.value
         
-        # 5. 双维度得分
-        post.dual_score = self.calculate_dual_score(sentiment_norm, heat_norm)
+        # 5. 三维度得分
+        post.tri_score = self.calculate_tri_score(sentiment_norm, heat_norm, time_decay)
         
         return post
     
@@ -525,7 +529,7 @@ class DualDimensionModelV2:
                    reference_time: Optional[datetime] = None,
                    top_k: Optional[int] = None) -> List[WeiboPost]:
         """
-        对微博列表进行双维度排序
+        对微博列表进行三维度排序
         """
         ref_time = reference_time or datetime.now()
         
@@ -533,8 +537,8 @@ class DualDimensionModelV2:
         for post in posts:
             self.process_post(post, ref_time)
         
-        # 按双维度得分排序
-        sorted_posts = sorted(posts, key=lambda x: x.dual_score, reverse=True)
+        # 按三维度得分排序
+        sorted_posts = sorted(posts, key=lambda x: x.tri_score, reverse=True)
         
         # 分配排名
         for i, post in enumerate(sorted_posts):
@@ -574,7 +578,7 @@ class DualDimensionModelV2:
                 "id": post.id,
                 "x": round(heat_norm * 100, 2),           # X轴：热度
                 "y": round(sentiment_norm * 100, 2),      # Y轴：情感
-                "value": round(post.dual_score * 100, 2), # 气泡大小
+                "value": round(post.tri_score * 100, 2), # 气泡大小
                 "quadrant": post.quadrant,
                 "text": post.text[:50] + "..." if len(post.text) > 50 else post.text,
                 "sentiment_polarity": post.sentiment_polarity,
@@ -586,21 +590,21 @@ class DualDimensionModelV2:
 
 # ==================== Spark处理器 ====================
 
-class SparkDualDimensionProcessorV2:
+class SparkTriDimensionProcessorV2:
     """
-    基于Spark的双维度处理器V2
+    基于Spark的三维度处理器V2
     """
     
     def __init__(self, spark: Optional['SparkSession'] = None,
-                 config: Optional[DualDimensionConfigV2] = None):
-        self.config = config or DualDimensionConfigV2()
+                 config: Optional[TriDimensionConfigV2] = None):
+        self.config = config or TriDimensionConfigV2()
         self.config.validate()
         
         if spark:
             self.spark = spark
         elif SPARK_AVAILABLE:
             self.spark = SparkSession.builder \
-                .appName("DualDimensionModelV2") \
+                .appName("TriDimensionModelV2") \
                 .master("local[*]") \
                 .config("spark.driver.memory", "2g") \
                 .config("spark.sql.shuffle.partitions", "4") \
@@ -676,9 +680,9 @@ class SparkDualDimensionProcessorV2:
             (F.col("sentiment_score") + 1) / 2
         )
         
-        # 7. 计算双维度得分
+        # 7. 计算三维度得分
         df = df.withColumn(
-            "dual_score",
+            "tri_score",
             config.sentiment_weight * F.col("sentiment_normalized") +
             config.heat_weight * F.col("heat_normalized")
         )
@@ -702,7 +706,7 @@ class SparkDualDimensionProcessorV2:
         )
         
         # 9. 添加排名
-        window = Window.orderBy(F.desc("dual_score"))
+        window = Window.orderBy(F.desc("tri_score"))
         df = df.withColumn("rank", F.row_number().over(window))
         
         return df
@@ -711,7 +715,7 @@ class SparkDualDimensionProcessorV2:
         """获取四象限统计"""
         stats = df.groupBy("quadrant").agg(
             F.count("*").alias("count"),
-            F.avg("dual_score").alias("avg_score"),
+            F.avg("tri_score").alias("avg_score"),
             F.avg("heat_score").alias("avg_heat"),
             F.avg("sentiment_score").alias("avg_sentiment")
         ).collect()
@@ -732,7 +736,7 @@ class SparkDualDimensionProcessorV2:
 
 # ==================== 便捷函数 ====================
 
-def process_weibo_dual_dimension(data: List[Dict],
+def process_weibo_tri_dimension(data: List[Dict],
                                   config: Optional[Dict] = None) -> Dict[str, Any]:
     """
     处理微博数据的便捷函数
@@ -745,7 +749,7 @@ def process_weibo_dual_dimension(data: List[Dict],
         处理结果
     """
     # 创建配置
-    model_config = DualDimensionConfigV2()
+    model_config = TriDimensionConfigV2()
     if config:
         for key, value in config.items():
             if hasattr(model_config, key):
@@ -753,7 +757,7 @@ def process_weibo_dual_dimension(data: List[Dict],
     model_config.validate()
     
     # 创建模型
-    model = DualDimensionModelV2(model_config)
+    model = TriDimensionModelV2(model_config)
     
     # 转换数据
     posts = []
@@ -799,7 +803,7 @@ def process_weibo_dual_dimension(data: List[Dict],
             'id': post.id,
             'text': post.text,
             'rank': post.rank,
-            'dual_score': round(post.dual_score, 4),
+            'tri_score': round(post.tri_score, 4),
             'sentiment': {
                 'polarity': post.sentiment_polarity,
                 'score': round(post.sentiment_score, 4),
@@ -834,7 +838,7 @@ def process_weibo_dual_dimension(data: List[Dict],
 
 if __name__ == "__main__":
     print("=" * 70)
-    print("情感-热度双维度排序模型V2 测试")
+    print("情感-热度三维度排序模型V2 测试")
     print("=" * 70)
     
     # 测试数据
@@ -886,16 +890,18 @@ if __name__ == "__main__":
     ]
     
     # 处理
-    result = process_weibo_dual_dimension(test_data, {
-        'sentiment_weight': 0.5,
-        'heat_weight': 0.5,
+    result = process_weibo_tri_dimension(test_data, {
+        'sentiment_weight': 0.4,
+        'heat_weight': 0.4,
+        'timeliness_weight': 0.2,
+        'decay_half_life_hours': 12.0,
     })
     
     print("\n排序结果：")
     print("-" * 70)
     for post in result['ranked_posts']:
         print(f"排名 {post['rank']}: {post['text'][:30]}...")
-        print(f"  双维度得分: {post['dual_score']}")
+        print(f"  三维度得分: {post['tri_score']}")
         print(f"  情感: {post['sentiment']}")
         print(f"  热度: {post['heat']}")
         print(f"  四象限: {post['quadrant']}")

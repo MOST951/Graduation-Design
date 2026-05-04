@@ -54,7 +54,7 @@ export interface DataflowPhase {
   progress: number;
 }
 
-/** 双维度排序话题 */
+/** 三维度排序话题 */
 export interface RankedTopic {
   rank: number;
   name: string;
@@ -66,8 +66,8 @@ export interface RankedTopic {
   trend: 'up' | 'down' | 'stable';
 }
 
-/** 双维度排序配置 */
-export interface DualDimensionConfig {
+/** 三维度排序配置 */
+export interface TriDimensionConfig {
   sentiment_weight: number;
   popularity_weight: number;
   time_decay_hours: number;

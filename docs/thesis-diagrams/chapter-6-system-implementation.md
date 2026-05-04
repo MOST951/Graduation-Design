@@ -1,1018 +1,779 @@
-# 第6章 系统实现 - 界面图与模块实现
+# 第6章 系统详细设计与实现
 
-## 6.1 数据采集界面图
+本章围绕系统实际工程实现，对前端功能模块、后端服务模块和大数据处理模块进行说明。为保证论文结构统一，第六章每个模块均严格按照第一部分：功能介绍及流程图、第二部分：界面截图描述、第三部分：核心代码的三段式结构撰写。其中，第一部分从用户角度和系统角度说明模块功能定位、设计目标、技术选型和业务流程，并在末尾附 Mermaid 功能流程图；第二部分描述页面布局、功能区域和用户操作；第三部分给出具有实际意义的核心代码片段，完整代码可在附录或项目源码中查看。
 
-### 6.1.1 界面原型图
+## 6.1 前端功能模块实现
 
-```mermaid
-graph TD
-    subgraph "数据采集模块界面"
-        A[顶部导航栏<br/>Data Collection]
-        B[采集配置面板<br/>Collection Configuration]
-        C[实时监控面板<br/>Real-time Monitoring]
-        D[采集日志面板<br/>Collection Logs]
-        E[统计图表面板<br/>Statistics Charts]
-    end
-    
-    subgraph "采集配置详细界面"
-        B1[关键词输入框<br/>Keyword Input]
-        B2[时间范围选择<br/>Time Range Selector]
-        B3[采集频率设置<br/>Collection Rate]
-        B4[数据源选择<br/>Data Source Selection]
-        B5[高级配置选项<br/>Advanced Options]
-        B6[启动/停止按钮<br/>Start/Stop Buttons]
-    end
-    
-    subgraph "实时监控详细界面"
-        C1[进度条显示<br/>Progress Bar]
-        C2[实时数据流<br/>Real-time Data Stream]
-        C3[采集速率图表<br/>Collection Rate Chart]
-        C4[错误计数器<br/>Error Counter]
-        C5[成功计数器<br/>Success Counter]
-        C6[状态指示器<br/>Status Indicator]
-    end
-    
-    subgraph "采集日志详细界面"
-        D1[日志级别筛选<br/>Log Level Filter]
-        D2[时间范围筛选<br/>Time Range Filter]
-        D3[关键词筛选<br/>Keyword Filter]
-        D4[日志列表展示<br/>Log List Display]
-        D5[日志详情弹窗<br/>Log Detail Modal]
-        D6[日志导出功能<br/>Log Export Function]
-    end
-    
-    subgraph "统计图表详细界面"
-        E1[采集总量趋势图<br/>Total Collection Trend]
-        E2[成功率饼图<br/>Success Rate Pie Chart]
-        E3[关键词分布图<br/>Keyword Distribution]
-        E4[时间分布热力图<br/>Time Distribution Heatmap]
-        E5[错误类型统计<br/>Error Type Statistics]
-        E6[性能指标仪表盘<br/>Performance Metrics Dashboard]
-    end
-    
-    A --> B
-    A --> C
-    A --> D
-    A --> E
-    
-    B --> B1
-    B --> B2
-    B --> B3
-    B --> B4
-    B --> B5
-    B --> B6
-    
-    C --> C1
-    C --> C2
-    C --> C3
-    C --> C4
-    C --> C5
-    C --> C6
-    
-    D --> D1
-    D --> D2
-    D --> D3
-    D --> D4
-    D --> D5
-    D --> D6
-    
-    E --> E1
-    E --> E2
-    E --> E3
-    E --> E4
-    E --> E5
-    E --> E6
-    
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#fce4ec
-```
+前端工程位于 `web-frontend` 目录，采用 Vue 3 组件化方式实现，主要承担用户交互、任务配置、状态展示和可视化分析职责。前端不直接执行模型推理和数据库写入，而是通过 HTTP API 调用 Flask 与 Spring Boot 后端服务。
 
-### 6.1.2 界面截图描述
+### 6.1.1 数据采集模块
 
-#### 主界面布局
-- **顶部导航栏**: 显示"数据采集"模块标题，提供快速切换到其他模块的导航
-- **左侧配置面板**: 包含采集参数配置、任务管理、高级设置
-- **中央监控区域**: 实时显示采集进度、数据流、状态指示器
-- **右侧统计面板**: 展示采集统计数据、图表分析、性能指标
+#### 第一部分：功能介绍及流程图
 
-#### 交互功能
-- **拖拽式配置**: 支持拖拽调整采集参数顺序
-- **实时预览**: 采集过程中实时预览数据样本
-- **一键启动**: 支持保存配置模板，一键启动采集任务
-- **智能推荐**: 基于历史数据推荐最优采集参数
+数据采集模块的功能定位是采集微博数据并形成后续分析所需的数据源。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
 
-## 6.2 情感分析可视化界面图
+在设计目标上，数据采集模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Vue 3 表单组件、Flask/Spring Boot 接口和 MySQL 存储，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
 
-### 6.2.1 界面原型图
+该模块的核心业务流程为：前端负责参数输入和状态展示，后端负责任务创建、爬虫调度、异常记录和数据落库。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
 
 ```mermaid
-graph TD
-    subgraph "情感分析可视化界面"
-        A[功能选项卡<br/>Function Tabs]
-        B[分析配置面板<br/>Analysis Configuration]
-        C[结果展示区域<br/>Results Display Area]
-        D[分析工具栏<br/>Analysis Toolbar]
-        E[状态信息栏<br/>Status Information Bar]
-    end
-    
-    subgraph "分析配置详细界面"
-        B1[分析方法选择<br/>Analysis Method Selection]
-        B2[数据源选择<br/>Data Source Selection]
-        B3[批处理设置<br/>Batch Processing Settings]
-        B4[输出格式配置<br/>Output Format Configuration]
-        B5[高级参数设置<br/>Advanced Parameter Settings]
-        B6[执行分析按钮<br/>Execute Analysis Button]
-    end
-    
-    subgraph "结果展示详细界面"
-        C1[情感分布饼图<br/>Sentiment Distribution Pie Chart]
-        C2[情感趋势折线图<br/>Sentiment Trend Line Chart]
-        C3[情感强度直方图<br/>Sentiment Intensity Histogram]
-        C4[关键词情感云图<br/>Keyword Sentiment Word Cloud]
-        C5[分析结果表格<br/>Analysis Results Table]
-        C6[置信度分布图<br/>Confidence Distribution Chart]
-    end
-    
-    subgraph "分析工具详细界面"
-        D1[数据筛选器<br/>Data Filter]
-        D2[时间范围选择器<br/>Time Range Selector]
-        D3[导出功能按钮<br/>Export Function Buttons]
-        D4[视图切换按钮<br/>View Switch Buttons]
-        D5[刷新按钮<br/>Refresh Button]
-        D6[帮助按钮<br/>Help Button]
-    end
-    
-    subgraph "状态信息详细界面"
-        E1[处理进度条<br/>Processing Progress Bar]
-        E2[处理速度显示<br/>Processing Speed Display]
-        E3[已处理数量<br/>Processed Count Display]
-        E4[剩余时间估算<br/>Remaining Time Estimation]
-        E5[错误信息显示<br/>Error Information Display]
-        E6[系统资源使用<br/>System Resource Usage]
-    end
-    
-    A --> B
-    A --> C
-    A --> D
-    A --> E
-    
-    B --> B1
-    B --> B2
-    B --> B3
-    B --> B4
-    B --> B5
-    B --> B6
-    
-    C --> C1
-    C --> C2
-    C --> C3
-    C --> C4
-    C --> C5
-    C --> C6
-    
-    D --> D1
-    D --> D2
-    D --> D3
-    D --> D4
-    D --> D5
-    D --> D6
-    
-    E --> E1
-    E --> E2
-    E --> E3
-    E --> E4
-    E --> E5
-    E --> E6
-    
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#fce4ec
+flowchart TD
+    S([开始]) --> A[用户进入数据采集页面]
+    A --> B[/填写关键词、数量、时间范围/]
+    B --> C{参数是否完整}
+    C -- 否 --> D[提示用户补全参数]
+    D --> B
+    C -- 是 --> E[前端提交采集请求]
+    E --> F[后端创建采集任务]
+    F --> G[爬虫服务采集微博数据]
+    G --> H[写入weibo_core_data和采集日志]
+    H --> I[返回任务状态]
+    I --> T([结束])
 ```
 
-### 6.2.2 可视化图表详细说明
+图6-1 数据采集模块流程图
 
-#### 情感分布饼图
-- **图表类型**: 环形饼图 (Donut Chart)
-- **数据维度**: 正面、中性、负面情感占比
-- **交互功能**: 
-  - 鼠标悬停显示具体数值和百分比
-  - 点击扇区查看详细数据列表
-  - 支持图例点击显示/隐藏对应数据
-- **动画效果**: 数据加载时的渐进式动画，切换时的平滑过渡
+#### 第二部分：界面截图描述
 
-#### 情感趋势折线图
-- **图表类型**: 多系列折线图 (Multi-line Chart)
-- **X轴**: 时间维度（支持小时/天/周/月切换）
-- **Y轴**: 情感得分范围 [-1, 1]
-- **系列线条**: 
-  - 平均情感得分趋势
-  - 正面情感占比趋势
-  - 负面情感占比趋势
-- **高级功能**: 
-  - 数据缩放和平移
-  - 数据点悬停详情
-  - 趋势线拟合
-  - 异常点标注
+图6-2 数据采集页面展示的是数据采集模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
 
-## 6.3 热点话题分析界面图
+用户在该界面上可以完成与数据采集相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
 
-### 6.3.1 界面原型图
+#### 第三部分：核心代码
+
+平台数据采集模块的部分核心代码如下：
+
+```javascript
+const payload = { keyword: form.keyword, limit: form.limit, start_time: form.startTime, end_time: form.endTime }
+const result = await request.post('/api/crawler/start', payload)
+taskId.value = result.data.task_id
+await refreshTaskStatus(taskId.value)
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.1.2 数据预处理模块
+
+#### 第一部分：功能介绍及流程图
+
+数据预处理模块的功能定位是提升文本质量并减少噪声数据对模型分析的影响。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，数据预处理模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Python 文本处理、Jieba 分词和 Spark 批处理，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：用户触发预处理任务后，前端提交数据范围，后端读取原始数据并完成清洗，最后保存标准化结果。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
 
 ```mermaid
-graph TD
-    subgraph "热点话题分析界面"
-        A[控制面板<br/>Control Panel]
-        B[词云展示区<br/>Word Cloud Display]
-        C[热门微博列表<br/>Hot Weibo List]
-        D[趋势分析图表<br/>Trend Analysis Charts]
-        E[详情侧边栏<br/>Detail Sidebar]
-    end
-    
-    subgraph "控制面板详细界面"
-        A1[时间范围选择<br/>Time Range Selection]
-        A2[话题数量设置<br/>Topic Count Setting]
-        A3[更新频率控制<br/>Update Frequency Control]
-        A4[数据源筛选<br/>Data Source Filter]
-        A5[排序方式选择<br/>Sort Method Selection]
-        A6[自动刷新开关<br/>Auto Refresh Toggle]
-    end
-    
-    subgraph "词云展示详细界面"
-        B1[动态词云图<br/>Dynamic Word Cloud]
-        B2[词频统计图<br/>Word Frequency Chart]
-        B3[情感色彩映射<br/>Sentiment Color Mapping]
-        B4[交互式筛选<br/>Interactive Filtering]
-        B5[词云样式设置<br/>Word Cloud Style Settings]
-        B6[导出功能<br/>Export Function]
-    end
-    
-    subgraph "热门微博列表详细界面"
-        C1[微博卡片列表<br/>Weibo Card List]
-        C2[排序选项<br/>Sort Options]
-        C3[分页控件<br/>Pagination Controls]
-        C4[批量操作<br/>Batch Operations]
-        C5[收藏功能<br/>Favorite Function]
-        C6[分享功能<br/>Share Function]
-    end
-    
-    subgraph "趋势分析详细界面"
-        D1[话题热度趋势<br/>Topic Popularity Trend]
-        D2[情感变化趋势<br/>Sentiment Change Trend]
-        D3[传播速度分析<br/>Propagation Speed Analysis]
-        D4[地域分布图<br/>Geographic Distribution]
-        D5[用户参与度<br/>User Engagement]
-        D6[时间分布热力图<br/>Time Distribution Heatmap]
-    end
-    
-    subgraph "详情侧边栏详细界面"
-        E1[话题详情面板<br/>Topic Detail Panel]
-        E2[相关话题推荐<br/>Related Topics Recommendation]
-        E3[情感分析结果<br/>Sentiment Analysis Results]
-        E4[关键用户列表<br/>Key Users List]
-        E5[传播路径图<br/>Propagation Path Graph]
-        E6[历史数据对比<br/>Historical Data Comparison]
-    end
-    
-    A --> B
-    A --> C
-    A --> D
-    A --> E
-    
-    A --> A1
-    A --> A2
-    A --> A3
-    A --> A4
-    A --> A5
-    A --> A6
-    
-    B --> B1
-    B --> B2
-    B --> B3
-    B --> B4
-    B --> B5
-    B --> B6
-    
-    C --> C1
-    C --> C2
-    C --> C3
-    C --> C4
-    C --> C5
-    C --> C6
-    
-    D --> D1
-    D --> D2
-    D --> D3
-    D --> D4
-    D --> D5
-    D --> D6
-    
-    E --> E1
-    E --> E2
-    E --> E3
-    E --> E4
-    E --> E5
-    E --> E6
-    
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#fce4ec
+flowchart TD
+    S([开始]) --> A[读取原始微博数据]
+    A --> B[执行去重和空值过滤]
+    B --> C[清理链接、表情和特殊符号]
+    C --> D[中文分词]
+    D --> E[停用词过滤]
+    E --> F[时间和数值字段标准化]
+    F --> G[输出待分析数据]
+    G --> T([结束])
 ```
 
-### 6.3.2 词云图技术实现
+图6-3 数据预处理模块流程图
 
-```vue
-<template>
-  <div class="word-cloud-container">
-    <div ref="wordCloudRef" class="word-cloud"></div>
-    <div class="word-cloud-controls">
-      <el-slider v-model="fontSize" :min="12" :max="48" @change="updateWordCloud" />
-      <el-select v-model="colorScheme" @change="updateWordCloud">
-        <el-option label="情感色彩" value="sentiment" />
-        <el-option label="热度色彩" value="popularity" />
-        <el-option label="彩虹色彩" value="rainbow" />
-      </el-select>
-    </div>
-  </div>
-</template>
+#### 第二部分：界面截图描述
 
-<script setup>
-import { ref, onMounted, watch } from 'vue'
-import * as echarts from 'echarts'
-import 'echarts-wordcloud'
+图6-4 数据预处理页面展示的是数据预处理模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
 
-const wordCloudRef = ref(null)
-const fontSize = ref(24)
-const colorScheme = ref('sentiment')
-const wordCloudData = ref([])
+用户在该界面上可以完成与数据预处理相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
 
-const updateWordCloud = () => {
-  if (!wordCloudRef.value) return
-  
-  const chart = echarts.init(wordCloudRef.value)
-  
-  const option = {
-    series: [{
-      type: 'wordCloud',
-      shape: 'circle',
-      sizeRange: [12, fontSize.value],
-      rotationRange: [-90, 90],
-      rotationStep: 45,
-      gridSize: 8,
-      drawOutOfBound: false,
-      layoutAnimation: true,
-      textStyle: {
-        fontFamily: 'Microsoft YaHei',
-        fontWeight: 'bold',
-        color: (params) => getColorByScheme(params.data, colorScheme.value)
-      },
-      emphasis: {
-        focus: 'self',
-        textStyle: {
-          shadowBlur: 10,
-          shadowColor: 'rgba(0, 0, 0, 0.2)'
-        }
-      },
-      data: wordCloudData.value
-    }]
-  }
-  
-  chart.setOption(option)
-  
-  // 添加点击事件
-  chart.on('click', (params) => {
-    handleWordClick(params.data)
-  })
-}
+#### 第三部分：核心代码
 
-const getColorByScheme = (data, scheme) => {
-  if (scheme === 'sentiment') {
-    return data.sentiment > 0 ? '#52c41a' : 
-           data.sentiment < 0 ? '#f5222d' : '#909399'
-  } else if (scheme === 'popularity') {
-    const intensity = data.popularity / 100
-    return `rgba(24, 144, 255, ${intensity})`
-  } else {
-    const colors = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272']
-    return colors[Math.floor(Math.random() * colors.length)]
-  }
-}
+平台数据预处理模块的部分核心代码如下：
 
+```python
+def clean_text(text: str) -> str:
+    text = re.sub(r'http\S+', '', text)
+    text = re.sub(r'@\S+', '', text)
+    text = re.sub(r'[^\u4e00-\u9fa5A-Za-z0-9]', ' ', text)
+    return text.strip()
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.1.3 情感分析模块
+
+#### 第一部分：功能介绍及流程图
+
+情感分析模块的功能定位是完成微博文本正面、负面和中性三分类。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，情感分析模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括情感词典、ChineseBERT、Flask API 和模型单例加载，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：用户发起分析后，后端先执行词典分析，再根据置信度决定是否调用 ChineseBERT，最后将结果写入情感分析表。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[用户选择待分析微博]
+    A --> B[前端提交分析请求]
+    B --> C[词典情感分析]
+    C --> D{置信度是否达标}
+    D -- 是 --> E[采用词典分析结果]
+    D -- 否 --> F[调用ChineseBERT模型]
+    F --> G[生成深度模型结果]
+    E --> H[保存情感类别、得分和置信度]
+    G --> H
+    H --> I[返回图表统计数据]
+    I --> T([结束])
+```
+
+图6-5 情感分析模块流程图
+
+#### 第二部分：界面截图描述
+
+图6-6 情感分析页面展示的是情感分析模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与情感分析相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台情感分析模块的部分核心代码如下：
+
+```python
+def analyze(self, text: str) -> Dict:
+    dict_label, dict_score = SentimentLexicon.analyze(text)
+    dict_confidence = abs(dict_score)
+    if dict_confidence > self.config.confidence_threshold or self._bert is None:
+        return {'sentiment_class': dict_label, 'score': dict_score, 'confidence': dict_confidence, 'method': 'cascade-lexicon'}
+    bert_result = self._bert.predict(text)
+    return {'sentiment_class': bert_result['label'], 'score': bert_result['score'], 'confidence': bert_result['confidence'], 'method': 'cascade-bert'}
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.1.4 热点话题分析模块
+
+#### 第一部分：功能介绍及流程图
+
+热点话题分析模块的功能定位是发现微博数据中的高频关键词、热门话题和重点微博。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，热点话题分析模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Jieba 分词、词频统计、ECharts 词云和数据库聚合查询，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：前端提交筛选条件，后端统计关键词并关联情感及互动指标，最终返回词云和热门微博数据。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[用户选择时间范围和关键词]
+    A --> B[前端请求热点话题数据]
+    B --> C[后端读取预处理文本]
+    C --> D[提取关键词并统计词频]
+    D --> E[关联情感类别和互动指标]
+    E --> F{是否存在热点内容}
+    F -- 否 --> G[返回暂无数据提示]
+    F -- 是 --> H[生成词云和热门微博列表]
+    G --> T([结束])
+    H --> T
+```
+
+图6-7 热点话题分析模块流程图
+
+#### 第二部分：界面截图描述
+
+图6-8 热点话题分析页面展示的是热点话题分析模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与热点话题分析相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台热点话题分析模块的部分核心代码如下：
+
+```python
+from collections import Counter
+
+def build_wordcloud_data(texts):
+    counter = Counter()
+    for text in texts:
+        words = jieba.lcut(text)
+        counter.update(w for w in words if w not in stop_words and len(w) > 1)
+    return [{'name': word, 'value': count} for word, count in counter.most_common(100)]
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.1.5 实时舆情监控模块
+
+#### 第一部分：功能介绍及流程图
+
+实时舆情监控模块的功能定位是持续观察系统运行状态和舆情变化。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，实时舆情监控模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Vue 定时轮询、Flask 状态接口、统计接口和预警阈值判断，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：用户打开监控页面后，前端周期性请求后端状态接口，后端返回任务状态、情感分布和异常信息，前端实时刷新页面。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[用户进入实时监控页面]
+    A --> B[前端启动定时刷新]
+    B --> C[请求任务状态接口]
+    C --> D[后端查询任务状态和统计数据]
+    D --> E{是否达到预警条件}
+    E -- 是 --> F[显示预警信息]
+    E -- 否 --> G[刷新监控图表]
+    F --> G
+    G --> H{是否继续监控}
+    H -- 是 --> C
+    H -- 否 --> T([结束])
+```
+
+图6-9 实时舆情监控模块流程图
+
+#### 第二部分：界面截图描述
+
+图6-10 实时舆情监控页面展示的是实时舆情监控模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与实时舆情监控相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台实时舆情监控模块的部分核心代码如下：
+
+```javascript
+let timer = null
 onMounted(() => {
-  // 加载词云数据
-  loadWordCloudData()
-  updateWordCloud()
-  
-  // 响应式处理
-  window.addEventListener('resize', () => {
-    if (wordCloudRef.value) {
-      echarts.getInstance(wordCloudRef.value).resize()
-    }
-  })
+  timer = setInterval(async () => {
+    const res = await request.get('/api/pipeline/status')
+    monitorState.value = res.data
+  }, 5000)
 })
-</script>
-
-<style scoped>
-.word-cloud-container {
-  position: relative;
-  width: 100%;
-  height: 500px;
-}
-
-.word-cloud {
-  width: 100%;
-  height: 100%;
-}
-
-.word-cloud-controls {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 10px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-</style>
+onUnmounted(() => clearInterval(timer))
 ```
 
-## 6.4 实时舆情监控模块界面图
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
 
-### 6.4.1 界面原型图
+### 6.1.6 数据流水线管理模块
+
+#### 第一部分：功能介绍及流程图
+
+数据流水线管理模块的功能定位是串联采集、分析、排序和结果入库过程。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，数据流水线管理模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Flask API、PipelineService、MySQL 和后台线程，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：用户触发任务后，后端从数据库读取待处理数据，依次完成情感分析和三维度排序，并将结果写回数据库。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
 
 ```mermaid
-graph TD
-    subgraph "实时舆情监控界面"
-        A[监控配置区<br/>Monitoring Configuration]
-        B[实时数据流<br/>Real-time Data Stream]
-        C[预警通知区<br/>Alert Notification Area]
-        D[监控仪表盘<br/>Monitoring Dashboard]
-        E[历史记录区<br/>History Records Area]
-    end
-    
-    subgraph "监控配置详细界面"
-        A1[关键词管理<br/>Keyword Management]
-        A2[预警规则设置<br/>Alert Rule Configuration]
-        A3[监控频率控制<br/>Monitoring Frequency Control]
-        A4[数据源选择<br/>Data Source Selection]
-        A5[通知方式配置<br/>Notification Method Setup]
-        A6[监控状态控制<br/>Monitoring Status Control]
-    end
-    
-    subgraph "实时数据流详细界面"
-        B1[实时微博流<br/>Real-time Weibo Stream]
-        B2[情感分析流<br/>Sentiment Analysis Stream]
-        B3[热度计算流<br/>Popularity Calculation Stream]
-        B4[异常检测流<br/>Anomaly Detection Stream]
-        B5[数据统计面板<br/>Data Statistics Panel]
-        B6[流控制按钮<br/>Stream Control Buttons]
-    end
-    
-    subgraph "预警通知详细界面"
-        C1[预警级别指示<br/>Alert Level Indicator]
-        C2[预警消息列表<br/>Alert Message List]
-        C3[预警统计图表<br/>Alert Statistics Chart]
-        C4[通知历史记录<br/>Notification History]
-        C5[预警设置面板<br/>Alert Settings Panel]
-        C6[静音模式开关<br/>Mute Mode Toggle]
-    end
-    
-    subgraph "监控仪表盘详细界面"
-        D1[实时情感分布<br/>Real-time Sentiment Distribution]
-        D2[关键词热度排行<br/>Keyword Popularity Ranking]
-        D3[异常事件时间轴<br/>Anomaly Event Timeline]
-        D4[系统性能监控<br/>System Performance Monitoring]
-        D5[数据采集速率<br/>Data Collection Rate]
-        D6[预警响应时间<br/>Alert Response Time]
-    end
-    
-    subgraph "历史记录详细界面"
-        E1[历史数据查询<br/>Historical Data Query]
-        E2[数据导出功能<br/>Data Export Function]
-        E3[趋势分析图表<br/>Trend Analysis Charts]
-        E4[对比分析工具<br/>Comparative Analysis Tools]
-        E5[报告生成功能<br/>Report Generation Function]
-        E6[数据归档管理<br/>Data Archive Management]
-    end
-    
-    A --> B
-    A --> C
-    A --> D
-    A --> E
-    
-    A --> A1
-    A --> A2
-    A --> A3
-    A --> A4
-    A --> A5
-    A --> A6
-    
-    B --> B1
-    B --> B2
-    B --> B3
-    B --> B4
-    B --> B5
-    B --> B6
-    
-    C --> C1
-    C --> C2
-    C --> C3
-    C --> C4
-    C --> C5
-    C --> C6
-    
-    D --> D1
-    D --> D2
-    D --> D3
-    D --> D4
-    D --> D5
-    D --> D6
-    
-    E --> E1
-    E --> E2
-    E --> E3
-    E --> E4
-    E --> E5
-    E --> E6
-    
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#fce4ec
+flowchart TD
+    S([开始]) --> A[用户启动流水线任务]
+    A --> B[读取未处理微博]
+    B --> C{是否存在待处理数据}
+    C -- 否 --> D[返回无数据提示]
+    C -- 是 --> E[执行级联情感分析]
+    E --> F[保存情感分析结果]
+    F --> G[读取待排序微博]
+    G --> H[执行三维度排序]
+    H --> I[保存排序结果并返回Top列表]
+    D --> T([结束])
+    I --> T
 ```
 
-### 6.4.2 WebSocket实时数据流实现
+图6-11 数据流水线管理模块流程图
+
+#### 第二部分：界面截图描述
+
+图6-12 数据流水线管理页面展示的是数据流水线管理模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与数据流水线管理相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台数据流水线管理模块的部分核心代码如下：
+
+```python
+def run_pipeline(self, limit: int = 500) -> Dict:
+    db = get_db_service()
+    unprocessed = db.get_unprocessed_weibos(limit=limit)
+    sentiment_results = self.sentiment_stage.analyze_batch(unprocessed)
+    db.save_sentiment_results(sentiment_results)
+    unranked = db.get_unranked_weibos(limit=limit)
+    ranked = self.ranking_stage.rank(unranked)
+    db.save_tri_dimension_results(ranked, batch_id)
+    return {'status': 'completed', 'top_ranked': ranked[:10]}
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.1.7 可视化展示模块
+
+#### 第一部分：功能介绍及流程图
+
+可视化展示模块的功能定位是将后端统计数据转换为图表和表格。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，可视化展示模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Vue 3、ECharts、统计接口和组件化图表，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：用户选择筛选条件后，前端请求后端统计接口，后端返回结构化数据，前端根据图表类型完成渲染。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[用户进入可视化页面]
+    A --> B[选择图表类型和筛选条件]
+    B --> C[前端请求统计数据]
+    C --> D[后端聚合分析结果]
+    D --> E{是否有可展示数据}
+    E -- 否 --> F[显示暂无数据]
+    E -- 是 --> G[渲染图表和表格]
+    F --> T([结束])
+    G --> T
+```
+
+图6-13 可视化展示模块流程图
+
+#### 第二部分：界面截图描述
+
+图6-14 可视化展示页面展示的是可视化展示模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与可视化展示相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台可视化展示模块的部分核心代码如下：
 
 ```javascript
-class RealtimeMonitor {
-  constructor() {
-    this.ws = null
-    this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 5
-    this.reconnectInterval = 5000
-    this.heartbeatInterval = 30000
-    this.dataBuffer = []
-    this.alertThresholds = {
-      sentimentNegative: 0.6,
-      popularitySpike: 2.0,
-      anomalyDetection: 0.8
+const option = {
+  tooltip: { trigger: 'item' },
+  series: [{
+    type: 'pie',
+    radius: ['40%', '70%'],
+    data: sentimentDistribution.value
+  }]
+}
+chart.setOption(option)
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.1.8 系统管理模块
+
+#### 第一部分：功能介绍及流程图
+
+系统管理模块的功能定位是支撑用户认证、权限控制、任务管理和配置维护。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，系统管理模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Spring Boot、权限判断、管理控制器和日志记录，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：用户登录后，系统根据权限展示管理入口，管理员可维护用户、任务、配置和日志信息。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[用户访问系统管理页面]
+    A --> B[输入账号和密码]
+    B --> C{认证是否通过}
+    C -- 否 --> D[显示登录失败信息]
+    C -- 是 --> E[加载用户权限]
+    E --> F{是否具有管理权限}
+    F -- 否 --> G[拒绝访问]
+    F -- 是 --> H[执行用户、任务或配置管理]
+    H --> I[记录操作日志]
+    D --> T([结束])
+    G --> T
+    I --> T
+```
+
+图6-15 系统管理模块流程图
+
+#### 第二部分：界面截图描述
+
+图6-16 系统管理页面展示的是系统管理模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与系统管理相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台系统管理模块的部分核心代码如下：
+
+```java
+@SpringBootApplication
+@ComponentScan(basePackages = "com.weibo")
+public class WebApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(WebApplication.class, args);
     }
-  }
-  
-  connect() {
-    try {
-      this.ws = new WebSocket(`ws://${window.location.host}/ws/monitor`)
-      
-      this.ws.onopen = () => {
-        console.log('WebSocket连接已建立')
-        this.reconnectAttempts = 0
-        this.startHeartbeat()
-        this.subscribeToKeywords()
-      }
-      
-      this.ws.onmessage = (event) => {
-        this.handleMessage(JSON.parse(event.data))
-      }
-      
-      this.ws.onclose = () => {
-        console.log('WebSocket连接已关闭')
-        this.stopHeartbeat()
-        this.attemptReconnect()
-      }
-      
-      this.ws.onerror = (error) => {
-        console.error('WebSocket错误:', error)
-        this.handleConnectionError(error)
-      }
-      
-    } catch (error) {
-      console.error('WebSocket连接失败:', error)
-      this.attemptReconnect()
-    }
-  }
-  
-  handleMessage(data) {
-    switch (data.type) {
-      case 'sentiment_update':
-        this.updateSentimentDisplay(data.payload)
-        break
-      case 'popularity_spike':
-        this.handlePopularitySpike(data.payload)
-        break
-      case 'anomaly_detected':
-        this.handleAnomalyDetection(data.payload)
-        break
-      case 'keyword_match':
-        this.updateKeywordMatch(data.payload)
-        break
-      case 'system_status':
-        this.updateSystemStatus(data.payload)
-        break
-    }
-  }
-  
-  updateSentimentDisplay(payload) {
-    // 更新情感分布图
-    const sentimentChart = echarts.getInstance('sentiment-chart')
-    if (sentimentChart) {
-      const option = sentimentChart.getOption()
-      option.series[0].data = payload.data
-      sentimentChart.setOption(option)
-    }
-    
-    // 检查负面情感阈值
-    if (payload.negativeRatio > this.alertThresholds.sentimentNegative) {
-      this.triggerAlert({
-        type: 'sentiment_negative',
-        level: 'warning',
-        message: `负面情感比例达到 ${(payload.negativeRatio * 100).toFixed(1)}%`,
-        data: payload
-      })
-    }
-  }
-  
-  handlePopularitySpike(payload) {
-    // 处理热度异常峰值
-    if (payload.spikeFactor > this.alertThresholds.popularitySpike) {
-      this.triggerAlert({
-        type: 'popularity_spike',
-        level: 'critical',
-        message: `关键词"${payload.keyword}"热度异常增长${payload.spikeFactor}倍`,
-        data: payload
-      })
-    }
-    
-    // 更新热度排行
-    this.updatePopularityRanking(payload)
-  }
-  
-  triggerAlert(alert) {
-    // 显示预警通知
-    this.showAlertNotification(alert)
-    
-    // 记录预警历史
-    this.saveAlertToHistory(alert)
-    
-    // 发送外部通知（邮件/短信）
-    this.sendExternalNotification(alert)
-  }
-  
-  subscribeToKeywords() {
-    const keywords = this.getMonitoredKeywords()
-    this.ws.send(JSON.stringify({
-      type: 'subscribe',
-      payload: { keywords }
-    }))
-  }
-  
-  startHeartbeat() {
-    this.heartbeatTimer = setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'ping' }))
-      }
-    }, this.heartbeatInterval)
-  }
-  
-  attemptReconnect() {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++
-      console.log(`尝试重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
-      
-      setTimeout(() => {
-        this.connect()
-      }, this.reconnectInterval)
-    } else {
-      console.error('达到最大重连次数，停止重连')
-      this.showConnectionError()
-    }
-  }
 }
 ```
 
-## 6.5 数据流水线管理模块图
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
 
-### 6.5.1 流程与界面图
+## 6.2 后端服务模块实现
+
+后端服务采用 Java Spring Boot 与 Python Flask 双后端协同架构。Spring Boot 负责用户认证、任务管理和系统管理等结构化业务；Flask 负责情感分析、三维度排序、数据流水线和 Spark 调度等算法密集型业务。
+
+### 6.2.1 Java Spring Boot 后端
+
+#### 第一部分：功能介绍及流程图
+
+Java Spring Boot 后端模块的功能定位是处理认证、采集任务、仪表盘和系统管理等结构化业务。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，Java Spring Boot 后端模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Spring Boot、REST Controller、Service 分层和 MySQL，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：前端请求进入控制器后，后端校验参数、调用业务层、访问数据库，并返回统一 JSON 响应。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
 
 ```mermaid
-graph TD
-    subgraph "数据流水线管理界面"
-        A[流水线设计器<br/>Pipeline Designer]
-        B[任务节点库<br/>Task Node Library]
-        C[流水线列表<br/>Pipeline List]
-        D[执行监控面板<br/>Execution Monitoring Panel]
-        E[调度管理器<br/>Schedule Manager]
-    end
-    
-    subgraph "流水线设计器详细界面"
-        A1[可视化画布<br/>Visual Canvas]
-        A2[节点工具箱<br/>Node Toolbox]
-        A3[属性配置面板<br/>Property Configuration Panel]
-        A4[连线规则设置<br/>Connection Rule Settings]
-        A5[验证检查器<br/>Validation Checker]
-        A6[保存/加载功能<br/>Save/Load Functions]
-    end
-    
-    subgraph "任务节点库详细界面"
-        B1[数据采集节点<br/>Data Collection Nodes]
-        B2[数据预处理节点<br/>Data Preprocessing Nodes]
-        B3[情感分析节点<br/>Sentiment Analysis Nodes]
-        B4[数据存储节点<br/>Data Storage Nodes]
-        B5[通知节点<br/>Notification Nodes]
-        B6[自定义节点<br/>Custom Nodes]
-    end
-    
-    subgraph "流水线列表详细界面"
-        C1[流水线卡片列表<br/>Pipeline Card List]
-        C2[搜索过滤功能<br/>Search Filter Function]
-        C3[排序分组功能<br/>Sort Group Function]
-        C4[批量操作功能<br/>Batch Operations]
-        C5[版本管理功能<br/>Version Management]
-        C6[导入导出功能<br/>Import Export Functions]
-    end
-    
-    subgraph "执行监控详细界面"
-        D1[实时执行状态<br/>Real-time Execution Status]
-        D2[任务进度追踪<br/>Task Progress Tracking]
-        D3[错误日志显示<br/>Error Log Display]
-        D4[性能指标监控<br/>Performance Metrics Monitoring]
-        D5[资源使用情况<br/>Resource Usage Status]
-        D6[执行历史记录<br/>Execution History Records]
-    end
-    
-    subgraph "调度管理详细界面"
-        E1[定时任务配置<br/>Scheduled Task Configuration]
-        E2[触发条件设置<br/>Trigger Condition Settings]
-        E3[依赖关系管理<br/>Dependency Management]
-        E4[调度日历视图<br/>Schedule Calendar View]
-        E5[调度统计报表<br/>Schedule Statistics Report]
-        E6[调度策略配置<br/>Schedule Strategy Configuration]
-    end
-    
-    A --> B
-    A --> C
-    A --> D
-    A --> E
-    
-    A --> A1
-    A --> A2
-    A --> A3
-    A --> A4
-    A --> A5
-    A --> A6
-    
-    B --> B1
-    B --> B2
-    B --> B3
-    B --> B4
-    B --> B5
-    B --> B6
-    
-    C --> C1
-    C --> C2
-    C --> C3
-    C --> C4
-    C --> C5
-    C --> C6
-    
-    D --> D1
-    D --> D2
-    D --> D3
-    D --> D4
-    D --> D5
-    D --> D6
-    
-    E --> E1
-    E --> E2
-    E --> E3
-    E --> E4
-    E --> E5
-    E --> E6
-    
-    style A fill:#e3f2fd
-    style B fill:#f3e5f5
-    style C fill:#e8f5e8
-    style D fill:#fff3e0
-    style E fill:#fce4ec
+flowchart TD
+    S([开始]) --> A[前端发送HTTP请求]
+    A --> B[Controller接收请求]
+    B --> C[校验请求参数]
+    C --> D{校验是否通过}
+    D -- 否 --> E[返回错误响应]
+    D -- 是 --> F[Service处理业务逻辑]
+    F --> G[访问数据库]
+    G --> H[返回JSON结果]
+    E --> T([结束])
+    H --> T
 ```
 
-### 6.5.2 流水线引擎实现
+图6-17 Java Spring Boot 后端流程图
+
+#### 第二部分：界面截图描述
+
+图6-18 Spring Boot 后端支撑页面展示的是Java Spring Boot 后端模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与Java Spring Boot 后端相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台Java Spring Boot 后端模块的部分核心代码如下：
+
+```java
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+    @PostMapping("/login")
+    public Result login(@RequestBody LoginRequest request) {
+        return authService.login(request);
+    }
+}
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.2.2 Python Flask 后端
+
+#### 第一部分：功能介绍及流程图
+
+Python Flask 后端模块的功能定位是承载情感分析、排序、流水线和 Spark 调度等算法业务。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，Python Flask 后端模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Flask Blueprint、Flask-CORS、模型服务和数据库服务，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：前端请求进入 Flask 蓝图后，系统根据业务类型调用模型、数据库或 Spark 服务，最终返回分析结果。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[前端请求Flask接口]
+    A --> B[蓝图路由分发]
+    B --> C[解析请求参数]
+    C --> D{判断业务类型}
+    D -- 模型分析 --> E[调用模型服务]
+    D -- 数据查询 --> F[调用数据库服务]
+    D -- Spark任务 --> G[调用Spark服务]
+    E --> H[返回JSON结果]
+    F --> H
+    G --> H
+    H --> T([结束])
+```
+
+图6-19 Python Flask 后端流程图
+
+#### 第二部分：界面截图描述
+
+图6-20 Flask 后端支撑页面展示的是Python Flask 后端模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与Python Flask 后端相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台Python Flask 后端模块的部分核心代码如下：
+
+```python
+app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+app.register_blueprint(pipeline_bp, url_prefix='/api/pipeline')
+app.register_blueprint(tri_dimension_bp, url_prefix='/api/tri-dimension')
+app.register_blueprint(unified_bp, url_prefix='/api/v2')
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.2.3 双后端协同机制
+
+#### 第一部分：功能介绍及流程图
+
+双后端协同模块的功能定位是分离管理业务与算法业务，提高系统可维护性。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，双后端协同模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Vue API 封装、Spring Boot、Flask 和共享 MySQL，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：用户在统一前端操作，系统根据业务类型调用不同后端，两类后端通过数据库共享数据。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[用户访问前端页面]
+    A --> B{判断请求类型}
+    B -- 管理业务 --> C[调用Spring Boot服务]
+    B -- 分析业务 --> D[调用Flask服务]
+    C --> E[(MySQL数据库)]
+    D --> E
+    D --> F[调用模型或Spark作业]
+    E --> G[返回统一业务数据]
+    F --> G
+    G --> T([结束])
+```
+
+图6-21 双后端协同机制流程图
+
+#### 第二部分：界面截图描述
+
+图6-22 双后端协同页面展示的是双后端协同模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与双后端协同相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台双后端协同模块的部分核心代码如下：
 
 ```javascript
-class PipelineEngine {
-  constructor() {
-    this.pipelines = new Map()
-    this.executingPipelines = new Map()
-    this.taskQueue = []
-    this.maxConcurrentPipelines = 3
-  }
-  
-  createPipeline(pipelineConfig) {
-    const pipeline = {
-      id: this.generateId(),
-      name: pipelineConfig.name,
-      description: pipelineConfig.description,
-      nodes: [],
-      connections: [],
-      variables: {},
-      schedule: pipelineConfig.schedule,
-      status: 'draft',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
-    
-    this.pipelines.set(pipeline.id, pipeline)
-    return pipeline
-  }
-  
-  addNode(pipelineId, nodeConfig) {
-    const pipeline = this.pipelines.get(pipelineId)
-    if (!pipeline) throw new Error('Pipeline not found')
-    
-    const node = {
-      id: this.generateId(),
-      type: nodeConfig.type,
-      name: nodeConfig.name,
-      config: nodeConfig.config,
-      position: nodeConfig.position,
-      status: 'idle',
-      inputs: [],
-      outputs: []
-    }
-    
-    pipeline.nodes.push(node)
-    return node
-  }
-  
-  connectNodes(pipelineId, sourceNodeId, targetNodeId, condition) {
-    const pipeline = this.pipelines.get(pipelineId)
-    if (!pipeline) throw new Error('Pipeline not found')
-    
-    const connection = {
-      id: this.generateId(),
-      source: sourceNodeId,
-      target: targetNodeId,
-      condition: condition || 'success',
-      status: 'active'
-    }
-    
-    pipeline.connections.push(connection)
-    return connection
-  }
-  
-  async executePipeline(pipelineId, triggerData = {}) {
-    const pipeline = this.pipelines.get(pipelineId)
-    if (!pipeline) throw new Error('Pipeline not found')
-    
-    if (this.executingPipelines.has(pipelineId)) {
-      throw new Error('Pipeline is already executing')
-    }
-    
-    if (this.executingPipelines.size >= this.maxConcurrentPipelines) {
-      throw new Error('Maximum concurrent pipelines reached')
-    }
-    
-    // 验证流水线
-    const validation = this.validatePipeline(pipeline)
-    if (!validation.isValid) {
-      throw new Error(`Pipeline validation failed: ${validation.errors.join(', ')}`)
-    }
-    
-    // 创建执行实例
-    const execution = {
-      id: this.generateId(),
-      pipelineId: pipelineId,
-      status: 'running',
-      startTime: new Date(),
-      endTime: null,
-      nodeExecutions: new Map(),
-      variables: { ...pipeline.variables, ...triggerData },
-      logs: []
-    }
-    
-    this.executingPipelines.set(pipelineId, execution)
-    
-    try {
-      // 构建执行图
-      const executionGraph = this.buildExecutionGraph(pipeline)
-      
-      // 拓扑排序
-      const executionOrder = this.topologicalSort(executionGraph)
-      
-      // 按顺序执行节点
-      for (const nodeId of executionOrder) {
-        await this.executeNode(pipelineId, nodeId, execution)
-      }
-      
-      execution.status = 'completed'
-      execution.endTime = new Date()
-      
-    } catch (error) {
-      execution.status = 'failed'
-      execution.error = error.message
-      execution.endTime = new Date()
-      
-      this.logError(pipelineId, error)
-    }
-    
-    return execution
-  }
-  
-  async executeNode(pipelineId, nodeId, execution) {
-    const pipeline = this.pipelines.get(pipelineId)
-    const node = pipeline.nodes.find(n => n.id === nodeId)
-    
-    if (!node) throw new Error(`Node ${nodeId} not found`)
-    
-    const nodeExecution = {
-      id: this.generateId(),
-      nodeId: nodeId,
-      status: 'running',
-      startTime: new Date(),
-      endTime: null,
-      inputs: [],
-      outputs: [],
-      logs: []
-    }
-    
-    execution.nodeExecutions.set(nodeId, nodeExecution)
-    
-    try {
-      // 根据节点类型执行相应逻辑
-      const result = await this.executeNodeByType(node, execution.variables)
-      
-      nodeExecution.status = 'completed'
-      nodeExecution.endTime = new Date()
-      nodeExecution.outputs = result.outputs
-      
-      // 更新执行变量
-      Object.assign(execution.variables, result.variables)
-      
-      // 检查输出连接条件
-      this.checkOutputConditions(pipeline, nodeId, result, execution)
-      
-    } catch (error) {
-      nodeExecution.status = 'failed'
-      nodeExecution.endTime = new Date()
-      nodeExecution.error = error.message
-      
-      throw error
-    }
-  }
-  
-  async executeNodeByType(node, variables) {
-    switch (node.type) {
-      case 'data_collection':
-        return await this.executeDataCollectionNode(node.config, variables)
-      case 'data_preprocessing':
-        return await this.executeDataPreprocessingNode(node.config, variables)
-      case 'sentiment_analysis':
-        return await this.executeSentimentAnalysisNode(node.config, variables)
-      case 'data_storage':
-        return await this.executeDataStorageNode(node.config, variables)
-      case 'notification':
-        return await this.executeNotificationNode(node.config, variables)
-      default:
-        throw new Error(`Unknown node type: ${node.type}`)
-    }
-  }
-  
-  validatePipeline(pipeline) {
-    const errors = []
-    
-    // 检查节点配置
-    for (const node of pipeline.nodes) {
-      if (!node.config || Object.keys(node.config).length === 0) {
-        errors.push(`Node ${node.name} has invalid configuration`)
-      }
-    }
-    
-    // 检查连接有效性
-    for (const connection of pipeline.connections) {
-      const sourceNode = pipeline.nodes.find(n => n.id === connection.source)
-      const targetNode = pipeline.nodes.find(n => n.id === connection.target)
-      
-      if (!sourceNode || !targetNode) {
-        errors.push(`Invalid connection: ${connection.source} -> ${connection.target}`)
-      }
-    }
-    
-    // 检查循环依赖
-    const hasCycle = this.detectCycle(pipeline)
-    if (hasCycle) {
-      errors.push('Pipeline contains cyclic dependencies')
-    }
-    
+const apiMap = {
+  auth: 'http://localhost:8080/api',
+  analysis: 'http://localhost:5000/api'
+}
+export function requestAnalysis(url, data) {
+  return axios.post(`${apiMap.analysis}${url}`, data)
+}
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+## 6.3 大数据处理模块实现
+
+大数据处理模块用于支撑微博数据的批量清洗、离线分析、排序计算和准实时监控。系统通过 Spark 作业服务统一管理作业提交、状态维护和错误处理，并与 Python 业务流水线共同构成数据处理执行层。
+
+### 6.3.1 Spark 伪集群环境搭建
+
+#### 第一部分：功能介绍及流程图
+
+Spark 伪集群模块的功能定位是在单机环境模拟分布式处理流程。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，Spark 伪集群模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Spark local/standalone、spark-submit 和后端作业状态管理，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：用户提交批处理任务后，后端生成 Spark 命令并提交作业，同时记录运行状态和异常信息。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[配置Spark作业参数]
+    A --> B[生成spark-submit命令]
+    B --> C[提交作业到Master]
+    C --> D[Worker执行任务]
+    D --> E{作业是否成功}
+    E -- 否 --> F[记录错误并判断重试]
+    F --> G{是否继续重试}
+    G -- 是 --> C
+    G -- 否 --> T([结束])
+    E -- 是 --> H[更新作业完成状态]
+    H --> T
+```
+
+图6-23 Spark 伪集群环境流程图
+
+#### 第二部分：界面截图描述
+
+图6-24 Spark 伪集群监控页面展示的是Spark 伪集群模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与Spark 伪集群相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台Spark 伪集群模块的部分核心代码如下：
+
+```python
+cmd = ['spark-submit', '--master', self.config.master_url, script_path, '--input', input_path, '--output', output_path]
+process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.3.2 分布式数据预处理
+
+#### 第一部分：功能介绍及流程图
+
+分布式数据预处理模块的功能定位是提升大规模微博文本清洗效率。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，分布式数据预处理模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括PySpark DataFrame、UDF、分区处理和 Parquet 输出，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：后端提交 Spark 作业，Spark 读取原始数据后并行完成去重、清洗和标准化，最后输出结构化结果。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[Spark读取原始数据]
+    A --> B[划分数据分区]
+    B --> C[并行去重和过滤]
+    C --> D[并行文本清洗]
+    D --> E[字段标准化]
+    E --> F[写出清洗结果]
+    F --> T([结束])
+```
+
+图6-25 分布式数据预处理流程图
+
+#### 第二部分：界面截图描述
+
+图6-26 分布式数据预处理页面展示的是分布式数据预处理模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与分布式数据预处理相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台分布式数据预处理模块的部分核心代码如下：
+
+```python
+df = spark.read.json(input_path)
+df = df.dropDuplicates(['weibo_id'])
+df = df.filter(df.content.isNotNull())
+df = df.withColumn('clean_content', clean_text_udf(df.content))
+df.write.mode('overwrite').parquet(output_path)
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.3.3 分布式情感分析实现
+
+#### 第一部分：功能介绍及流程图
+
+分布式情感分析模块的功能定位是对批量微博数据执行情感分类。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，分布式情感分析模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括Spark 批处理调度、Python 模型服务和 MySQL 持久化，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：Spark 负责组织批量数据，Python 服务负责模型推理，最终将情感结果保存到数据库。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[读取批量微博数据]
+    A --> B[按批次组织文本]
+    B --> C[执行词典分析]
+    C --> D{置信度是否足够}
+    D -- 是 --> E[返回词典结果]
+    D -- 否 --> F[调用ChineseBERT推理]
+    E --> G[汇总分析结果]
+    F --> G
+    G --> H[保存情感结果]
+    H --> T([结束])
+```
+
+图6-27 分布式情感分析流程图
+
+#### 第二部分：界面截图描述
+
+图6-28 分布式情感分析页面展示的是分布式情感分析模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与分布式情感分析相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台分布式情感分析模块的部分核心代码如下：
+
+```python
+sentiment_results = []
+for row in weibo_data:
+    result = sentiment_stage.analyze(row['content'])
+    result['weibo_id'] = row['weibo_id']
+    sentiment_results.append(result)
+db.save_sentiment_results(sentiment_results)
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.3.4 三维度排序分布式实现
+
+#### 第一部分：功能介绍及流程图
+
+三维度排序模块的功能定位是从情感、热度和时间三个维度筛选重点微博。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，三维度排序模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括归一化计算、对数热度平滑、时间半衰期和 Spark 并行计算，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：系统读取情感结果和互动指标，计算各维度得分并排序，最终将排名结果写入数据库。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[读取待排序微博]
+    A --> B[计算情感维度]
+    B --> C[计算热度维度]
+    C --> D[计算时间衰减]
+    D --> E[计算综合得分]
+    E --> F{是否完成全部微博计算}
+    F -- 否 --> A
+    F -- 是 --> G[按综合得分排序]
+    G --> H[保存排名结果]
+    H --> T([结束])
+```
+
+图6-29 三维度排序分布式流程图
+
+#### 第二部分：界面截图描述
+
+图6-30 三维度排序页面展示的是三维度排序模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与三维度排序相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台三维度排序模块的部分核心代码如下：
+
+```python
+heat = math.log10(1 + reposts * 0.4 + comments * 0.3 + likes * 0.3)
+time_decay = pow(2, -hours_since_publish / self.config.half_life_hours)
+score = 0.4 * sentiment_norm + 0.4 * heat_norm + 0.2 * time_decay
+```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+### 6.3.5 实时流处理实现
+
+#### 第一部分：功能介绍及流程图
+
+实时流处理模块的功能定位是支持舆情数据持续更新和准实时监控。从用户角度看，该模块需要提供清晰的操作入口、明确的状态反馈和可理解的结果展示，使用户能够在不理解底层算法细节的情况下完成业务操作。从系统角度看，该模块需要与前端页面、后端接口、数据库表和分析服务协同工作，保证数据能够按照既定流程稳定流转。
+
+在设计目标上，实时流处理模块重点考虑易用性、稳定性和可扩展性。易用性体现在界面操作步骤清晰，用户能够快速完成任务；稳定性体现在后端需要处理参数校验、异常返回和数据持久化；可扩展性体现在后续可以根据业务规模增加更多配置项或处理策略。该模块涉及的技术选型主要包括前端轮询、Flask 状态接口、任务状态缓存和后续流处理扩展，选择这些技术的原因是它们能够分别满足界面交互、业务处理、数据存储和分析计算需求。
+
+该模块的核心业务流程为：新增数据进入系统后，后端增量处理并更新统计信息，前端持续刷新监控页面。整体流程遵循用户操作前端请求后端处理数据库操作返回结果的链路，保证功能实现与系统总体架构保持一致。
+
+```mermaid
+flowchart TD
+    S([开始]) --> A[新增微博进入系统]
+    A --> B[增量读取数据]
+    B --> C[执行清洗和分析]
+    C --> D[更新统计结果]
+    D --> E{是否达到预警条件}
+    E -- 是 --> F[生成预警事件]
+    E -- 否 --> G[刷新实时数据]
+    F --> G
+    G --> H{是否继续监听}
+    H -- 是 --> B
+    H -- 否 --> T([结束])
+```
+
+图6-31 实时流处理流程图
+
+#### 第二部分：界面截图描述
+
+图6-32 实时流处理页面展示的是实时流处理模块的实际页面效果，实际截图后续可手动插入论文。该页面通常由顶部标题区、参数或筛选区、操作按钮区、结果展示区和状态反馈区组成。标题区用于说明当前功能位置，参数区用于输入业务条件，操作区用于触发查询、分析或管理动作，结果区用于展示后端返回的数据，状态区用于提示任务执行情况或异常信息。
+
+用户在该界面上可以完成与实时流处理相关的主要操作，例如配置参数、提交任务、查看结果、刷新状态和检查异常提示。界面设计时需要保证关键按钮位置清晰，表格和图表信息层次明确，使用户能够快速理解系统当前处理进度和分析结果。
+
+#### 第三部分：核心代码
+
+平台实时流处理模块的部分核心代码如下：
+
+```python
+def get_status(self) -> Dict:
     return {
-      isValid: errors.length === 0,
-      errors: errors
+        'running': self._running,
+        'last_result': self._last_result,
+        'bert_available': self.sentiment_stage._bert is not None
     }
-  }
-}
 ```
+
+如果需要展示完整业务实现，可在论文附录中补充完整代码。
+
+## 6.4 本章小结
+
+本章按照固定三段式结构，对系统前端功能模块、后端服务模块和大数据处理模块的实现进行了说明。每个模块均从功能定位、用户操作、系统处理、技术选型、界面布局和核心代码等角度展开，既说明了系统功能如何呈现给用户，也说明了后端如何完成业务处理和数据流转。
+
+通过本章实现描述可以看出，系统已经形成从微博采集、数据预处理、情感分析、热点话题发现、实时监控、数据流水线到可视化展示的完整闭环。各模块通过统一接口和数据库协同工作，提高了系统的可维护性、可扩展性和工程实现完整性。

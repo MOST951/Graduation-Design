@@ -18,7 +18,7 @@ const Dashboard = defineAsyncComponent(() => import('@/views/Dashboard.vue'));
 const DataCollection = defineAsyncComponent(() => import('@/views/DataCollection.vue'));
 const DataPreprocessEnhanced = defineAsyncComponent(() => import('@/views/DataPreprocessEnhanced.vue'));
 const SentimentAnalysis = defineAsyncComponent(() => import('@/views/SentimentAnalysis.vue'));
-const DualDimensionAnalysis = defineAsyncComponent(() => import('@/views/DualDimensionAnalysis.vue'));
+const TriDimensionAnalysis = defineAsyncComponent(() => import('@/views/TriDimensionAnalysis.vue'));
 const RealTimeMonitor = defineAsyncComponent(() => import('@/views/RealTimeMonitor.vue'));
 const PipelineManager = defineAsyncComponent(() => import('@/views/PipelineManager.vue'));
 const VisualizationDashboard = defineAsyncComponent(() => import('@/views/VisualizationDashboard.vue'));
@@ -84,10 +84,10 @@ const routes: RouteRecordRaw[] = [
       
       // 4. 
       {
-        path: 'dual-dimension',
-        name: 'DualDimensionAnalysis',
-        component: DualDimensionAnalysis,
-        meta: { title: 'dual dimension ranking', icon: 'Histogram' }
+        path: 'tri-dimension',
+        name: 'TriDimensionAnalysis',
+        component: TriDimensionAnalysis,
+        meta: { title: 'tri dimension ranking', icon: 'Histogram' }
       },
       
       // 5. 

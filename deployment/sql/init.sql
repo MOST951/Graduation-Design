@@ -1,85 +1,61 @@
 -- ===================================================================
--- 微博情感分析系统 - 数据库初始化脚本
+-- 微博情感分析系统 - 数据库初始化脚本（唯一 SQL 入口）
 -- ===================================================================
--- 说明: 此脚本由 Docker MySQL 容器自动执行
---       数据库和用户已由 MYSQL_DATABASE / MYSQL_USER 环境变量创建
---       此脚本只负责建表和初始数据
+-- 数据库: weibo_sentiment
+-- 说明: 此脚本由 Docker MySQL 容器自动执行，也可手动运行
+--       包含系统运行所需的全部 9 张表和初始数据
+-- 表清单:
+--   1. users                      - 系统用户表
+--   2. weibo_core_data            - 微博核心数据表
+--   3. sentiment_analysis_results - 情感分析结果表
+--   4. tri_dimension_ranking      - 三维度排序结果表（核心创新点）
+--   5. crawl_batch_log            - 爬虫批次日志表
+--   6. crawl_request_log          - 爬虫请求日志表
+--   7. data_quality_log           - 数据质量日志表
+--   8. crawl_tasks                - 采集任务持久化表
+--   9. system_configs             - 系统配置表
 -- ===================================================================
+
+CREATE DATABASE IF NOT EXISTS weibo_sentiment
+    DEFAULT CHARACTER SET utf8mb4
+    DEFAULT COLLATE utf8mb4_unicode_ci;
+
+USE weibo_sentiment;
 
 SET NAMES utf8mb4;
 SET CHARACTER SET utf8mb4;
 
--- ---------------------------------
--- 2. Table Creation
--- ---------------------------------
 
--- Users Table
-CREATE TABLE IF NOT EXISTS users (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  username VARCHAR(50) NOT NULL UNIQUE,
-  password VARCHAR(255) NOT NULL,
-  email VARCHAR(100) UNIQUE,
-  roles VARCHAR(255) NOT NULL,
-  status VARCHAR(20) NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- ===================================================================
+-- 1. users - 系统用户表
+-- 来源: auth_service.py._ensure_user_table
+-- ===================================================================
+CREATE TABLE IF NOT EXISTS `users` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '用户ID',
+    `username` VARCHAR(64) NOT NULL COMMENT '用户名',
+    `password_hash` VARCHAR(255) NOT NULL COMMENT '密码哈希',
+    `salt` VARCHAR(64) NOT NULL COMMENT '密码盐值',
+    `nickname` VARCHAR(64) COMMENT '昵称',
+    `email` VARCHAR(255) DEFAULT '' COMMENT '邮箱地址',
+    `avatar` VARCHAR(512) DEFAULT '/avatars/default.png' COMMENT '头像URL',
+    `role` ENUM('admin', 'user') DEFAULT 'user' COMMENT '角色',
+    `status` ENUM('active', 'inactive', 'banned') DEFAULT 'active' COMMENT '状态',
+    `last_login_at` DATETIME COMMENT '最后登录时间',
+    `last_login_ip` VARCHAR(64) COMMENT '最后登录IP',
+    `login_count` INT DEFAULT 0 COMMENT '登录次数',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY `uk_username` (`username`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='系统用户表';
 
--- Collection Task Table
-CREATE TABLE IF NOT EXISTS collection_task (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  task_name VARCHAR(255) NOT NULL,
-  keywords TEXT NOT NULL,
-  status VARCHAR(20) NOT NULL,
-  start_time DATETIME,
-  end_time DATETIME,
-  user_id BIGINT,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Sentiment Result Table
-CREATE TABLE IF NOT EXISTS sentiment_result (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  task_id BIGINT,
-  weibo_id VARCHAR(50) NOT NULL UNIQUE,
-  content TEXT,
-  sentiment VARCHAR(20),
-  confidence DOUBLE,
-  publish_time DATETIME,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (task_id) REFERENCES collection_task(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- Spark Jobs Table
-CREATE TABLE IF NOT EXISTS spark_jobs (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  job_id VARCHAR(255) NOT NULL UNIQUE,
-  job_name VARCHAR(255) NOT NULL,
-  status VARCHAR(255) NOT NULL,
-  submit_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  finish_time DATETIME,
-  arguments TEXT
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- System Log Table
-CREATE TABLE IF NOT EXISTS system_log (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  username VARCHAR(50),
-  operation VARCHAR(255),
-  method VARCHAR(255),
-  params TEXT,
-  execution_time BIGINT,
-  ip_address VARCHAR(50),
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ---------------------------------
--- 3. Core Data Tables (Python Backend)
--- ---------------------------------
-
--- 微博核心数据表
+-- ===================================================================
+-- 2. weibo_core_data - 微博核心数据表
+-- 来源: database_service.py._create_table
+-- ===================================================================
 CREATE TABLE IF NOT EXISTS `weibo_core_data` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
     `weibo_id` BIGINT NOT NULL COMMENT '微博ID',
@@ -102,7 +78,7 @@ CREATE TABLE IF NOT EXISTS `weibo_core_data` (
     `keyword` VARCHAR(128) COMMENT '采集关键词',
     `batch_id` VARCHAR(64) COMMENT '采集批次ID',
     `is_processed` TINYINT DEFAULT 0 COMMENT '是否已情感分析',
-    `is_ranked` TINYINT DEFAULT 0 COMMENT '是否已双维度排序',
+    `is_ranked` TINYINT DEFAULT 0 COMMENT '是否已三维度排序',
     `graduation_batch` TINYINT DEFAULT 1 COMMENT '毕业设计批次标记',
     `student_id` VARCHAR(20) DEFAULT '2022407443' COMMENT '学号',
     `update_count` INT DEFAULT 0 COMMENT '更新次数',
@@ -114,9 +90,13 @@ CREATE TABLE IF NOT EXISTS `weibo_core_data` (
     INDEX `idx_batch_id` (`batch_id`),
     INDEX `idx_graduation` (`graduation_batch`, `student_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-COMMENT='微博核心数据表 - 毕业设计';
+COMMENT='微博核心数据表';
 
--- 情感分析结果表
+
+-- ===================================================================
+-- 3. sentiment_analysis_results - 情感分析结果表
+-- 来源: database_service.py._create_table
+-- ===================================================================
 CREATE TABLE IF NOT EXISTS `sentiment_analysis_results` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
     `weibo_id` BIGINT NOT NULL COMMENT '微博ID',
@@ -142,10 +122,15 @@ CREATE TABLE IF NOT EXISTS `sentiment_analysis_results` (
     INDEX `idx_analysis_time` (`analysis_time`),
     INDEX `idx_graduation` (`graduation_flag`, `student_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-COMMENT='情感分析结果表 - 毕业设计';
+COMMENT='情感分析结果表';
 
--- 双维度排序结果表
-CREATE TABLE IF NOT EXISTS `dual_dimension_ranking` (
+
+-- ===================================================================
+-- 4. tri_dimension_ranking - 三维度排序结果表（核心创新点）
+-- 来源: database_service.py._create_table
+-- 公式: C = α × |sentiment| + β × popularity × time_decay
+-- ===================================================================
+CREATE TABLE IF NOT EXISTS `tri_dimension_ranking` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
     `weibo_id` BIGINT NOT NULL COMMENT '微博ID',
     `sentiment_score` DECIMAL(5,4) DEFAULT 0 COMMENT '情感得分',
@@ -156,9 +141,10 @@ CREATE TABLE IF NOT EXISTS `dual_dimension_ranking` (
     `raw_popularity` DECIMAL(10,4) DEFAULT 0 COMMENT '原始热度(log平滑后)',
     `popularity_score` DECIMAL(10,4) DEFAULT 0 COMMENT '归一化热度得分',
     `popularity_class` ENUM('high','medium','low') DEFAULT 'low' COMMENT '热度等级',
-    `time_decay` DECIMAL(5,4) DEFAULT 1 COMMENT '时间衰减因子γ(t)',
+    `time_decay` DECIMAL(5,4) DEFAULT 1 COMMENT '时间衰减因子γ(Δt)',
     `alpha_weight` DECIMAL(3,2) DEFAULT 0.40 COMMENT '情感权重ω₁',
     `beta_weight` DECIMAL(3,2) DEFAULT 0.40 COMMENT '热度权重ω₂',
+    `gamma_weight` DECIMAL(3,2) DEFAULT 0.20 COMMENT '时效性权重ω₃',
     `composite_score` DECIMAL(10,4) DEFAULT 0 COMMENT '综合排序得分',
     `ranking_position` INT DEFAULT 0 COMMENT '排名位置',
     `batch_id` VARCHAR(64) COMMENT '计算批次ID',
@@ -172,9 +158,13 @@ CREATE TABLE IF NOT EXISTS `dual_dimension_ranking` (
     INDEX `idx_calculation_time` (`calculation_time`),
     INDEX `idx_graduation` (`graduation_flag`, `student_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-COMMENT='双维度排序结果表 - 毕业设计核心创新点';
+COMMENT='三维度排序结果表 - 核心创新点';
 
--- 爬虫批次日志表
+
+-- ===================================================================
+-- 5. crawl_batch_log - 爬虫批次日志表
+-- 来源: database_service.py._create_table
+-- ===================================================================
 CREATE TABLE IF NOT EXISTS `crawl_batch_log` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
     `batch_id` VARCHAR(64) NOT NULL COMMENT '批次ID',
@@ -197,7 +187,11 @@ CREATE TABLE IF NOT EXISTS `crawl_batch_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='爬虫批次日志表';
 
--- 爬虫请求日志表
+
+-- ===================================================================
+-- 6. crawl_request_log - 爬虫请求日志表
+-- 来源: database_service.py._create_table
+-- ===================================================================
 CREATE TABLE IF NOT EXISTS `crawl_request_log` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
     `batch_id` VARCHAR(64) COMMENT '批次ID',
@@ -213,7 +207,11 @@ CREATE TABLE IF NOT EXISTS `crawl_request_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='爬虫请求日志表';
 
--- 数据质量日志表
+
+-- ===================================================================
+-- 7. data_quality_log - 数据质量日志表
+-- 来源: database_service.py._create_table
+-- ===================================================================
 CREATE TABLE IF NOT EXISTS `data_quality_log` (
     `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
     `batch_id` VARCHAR(64) COMMENT '批次ID',
@@ -230,25 +228,72 @@ CREATE TABLE IF NOT EXISTS `data_quality_log` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='数据质量日志表';
 
--- 系统配置表
+
+-- ===================================================================
+-- 8. crawl_tasks - 采集任务持久化表
+-- 来源: database_service.py._create_table
+-- ===================================================================
+CREATE TABLE IF NOT EXISTS `crawl_tasks` (
+    `id` BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
+    `task_id` VARCHAR(64) NOT NULL COMMENT '任务ID',
+    `sys_user_id` VARCHAR(64) DEFAULT '' COMMENT '系统用户标识',
+    `keywords` JSON COMMENT '采集关键词列表',
+    `pages` INT DEFAULT 3 COMMENT '采集页数',
+    `crawl_hot` TINYINT DEFAULT 0 COMMENT '是否爬取热搜',
+    `status` VARCHAR(20) DEFAULT 'pending' COMMENT '任务状态',
+    `progress` INT DEFAULT 0 COMMENT '进度百分比',
+    `collected` INT DEFAULT 0 COMMENT '已采集条数',
+    `start_time` DATETIME COMMENT '开始时间',
+    `end_time` DATETIME COMMENT '结束时间',
+    `error` TEXT COMMENT '错误信息',
+    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at` DATETIME ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY `uk_task_id` (`task_id`),
+    INDEX `idx_sys_user_id` (`sys_user_id`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='采集任务持久化表';
+
+
+-- ===================================================================
+-- 9. system_configs - 系统配置表
+-- 来源: database_service.py._create_table, tri_dimension_model.py
+-- ===================================================================
 CREATE TABLE IF NOT EXISTS `system_configs` (
     `id` INT AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键',
     `config_key` VARCHAR(64) NOT NULL COMMENT '配置键',
     `config_value` TEXT COMMENT '配置值',
     `config_type` VARCHAR(32) DEFAULT 'string' COMMENT '配置类型',
+    `config_group` VARCHAR(64) DEFAULT 'system' COMMENT '配置分组',
     `description` VARCHAR(256) COMMENT '描述',
+    `status` TINYINT DEFAULT 1 COMMENT '是否启用(0:禁用 1:启用)',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    UNIQUE KEY `uk_config_key` (`config_key`)
+    UNIQUE KEY `uk_config_key` (`config_key`),
+    INDEX `idx_config_group` (`config_group`),
+    INDEX `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='系统配置表';
 
--- ---------------------------------
--- 4. Initial Data Insertion
--- ---------------------------------
 
--- Insert a default admin user
--- IMPORTANT: The password 'admin' is insecure. Change it immediately after first login.
--- The password here is hashed using BCrypt. You should generate a new hash for your password.
-INSERT INTO users (username, password, email, roles, status) 
-VALUES ('admin', '$2a$10$G.A.sV4.gY3.x2.jK8l/..sY.Z.f8.j/2.G/g.Z/g.G/g.Z/g.G', 'admin@example.com', 'ROLE_ADMIN,ROLE_USER', 'ACTIVE');
+-- ===================================================================
+-- 初始数据
+-- ===================================================================
+
+-- 三维度排序默认配置
+INSERT IGNORE INTO `system_configs` (`config_key`, `config_value`, `config_type`, `config_group`, `description`) VALUES
+('sentiment_weight', '0.4', 'float', 'tri_dimension', '情感强度权重ω₁'),
+('heat_weight',      '0.4', 'float', 'tri_dimension', '互动热度权重ω₂'),
+('timeliness_weight','0.2', 'float', 'tri_dimension', '时效性权重ω₃'),
+('decay_half_life',  '12',  'int',   'tri_dimension', '半衰期H(小时)'),
+('version',          'v2.0.0', 'string', 'tri_dimension', '算法版本'),
+('repost_weight',    '3.0', 'float', 'tri_dimension', '转发权重'),
+('comment_weight',   '2.0', 'float', 'tri_dimension', '评论权重'),
+('like_weight',      '1.0', 'float', 'tri_dimension', '点赞权重');
+
+
+-- ===================================================================
+-- 完成
+-- ===================================================================
+SELECT '数据库初始化完成: weibo_sentiment (9张表)' AS message;

@@ -195,10 +195,10 @@ def evaluate_quadrant():
         return jsonify({'code': 500, 'message': str(e)}), 500
 
 
-@evaluation_bp.route('/dual-dimension', methods=['POST'])
-def evaluate_dual_dimension():
+@evaluation_bp.route('/tri-dimension', methods=['POST'])
+def evaluate_tri_dimension():
     """
-    综合评估双维度模型
+    综合评估三维度模型
     
     Body:
         predictions: 预测结果列表
@@ -212,7 +212,7 @@ def evaluate_dual_dimension():
         if not predictions or not ground_truth:
             return jsonify({'code': 400, 'message': '缺少必要参数'}), 400
         
-        report = _evaluator.evaluate_dual_dimension_model(predictions, ground_truth)
+        report = _evaluator.evaluate_tri_dimension_model(predictions, ground_truth)
         
         return jsonify({
             'code': 200,
@@ -239,7 +239,7 @@ def evaluate_dual_dimension():
             }
         })
     except Exception as e:
-        logger.error(f'双维度评估失败: {e}', exc_info=True)
+        logger.error(f'三维度评估失败: {e}', exc_info=True)
         return jsonify({'code': 500, 'message': str(e)}), 500
 
 
@@ -312,12 +312,12 @@ def run_benchmark():
                 sentiment = random.choice(sentiments)
                 quadrant = random.choice(quadrants)
                 heat = random.uniform(0, 1000)
-                dual_score = random.uniform(0, 1)
+                tri_score = random.uniform(0, 1)
             else:
                 sentiment = random.choice(sentiments)
                 quadrant = random.choice(quadrants)
                 heat = random.uniform(0, 1000)
-                dual_score = random.uniform(0, 1)
+                tri_score = random.uniform(0, 1)
             
             true_sentiment = sentiment if random.random() < 0.8 else random.choice(sentiments)
             true_quadrant = quadrant if random.random() < 0.75 else random.choice(quadrants)
@@ -327,19 +327,19 @@ def run_benchmark():
                 'id': i,
                 'sentiment': sentiment,
                 'heat_score': heat,
-                'dual_score': dual_score,
+                'tri_score': tri_score,
                 'quadrant': quadrant,
             })
             ground_truth.append({
                 'id': i,
                 'sentiment': true_sentiment,
                 'heat_score': true_heat,
-                'dual_score': dual_score * (1 + random.uniform(-0.1, 0.1)),
+                'tri_score': tri_score * (1 + random.uniform(-0.1, 0.1)),
                 'quadrant': true_quadrant,
             })
         
         # 运行评估
-        report = _evaluator.evaluate_dual_dimension_model(predictions, ground_truth)
+        report = _evaluator.evaluate_tri_dimension_model(predictions, ground_truth)
         
         return jsonify({
             'code': 200,

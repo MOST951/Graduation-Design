@@ -6,7 +6,7 @@
  * 功能：
  * 1. 数据采集接口
  * 2. 情感分析接口
- * 3. 双维度排序接口
+ * 3. 三维度排序接口
  * 4. 统计分析接口
  * 5. 系统监控接口
  */
@@ -21,7 +21,7 @@ export interface SystemStatus {
     pipeline: boolean;
     spark: boolean;
     hybrid_analyzer: boolean;
-    dual_dimension: boolean;
+    tri_dimension: boolean;
   };
   data_dir: string;
   data_files: {
@@ -79,7 +79,7 @@ export interface SentimentDistribution {
   };
 }
 
-export interface DualDimensionParams {
+export interface TriDimensionParams {
   data?: any[];
   sentiment_weight?: number;
   heat_weight?: number;
@@ -92,7 +92,7 @@ export interface RankedItem {
   text: string;
   sentiment_score: number;
   heat_score: number;
-  dual_score: number;
+  tri_score: number;
   rank: number;
   user_name?: string;
   reposts_count?: number;
@@ -100,7 +100,7 @@ export interface RankedItem {
   attitudes_count?: number;
 }
 
-export interface DualDimensionResult {
+export interface TriDimensionResult {
   ranked_items: RankedItem[];
   total: number;
   quadrant_distribution: {
@@ -241,15 +241,15 @@ export async function getSentimentDistribution(): Promise<SentimentDistribution>
   return response.data.data;
 }
 
-// ==================== 双维度排序 ====================
+// ==================== 三维度排序 ====================
 
 /**
- * 执行双维度排序
+ * 执行三维度排序
  */
-export async function rankDualDimension(
-  params: DualDimensionParams = {}
-): Promise<DualDimensionResult> {
-  const response = await apiClient.post('/v2/ranking/dual-dimension', params);
+export async function rankTriDimension(
+  params: TriDimensionParams = {}
+): Promise<TriDimensionResult> {
+  const response = await apiClient.post('/v2/ranking/tri-dimension', params);
   return response.data.data;
 }
 
@@ -363,8 +363,8 @@ export default {
   getSentimentDistribution,
   getSentimentDistributionCached,
   
-  // 双维度排序
-  rankDualDimension,
+  // 三维度排序
+  rankTriDimension,
   getQuadrantAnalysis,
   
   // 统计分析

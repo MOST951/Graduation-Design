@@ -22,9 +22,9 @@ from spark.sentiment_analyzer import (
     SparkClusterManager,
     analyze_weibo_sentiment
 )
-from spark.dual_dimension_model import (
-    DualDimensionRankingModel,
-    DualDimensionConfig,
+from spark.tri_dimension_model import (
+    TriDimensionRankingModel,
+    TriDimensionConfig,
     rank_weibo_data,
     WeiboItem
 )
@@ -63,6 +63,22 @@ def load_metadata():
             with open(METADATA_FILE, 'r', encoding='utf-8') as f:
                 crawl_tasks = json.load(f)
             logger.info(f"已加载 {len(crawl_tasks)} 条采集任务记录")
+            
+            # 将服务重启前未完成的任务标记为失败
+            interrupted = 0
+            for tid, task in crawl_tasks.items():
+                if task.get('status') in ('crawling', 'processing', 'running'):
+                    task['status'] = 'failed'
+                    task['error'] = '服务重启，任务中断'
+                    task['end_time'] = datetime.now().isoformat()
+                    # 同步更新 phases 中正在运行的阶段
+                    for phase in task.get('phases', {}).values():
+                        if phase.get('status') == 'running':
+                            phase['status'] = 'failed'
+                    interrupted += 1
+            if interrupted:
+                logger.warning(f"已将 {interrupted} 个中断任务标记为失败")
+                save_metadata()
             
         if os.path.exists(ANALYSIS_META_FILE):
             with open(ANALYSIS_META_FILE, 'r', encoding='utf-8') as f:
@@ -705,12 +721,12 @@ def realtime_analyze():
         }), 500
 
 
-# ==================== 双维度排序API ====================
+# ==================== 三维度排序API ====================
 
-@weibo_bp.route('/rank/dual', methods=['POST'])
-def dual_dimension_rank():
+@weibo_bp.route('/rank/tri-dimension', methods=['POST'])
+def tri_dimension_rank():
     """
-    情感-热度双维度排序
+    情感-热度三维度排序
     
     创新点：融合情感强度和传播热度两个维度进行综合排序
     
@@ -743,7 +759,7 @@ def dual_dimension_rank():
                 item['sentiment_score'] = score
                 item['sentiment_label'] = sentiment
         
-        # 执行双维度排序
+        # 执行三维度排序
         ranked_data = rank_weibo_data(
             weibo_data, 
             sentiment_weight=sentiment_weight,
@@ -798,7 +814,7 @@ def dual_dimension_rank():
                 'id': item.get('id', ''),
                 'text': item.get('text', ''),
                 'rank': item.get('rank', 0),
-                'dual_score': round(item.get('dual_score', 0), 4),
+                'tri_score': round(item.get('tri_score', 0), 4),
                 'quadrant': quadrant,
                 'sentiment': {
                     'polarity': polarity,
@@ -817,10 +833,10 @@ def dual_dimension_rank():
             formatted_items.append(formatted_item)
         
         # 保存分析结果
-        analysis_id = f"dual_analysis_{int(time.time() * 1000)}"
+        analysis_id = f"tri_analysis_{int(time.time() * 1000)}"
         result = {
             'id': analysis_id,
-            'type': 'dual_dimension',
+            'type': 'tri_dimension',
             'data': formatted_items,
             'config': {
                 'sentiment_weight': sentiment_weight,
@@ -851,7 +867,7 @@ def dual_dimension_rank():
         })
         
     except Exception as e:
-        logger.error(f'双维度排序失败: {e}', exc_info=True)
+        logger.error(f'三维度排序失败: {e}', exc_info=True)
         return jsonify({
             'code': 500,
             'message': str(e)
@@ -861,10 +877,10 @@ def dual_dimension_rank():
 @weibo_bp.route('/rank/config', methods=['GET', 'POST'])
 def rank_config():
     """
-    获取或设置双维度排序配置
+    获取或设置三维度排序配置
     """
     if request.method == 'GET':
-        config = DualDimensionConfig()
+        config = TriDimensionConfig()
         return jsonify({
             'code': 200,
             'message': 'success',
@@ -1047,21 +1063,21 @@ def get_models_info():
         bert_analyzer = ChineseBERTSentimentAnalyzer()
         bert_info = bert_analyzer.get_model_info()
         
-        # 双维度模型信息
-        dual_config = DualDimensionConfig()
+        # 三维度模型信息
+        tri_config = TriDimensionConfig()
         
         return jsonify({
             'code': 200,
             'message': 'success',
             'data': {
                 'bert_model': bert_info,
-                'dual_dimension_model': {
-                    'name': '情感-热度双维度排序模型',
+                'tri_dimension_model': {
+                    'name': '情感-热度三维度排序模型',
                     'description': '融合情感强度和传播热度的综合排序算法',
                     'parameters': {
-                        'sentiment_weight': dual_config.sentiment_weight,
-                        'heat_weight': dual_config.heat_weight,
-                        'timeliness_weight': dual_config.timeliness_weight
+                        'sentiment_weight': tri_config.sentiment_weight,
+                        'heat_weight': tri_config.heat_weight,
+                        'timeliness_weight': tri_config.timeliness_weight
                     }
                 },
                 'lexicon_model': {
@@ -1071,7 +1087,7 @@ def get_models_info():
                     'negation_words_count': len(SentimentLexicon.NEGATION_WORDS),
                     'degree_words_count': len(SentimentLexicon.DEGREE_WORDS)
                 },
-                'available_strategies': ['lexicon', 'bert', 'hybrid', 'dual_dimension']
+                'available_strategies': ['lexicon', 'bert', 'hybrid', 'tri_dimension']
             }
         })
         
@@ -1085,7 +1101,7 @@ def get_models_info():
 
 # ==================== 完整数据流连通API ====================
 # 解决中期检查表中"爬虫数据未与各个模块连通"问题
-# 数据流：微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 双维度排序 → 前端展示
+# 数据流：微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 三维度排序 → 前端展示
 
 @weibo_bp.route('/collect', methods=['POST'])
 def collect_and_process():
@@ -1096,7 +1112,7 @@ def collect_and_process():
     1. 启动爬虫任务，采集微博数据
     2. 采集完成后自动触发Spark清洗作业
     3. 清洗完成后写入HBase
-    4. 最后执行双维度排序
+    4. 最后执行三维度排序
     
     Body参数:
         keywords: 关键词列表
@@ -1151,39 +1167,59 @@ def collect_and_process():
                 # ========== 阶段1: 数据采集 ==========
                 logger.info(f"[{task_id}] 阶段1: 开始数据采集...")
                 task_info['phases']['crawl']['status'] = 'running'
+                task_info['phases']['crawl']['progress'] = 5
+                task_info['progress'] = 2
                 
                 crawler_task = WeiboCrawlerTask(os.path.join(DATA_DIR, 'weibo_raw'))
                 all_data = []
                 
+                # 计算总步骤用于进度
+                hot_topic_n = 3  # 减少热搜话题数避免过慢
+                total_steps = (1 + hot_topic_n if crawl_hot else 0) + len(keywords)
+                finished_steps = 0
+                
+                def update_crawl_progress():
+                    nonlocal finished_steps
+                    finished_steps += 1
+                    pct = min(int(finished_steps / max(total_steps, 1) * 100), 99)
+                    task_info['phases']['crawl']['progress'] = pct
+                    task_info['progress'] = int(pct * 0.2)  # 爬虫占总进度20%
+                    task_info['collected'] = len(all_data)
+                
                 # 爬取热搜
                 if crawl_hot:
-                    task_info['progress'] = 5
                     try:
                         hot_list = crawler_task.crawl_hot_search(save=True)
-                        task_info['progress'] = 10
+                        update_crawl_progress()
+                        logger.info(f"[{task_id}] 热搜榜爬取完成，共 {len(hot_list)} 条")
                         
-                        # 爬取热搜话题的微博
+                        # 爬取热搜话题的微博（减少数量加速）
                         hot_weibo = crawler_task.crawl_hot_topics(
-                            top_n=5, 
+                            top_n=hot_topic_n, 
                             pages_per_topic=pages, 
                             save=True
                         )
                         all_data.extend(hot_weibo)
-                        task_info['progress'] = 15
+                        update_crawl_progress()
+                        logger.info(f"[{task_id}] 热搜话题微博爬取完成，共 {len(hot_weibo)} 条")
                     except Exception as e:
                         logger.warning(f"热搜爬取部分失败: {e}")
+                        finished_steps += 2  # 跳过这些步骤
                 
                 # 按关键词爬取
                 if keywords:
-                    try:
-                        keyword_weibo = crawler_task.crawl_by_keywords(
-                            keywords, 
-                            pages=pages, 
-                            save=True
-                        )
-                        all_data.extend(keyword_weibo)
-                    except Exception as e:
-                        logger.warning(f"关键词爬取部分失败: {e}")
+                    for kw in keywords:
+                        try:
+                            kw_data = crawler_task.crawl_by_keywords(
+                                [kw], 
+                                pages=pages, 
+                                save=True
+                            )
+                            all_data.extend(kw_data)
+                            logger.info(f"[{task_id}] 关键词 '{kw}' 爬取完成，共 {len(kw_data)} 条")
+                        except Exception as e:
+                            logger.warning(f"关键词 '{kw}' 爬取失败: {e}")
+                        update_crawl_progress()
                 
                 task_info['progress'] = 20
                 task_info['collected'] = len(all_data)
@@ -1260,13 +1296,13 @@ def collect_and_process():
                 
                 logger.info(f"[{task_id}] 情感分析完成")
                 
-                # ========== 阶段4: 双维度排序 ==========
-                logger.info(f"[{task_id}] 阶段4: 开始双维度排序...")
+                # ========== 阶段4: 三维度排序 ==========
+                logger.info(f"[{task_id}] 阶段4: 开始三维度排序...")
                 task_info['phase'] = 'rank'
                 task_info['phases']['rank']['status'] = 'running'
                 task_info['progress'] = 75
                 
-                # 执行双维度排序
+                # 执行三维度排序
                 ranked_data = rank_weibo_data(analyzed_data)
                 
                 task_info['phases']['rank']['progress'] = 100
@@ -1278,7 +1314,7 @@ def collect_and_process():
                 with open(rank_file, 'w', encoding='utf-8') as f:
                     json.dump(ranked_data[:100], f, ensure_ascii=False, indent=2)
                 
-                logger.info(f"[{task_id}] 双维度排序完成")
+                logger.info(f"[{task_id}] 三维度排序完成")
                 
                 # ========== 完成 ==========
                 task_info['status'] = 'completed'
@@ -1715,7 +1751,7 @@ def get_dataflow_overview():
     获取数据流概览
     
     展示完整数据流的状态：
-    微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 双维度排序
+    微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 三维度排序
     """
     try:
         from services.spark_service import get_spark_service
@@ -1754,7 +1790,7 @@ def get_dataflow_overview():
                         {'name': 'HDFS存储', 'status': 'active', 'count': total_raw_files},
                         {'name': 'Spark清洗', 'status': 'active', 'count': sum(1 for j in spark_jobs if j['job_type'] == 'data_cleaning')},
                         {'name': 'HBase存储', 'status': 'active', 'count': total_raw_records},
-                        {'name': '双维度排序', 'status': 'active', 'count': sum(1 for j in spark_jobs if j['job_type'] == 'topic_ranking')},
+                        {'name': '三维度排序', 'status': 'active', 'count': sum(1 for j in spark_jobs if j['job_type'] == 'topic_ranking')},
                     ]
                 },
                 'crawl_stats': {

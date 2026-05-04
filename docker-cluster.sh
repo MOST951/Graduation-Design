@@ -6,12 +6,13 @@
 #   ./docker-cluster.sh              # 启动集群（首次部署 / 后续仅启动）
 #   ./docker-cluster.sh stop         # 停止集群（保留数据）
 #   ./docker-cluster.sh restart      # 重启集群
+#   ./docker-cluster.sh restart-spark # 仅重启Spark服务（核心参数变更后）
 #   ./docker-cluster.sh status       # 查看状态
 #   ./docker-cluster.sh logs         # 实时日志
 #   ./docker-cluster.sh down         # 销毁容器（数据卷保留）
 #   ./docker-cluster.sh health       # 健康自检
 #
-# 适配: Ubuntu 20.04 + Docker Compose v2 + 1Panel
+# 适配: Ubuntu 24.04 + Docker Compose v2 + 1Panel
 # ====================================================================
 
 set -uo pipefail
@@ -293,8 +294,8 @@ REQUIRED_IMAGES=(
     "redis:7-alpine"
     "maven:3.8-openjdk-11-slim"
     "eclipse-temurin:11-jre-jammy"
-    "python:3.9-slim"
-    "node:16-alpine"
+    "python:3.11-slim"
+    "node:18-alpine"
     "nginx:alpine"
 )
 
@@ -927,7 +928,7 @@ main() {
     echo ""
     echo "======================================================"
     echo "   微博舆情情感分析系统 — Docker 集群管理"
-    echo "   适配: Ubuntu 20.04 / Docker Compose v2 / 1Panel"
+    echo "   适配: Ubuntu 24.04 / Docker Compose v2 / 1Panel"
     echo "======================================================"
     echo ""
 
@@ -973,19 +974,46 @@ main() {
                 do_first_deploy
             fi
             ;;
+        restart-spark)
+            echo ""
+            step "仅重启 Spark 服务 (核心参数变更后使用)..."
+            echo ""
+            run_compose restart weibo_sentiment_spark_master weibo_sentiment_spark_worker 2>&1 | tee -a "${LOG_FILE}"
+            echo ""
+            # 等待 Spark UI 就绪
+            local spark_ui_port
+            spark_ui_port=$(get_env_val "SPARK_WEBUI_PORT" "8080")
+            local waited=0
+            while [[ ${waited} -lt 60 ]]; do
+                local code
+                code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${spark_ui_port}/" 2>/dev/null || echo "000")
+                if [[ "${code}" =~ ^(200|302)$ ]]; then
+                    break
+                fi
+                sleep 3
+                waited=$((waited + 3))
+            done
+            if [[ ${waited} -lt 60 ]]; then
+                info "Spark 服务已重启并就绪 (WebUI: http://$(get_host_ip):${spark_ui_port})"
+            else
+                warn "Spark 服务可能仍在启动中，请稍后检查: http://$(get_host_ip):${spark_ui_port}"
+            fi
+            info "Spark 核心参数变更已生效"
+            ;;
         health|check)
             do_health
             ;;
         *)
-            echo "用法: $0 [start|stop|status|logs|down|restart|health]"
+            echo "用法: $0 [start|stop|status|logs|down|restart|restart-spark|health]"
             echo ""
-            echo "  start    启动集群（默认，首次自动部署，后续仅启动已有容器）"
-            echo "  stop     停止集群（保留所有数据）"
-            echo "  restart  重启集群"
-            echo "  status   查看集群状态"
-            echo "  logs     查看实时日志"
-            echo "  down     销毁容器（数据卷保留）"
-            echo "  health   服务健康检查"
+            echo "  start          启动集群（默认，首次自动部署，后续仅启动已有容器）"
+            echo "  stop           停止集群（保留所有数据）"
+            echo "  restart        重启集群"
+            echo "  restart-spark  仅重启Spark服务（核心参数变更后使用）"
+            echo "  status         查看集群状态"
+            echo "  logs           查看实时日志"
+            echo "  down           销毁容器（数据卷保留）"
+            echo "  health         服务健康检查"
             exit 1
             ;;
     esac

@@ -58,6 +58,128 @@ crawl_tasks: Dict[str, Dict] = {}
 task_lock = threading.Lock()
 
 
+# ==================== 任务持久化工具 ====================
+
+def _persist_task_to_db(task_info: Dict):
+    """将任务元数据写入/更新MySQL crawl_tasks表"""
+    if not DB_SERVICE_AVAILABLE:
+        return
+    try:
+        global db_service
+        if db_service is None:
+            db_service = get_db_service()
+        if db_service is None:
+            return
+        with db_service.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO crawl_tasks
+                        (task_id, sys_user_id, keywords, pages, crawl_hot,
+                         status, progress, collected, start_time, end_time, error)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        status=VALUES(status), progress=VALUES(progress),
+                        collected=VALUES(collected), end_time=VALUES(end_time),
+                        error=VALUES(error)
+                """, (
+                    task_info.get('id'),
+                    task_info.get('sys_user_id', ''),
+                    json.dumps(task_info.get('keywords', []), ensure_ascii=False),
+                    task_info.get('pages', 3),
+                    1 if task_info.get('crawl_hot') else 0,
+                    task_info.get('status', 'pending'),
+                    task_info.get('progress', 0),
+                    task_info.get('collected', 0),
+                    task_info.get('start_time'),
+                    task_info.get('end_time'),
+                    task_info.get('error'),
+                ))
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"持久化任务失败: {e}")
+
+
+def _load_tasks_from_db():
+    """服务启动时从MySQL加载历史任务到内存"""
+    if not DB_SERVICE_AVAILABLE:
+        return
+    try:
+        global db_service
+        if db_service is None:
+            db_service = get_db_service()
+        if db_service is None:
+            return
+        with db_service.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT task_id, sys_user_id, keywords, pages, crawl_hot,
+                           status, progress, collected, start_time, end_time, error
+                    FROM crawl_tasks
+                    ORDER BY created_at DESC
+                    LIMIT 200
+                """)
+                rows = cursor.fetchall()
+                for row in rows:
+                    tid = row['task_id']
+                    if tid not in crawl_tasks:
+                        kw_raw = row.get('keywords')
+                        if isinstance(kw_raw, str):
+                            kw = json.loads(kw_raw) if kw_raw else []
+                        elif isinstance(kw_raw, list):
+                            kw = kw_raw
+                        else:
+                            kw = []
+                        # 如果任务之前在running状态但服务重启了，标记为failed
+                        status = row['status']
+                        if status == 'running':
+                            status = 'interrupted'
+                        crawl_tasks[tid] = {
+                            'id': tid,
+                            'sys_user_id': row.get('sys_user_id', ''),
+                            'keywords': kw,
+                            'pages': row.get('pages', 3),
+                            'crawl_hot': bool(row.get('crawl_hot', 0)),
+                            'status': status,
+                            'progress': row.get('progress', 0),
+                            'collected': row.get('collected', 0),
+                            'start_time': row['start_time'].isoformat() if row.get('start_time') else None,
+                            'end_time': row['end_time'].isoformat() if row.get('end_time') else None,
+                            'error': row.get('error'),
+                            'data': [],
+                            'from_db': True,
+                        }
+        logger.info(f"从数据库加载 {len(rows)} 条历史任务")
+    except Exception as e:
+        logger.warning(f"加载历史任务失败: {e}")
+
+
+def _get_user_from_request():
+    """从请求JWT中提取用户标识（简化：从请求头或参数中获取）"""
+    # 优先从请求JSON body获取
+    if request.is_json and request.json:
+        uid = request.json.get('user_id') or request.json.get('sys_user_id')
+        if uid:
+            return str(uid)
+    # 从查询参数获取
+    uid = request.args.get('user_id') or request.args.get('sys_user_id')
+    if uid:
+        return str(uid)
+    # 从Authorization头解析（简化提取sub字段）
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        try:
+            import base64
+            token = auth_header[7:]
+            payload = token.split('.')[1]
+            # 补齐base64 padding
+            payload += '=' * (4 - len(payload) % 4)
+            data = json.loads(base64.urlsafe_b64decode(payload))
+            return data.get('sub', '')
+        except Exception:
+            pass
+    return ''
+
+
 # ==================== 情感词典 ====================
 class SentimentLexicon:
     """中文情感词典"""
@@ -340,9 +462,12 @@ def start_crawl_task():
         pages = data.get('pages', 3)
         crawl_hot = data.get('crawl_hot', True)
         
+        sys_user_id = _get_user_from_request()
+        
         task_id = f"crawl_{int(time.time() * 1000)}"
         task_info = {
             'id': task_id,
+            'sys_user_id': sys_user_id,
             'status': 'running',
             'keywords': keywords,
             'pages': pages,
@@ -357,6 +482,7 @@ def start_crawl_task():
         
         with task_lock:
             crawl_tasks[task_id] = task_info
+        _persist_task_to_db(task_info)
         
         # 后台线程执行爬取
         def run_crawl():
@@ -419,6 +545,7 @@ def start_crawl_task():
                 task_info['progress'] = 100
                 task_info['status'] = 'completed'
                 task_info['end_time'] = datetime.now().isoformat()
+                _persist_task_to_db(task_info)
                 
                 # 保存到文件
                 result_file = os.path.join(DATA_DIR, 'weibo_raw', f'{task_id}.json')
@@ -448,6 +575,7 @@ def start_crawl_task():
                 task_info['status'] = 'failed'
                 task_info['error'] = str(e)
                 task_info['end_time'] = datetime.now().isoformat()
+                _persist_task_to_db(task_info)
         
         thread = threading.Thread(target=run_crawl)
         thread.daemon = True
@@ -504,73 +632,33 @@ def get_crawl_status(task_id: str):
 
 @app.route('/api/weibo/crawl/tasks', methods=['GET'])
 def get_crawl_tasks():
-    """获取所有采集任务列表"""
+    """获取当前用户的采集任务列表（按user_id隔离）"""
     try:
-        tasks_list = list(crawl_tasks.values())
+        sys_user_id = _get_user_from_request()
         
-        # 如果内存中没有任务，尝试从数据库加载历史数据生成虚拟任务
-        if not tasks_list and DB_SERVICE_AVAILABLE and db_service:
-            try:
-                with db_service.get_connection() as conn:
-                    with conn.cursor() as cursor:
-                        # 按关键词分组获取历史任务（确保每个关键词都显示为独立任务）
-                        cursor.execute("""
-                            SELECT keyword, COUNT(*) as count, 
-                                   MIN(crawled_at) as start_time, MAX(crawled_at) as end_time
-                            FROM weibo_core_data 
-                            WHERE keyword IS NOT NULL AND keyword != ''
-                            GROUP BY keyword
-                            ORDER BY end_time DESC
-                            LIMIT 30
-                        """)
-                        db_tasks = cursor.fetchall()
-                        
-                        for row in db_tasks:
-                            keyword = row['keyword']
-                            if keyword:
-                                # 使用关键词作为任务ID的一部分
-                                task_id = f"keyword_{keyword}"
-                                if task_id not in crawl_tasks:
-                                    crawl_tasks[task_id] = {
-                                        'id': task_id,
-                                        'keywords': [keyword],
-                                        'status': 'completed',
-                                        'collected': row['count'],
-                                        'progress': 100,
-                                        'start_time': row['start_time'].isoformat() if row['start_time'] else '',
-                                        'end_time': row['end_time'].isoformat() if row['end_time'] else '',
-                                        'from_db': True
-                                    }
-                        
-                        # 如果没有关键词数据，创建一个默认任务
-                        if not crawl_tasks:
-                            cursor.execute("SELECT COUNT(*) as cnt FROM weibo_core_data")
-                            total = cursor.fetchone()['cnt']
-                            if total > 0:
-                                crawl_tasks['db_history'] = {
-                                    'id': 'db_history',
-                                    'keywords': ['数据库历史数据'],
-                                    'status': 'completed',
-                                    'collected': total,
-                                    'progress': 100,
-                                    'start_time': datetime.now().isoformat(),
-                                    'from_db': True
-                                }
-                        
-                        tasks_list = list(crawl_tasks.values())
-            except Exception as db_err:
-                logger.warning(f"从数据库加载历史任务失败: {db_err}")
+        # 按用户过滤任务
+        if sys_user_id:
+            tasks_list = [t for t in crawl_tasks.values()
+                          if t.get('sys_user_id', '') == sys_user_id]
+        else:
+            tasks_list = list(crawl_tasks.values())
         
-        tasks_list.sort(key=lambda x: x.get('start_time', ''), reverse=True)
+        # 过滤掉data字段（太大），只返回元数据
+        safe_tasks = []
+        for t in tasks_list:
+            safe = {k: v for k, v in t.items() if k != 'data'}
+            safe_tasks.append(safe)
+        
+        safe_tasks.sort(key=lambda x: x.get('start_time') or '', reverse=True)
         
         return jsonify({
             'code': 200,
             'message': 'success',
             'data': {
-                'tasks': tasks_list,
-                'total': len(tasks_list),
-                'completed': sum(1 for t in tasks_list if t.get('status') == 'completed'),
-                'running': sum(1 for t in tasks_list if t.get('status') == 'running')
+                'tasks': safe_tasks,
+                'total': len(safe_tasks),
+                'completed': sum(1 for t in safe_tasks if t.get('status') == 'completed'),
+                'running': sum(1 for t in safe_tasks if t.get('status') == 'running')
             }
         })
     except Exception as e:
@@ -1393,30 +1481,31 @@ def start_hot_search_analysis():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# ==================== 双维度排序API ====================
-@app.route('/api/topics/dual-dimension/config', methods=['GET'])
-def get_dual_dimension_config():
-    """获取双维度排序配置"""
+# ==================== 三维度排序API ====================
+@app.route('/api/topics/tri-dimension/config', methods=['GET'])
+def get_tri_dimension_config():
+    """获取三维度排序配置"""
     try:
         return jsonify({
             'code': 200,
             'message': 'success',
             'data': {
-                'sentiment_weight': 0.6,
-                'popularity_weight': 0.4,
-                'time_decay_factor': 0.95,
+                'sentiment_weight': 0.4,
+                'heat_weight': 0.4,
+                'timeliness_weight': 0.2,
+                'decay_half_life_hours': 12.0,
                 'min_interactions': 10,
                 'enabled': True
             }
         })
     except Exception as e:
-        logger.error(f'获取双维度配置失败: {e}')
+        logger.error(f'获取三维度配置失败: {e}')
         return jsonify({'code': 500, 'message': str(e)}), 500
 
 
-@app.route('/api/topics/dual-dimension/config', methods=['POST'])
-def update_dual_dimension_config():
-    """更新双维度排序配置"""
+@app.route('/api/topics/tri-dimension/config', methods=['POST'])
+def update_tri_dimension_config():
+    """更新三维度排序配置"""
     try:
         data = request.json or {}
         
@@ -1426,17 +1515,17 @@ def update_dual_dimension_config():
             'data': data
         })
     except Exception as e:
-        logger.error(f'更新双维度配置失败: {e}')
+        logger.error(f'更新三维度配置失败: {e}')
         return jsonify({'code': 500, 'message': str(e)}), 500
 
 
 @app.route('/api/topics/ranked', methods=['GET'])
 def get_ranked_topics():
-    """获取双维度排序后的话题列表"""
+    """获取三维度排序后的话题列表"""
     try:
         limit = request.args.get('limit', 20, type=int)
         
-        # 从数据库获取数据并计算双维度分数
+        # 从数据库获取数据并计算三维度分数
         topics = []
         
         if DB_SERVICE_AVAILABLE:
@@ -1462,12 +1551,21 @@ def get_ranked_topics():
                             rows = cursor.fetchall()
                             
                             for idx, row in enumerate(rows):
-                                # 计算双维度分数
+                                # 计算三维度分数
                                 import math
                                 popularity = row['avg_interaction'] or 0
-                                popularity_score = math.log(1 + popularity) / 10  # 归一化
+                                popularity_score = min(1.0, math.log(1 + popularity) / 11.5)
                                 sentiment_score = 0.5  # 默认中性
-                                composite_score = 0.6 * sentiment_score + 0.4 * min(popularity_score, 1)
+                                intensity = (abs(sentiment_score) + 1) / 2
+                                # 时效性衰减
+                                latest = row['latest_time']
+                                if latest:
+                                    hours_ago = max(0, (datetime.now() - latest).total_seconds() / 3600)
+                                else:
+                                    hours_ago = 24
+                                time_decay = 2 ** (-hours_ago / 12.0)
+                                # 公式(4-3): Score = 0.4×Intensity + 0.4×H_norm + 0.2×γ(Δt)
+                                composite_score = 0.4 * intensity + 0.4 * popularity_score + 0.2 * time_decay
                                 
                                 topics.append({
                                     'rank': idx + 1,
@@ -1490,8 +1588,10 @@ def get_ranked_topics():
                 'topics': topics,
                 'total': len(topics),
                 'config': {
-                    'sentiment_weight': 0.6,
-                    'popularity_weight': 0.4
+                    'sentiment_weight': 0.4,
+                    'heat_weight': 0.4,
+                    'timeliness_weight': 0.2,
+                    'decay_half_life_hours': 12.0
                 }
             }
         })
@@ -1713,7 +1813,7 @@ except ImportError as e:
 
 @app.route('/api/pipeline/run', methods=['POST'])
 def run_pipeline():
-    """同步执行完整流水线: 采集数据(MySQL) → 情感分析(级联策略) → 双维度排序 → 结果入库"""
+    """同步执行完整流水线: 采集数据(MySQL) → 情感分析(级联策略) → 三维度排序 → 结果入库"""
     try:
         if not PIPELINE_SERVICE_AVAILABLE:
             return jsonify({'code': 500, 'message': '流水线服务不可用'}), 500
@@ -1787,7 +1887,7 @@ def get_pipeline_stats():
 
 @app.route('/api/pipeline/ranking', methods=['GET'])
 def get_pipeline_ranking():
-    """查询最新双维度排序结果"""
+    """查询最新三维度排序结果"""
     try:
         limit = request.args.get('limit', 20, type=int)
 
@@ -1798,10 +1898,10 @@ def get_pipeline_ranking():
             with conn.cursor() as cursor:
                 cursor.execute("""
                     SELECT r.*, w.content, w.user_name, w.created_at as weibo_created_at
-                    FROM dual_dimension_ranking r
+                    FROM tri_dimension_ranking r
                     JOIN weibo_core_data w ON r.weibo_id = w.weibo_id
                     WHERE r.batch_id = (
-                        SELECT batch_id FROM dual_dimension_ranking
+                        SELECT batch_id FROM tri_dimension_ranking
                         ORDER BY calculation_time DESC LIMIT 1
                     )
                     ORDER BY r.ranking_position ASC
@@ -2219,6 +2319,9 @@ if __name__ == '__main__':
     db_ready = init_database()
     if db_ready:
         logger.info('✓ 数据库初始化完成')
+        # 从数据库加载历史采集任务
+        _load_tasks_from_db()
+        logger.info(f'✓ 已加载 {len(crawl_tasks)} 条历史任务')
     else:
         logger.warning('⚠ 数据库未就绪，数据将只保存到文件')
     
