@@ -166,6 +166,48 @@ class AuthService:
         except Exception as e:
             logger.error(f"登录失败: {e}")
             return False, f"登录失败: {str(e)}", {}
+
+    def register(self, username: str, password: str, email: str, nickname: str = None, role: str = 'user') -> Tuple[bool, str, Dict]:
+        try:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT id FROM users WHERE username = %s OR email = %s", (username, email))
+                if cursor.fetchone():
+                    conn.close()
+                    return False, "用户名或邮箱已存在", {}
+
+                password_hash, salt = self._hash_password(password)
+                cursor.execute("""
+                    INSERT INTO users (username, password_hash, salt, nickname, email, role, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (username, password_hash, salt, nickname or username, email, role, 'active'))
+                user_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+
+            return True, "注册成功", {
+                'id': user_id,
+                'username': username,
+                'nickname': nickname or username,
+                'email': email,
+                'avatar': '/avatars/default.png',
+                'role': role
+            }
+        except Exception as e:
+            logger.error(f"注册失败: {e}")
+            return False, f"注册失败: {str(e)}", {}
+
+    def email_exists(self, email: str) -> bool:
+        try:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+                exists = cursor.fetchone() is not None
+            conn.close()
+            return exists
+        except Exception as e:
+            logger.error(f"检查邮箱失败: {e}")
+            return False
     
     def get_user_by_id(self, user_id: int) -> Optional[Dict]:
         """根据ID获取用户信息"""

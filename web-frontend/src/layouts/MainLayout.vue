@@ -262,9 +262,20 @@
       
       <!-- 主内容 -->
       <main class="main-content">
-        <router-view v-slot="{ Component }">
+        <router-view v-slot="{ Component, route }">
+          <keep-alive>
+            <component
+              :is="Component"
+              v-if="route.meta.keepAlive"
+              :key="route.name"
+            />
+          </keep-alive>
           <transition name="page-fade" mode="out-in">
-            <component :is="Component" />
+            <component
+              :is="Component"
+              v-if="!route.meta.keepAlive"
+              :key="route.name"
+            />
           </transition>
         </router-view>
       </main>

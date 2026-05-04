@@ -590,6 +590,11 @@ export async function analyzeData(
   return response.data.data;
 }
 
+export async function analyzeCollectionTask(taskId: string, limit: number = 500): Promise<AnalysisResult> {
+  const response = await apiClient.post(`/collection/tasks/${taskId}/analyze`, { limit });
+  return response.data.data;
+}
+
 /**
  * 获取分析结果
  * @param analysisId 分析ID

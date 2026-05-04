@@ -55,7 +55,7 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'Dashboard',
         component: Dashboard,
-        meta: { title: 'dashboard', icon: 'Odometer' }
+        meta: { title: 'dashboard', icon: 'Odometer', keepAlive: true }
       },
       
       // 1. 
@@ -63,7 +63,7 @@ const routes: RouteRecordRaw[] = [
         path: 'collection',
         name: 'Collection',
         component: DataCollection,
-        meta: { title: 'data collection', icon: 'Download' }
+        meta: { title: 'data collection', icon: 'Download', keepAlive: true }
       },
       
       // 2. 
@@ -71,7 +71,7 @@ const routes: RouteRecordRaw[] = [
         path: 'preprocess',
         name: 'DataPreprocess',
         component: DataPreprocessEnhanced,
-        meta: { title: 'data preprocessing', icon: 'Operation' }
+        meta: { title: 'data preprocessing', icon: 'Operation', keepAlive: true }
       },
       
       // 3. 
@@ -79,7 +79,7 @@ const routes: RouteRecordRaw[] = [
         path: 'sentiment',
         name: 'SentimentAnalysis',
         component: SentimentAnalysis,
-        meta: { title: 'sentiment analysis', icon: 'DataAnalysis' }
+        meta: { title: 'sentiment analysis', icon: 'DataAnalysis', keepAlive: true }
       },
       
       // 4. 
@@ -87,7 +87,7 @@ const routes: RouteRecordRaw[] = [
         path: 'tri-dimension',
         name: 'TriDimensionAnalysis',
         component: TriDimensionAnalysis,
-        meta: { title: 'tri dimension ranking', icon: 'Histogram' }
+        meta: { title: 'tri dimension ranking', icon: 'Histogram', keepAlive: true }
       },
       
       // 5. 
@@ -95,7 +95,7 @@ const routes: RouteRecordRaw[] = [
         path: 'realtime',
         name: 'RealTimeMonitor',
         component: RealTimeMonitor,
-        meta: { title: 'realtime monitoring', icon: 'Monitor' }
+        meta: { title: 'realtime monitoring', icon: 'Monitor', keepAlive: true }
       },
       
       // 6. 
@@ -103,7 +103,7 @@ const routes: RouteRecordRaw[] = [
         path: 'pipeline',
         name: 'PipelineManager',
         component: PipelineManager,
-        meta: { title: 'pipeline management', icon: 'Connection' }
+        meta: { title: 'pipeline management', icon: 'Connection', keepAlive: true }
       },
       
       // 7. 
@@ -111,7 +111,7 @@ const routes: RouteRecordRaw[] = [
         path: 'visualization',
         name: 'Visualization',
         component: VisualizationDashboard,
-        meta: { title: 'visualization dashboard', icon: 'DataLine' }
+        meta: { title: 'visualization dashboard', icon: 'DataLine', keepAlive: true }
       },
       
       // 8. 
@@ -119,7 +119,7 @@ const routes: RouteRecordRaw[] = [
         path: 'admin',
         name: 'SystemAdmin',
         component: SystemAdmin,
-        meta: { title: 'system management', icon: 'Setting', requiresAdmin: true }
+        meta: { title: 'system management', icon: 'Setting', requiresAdmin: true, keepAlive: true }
       },
     ],
   },

@@ -6,43 +6,116 @@ from datetime import datetime, timedelta
 import logging
 import random
 import string
-import hashlib
 import re
 import os
+import json
+import base64
+import hmac
+import hashlib
+
+try:
+    import redis
+except ImportError:
+    redis = None
+
+from services.auth_service import get_auth_service
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 logger = logging.getLogger(__name__)
 
-# ==================== 用户数据存储 ====================
-_next_user_id = 3
-
-users = {
-    'admin': {
-        'id': 1,
-        'username': 'admin',
-        'password': 'admin123',
-        'name': '系统管理员',
-        'email': 'admin@example.com',
-        'role': 'admin',
-        'avatar': 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png',
-    },
-    'user01': {
-        'id': 2,
-        'username': 'user01',
-        'password': 'user123',
-        'name': '普通用户',
-        'email': 'user01@example.com',
-        'role': 'user',
-        'avatar': 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png',
-    }
-}
-
-# 邮箱 → 用户名 快速索引
-_email_to_username = {u['email']: u['username'] for u in users.values()}
-
 # ==================== 验证码缓存 ====================
 # { email: { code: '123456', expires: datetime, type: 'register' } }
 _verification_codes = {}
+_redis_client = None
+
+
+def _get_redis_client():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    if redis is None:
+        return None
+    try:
+        _redis_client = redis.Redis(
+            host=os.getenv('REDIS_HOST', 'localhost'),
+            port=int(os.getenv('REDIS_PORT', '6379')),
+            password=os.getenv('REDIS_PASSWORD') or None,
+            db=int(os.getenv('REDIS_DB', '0')),
+            decode_responses=True,
+            socket_connect_timeout=float(os.getenv('REDIS_SOCKET_CONNECT_TIMEOUT', '3')),
+            socket_timeout=float(os.getenv('REDIS_SOCKET_TIMEOUT', '3')),
+        )
+        _redis_client.ping()
+        return _redis_client
+    except Exception as e:
+        logger.warning(f'Redis unavailable for verification codes, fallback to memory: {e}')
+        _redis_client = None
+        return None
+
+
+def _verification_key(email: str, code_type: str) -> str:
+    return f'auth:verification:{code_type}:{email}'
+
+
+def _store_verification_code(email: str, code_type: str, code: str):
+    payload = {
+        'code': code,
+        'type': code_type,
+        'created_at': datetime.now().isoformat(),
+    }
+    client = _get_redis_client()
+    if client:
+        client.setex(_verification_key(email, code_type), 300, json.dumps(payload, ensure_ascii=False))
+        return
+    _verification_codes[email] = {
+        'code': code,
+        'expires': datetime.now() + timedelta(minutes=5),
+        'type': code_type,
+        'created_at': datetime.now(),
+    }
+
+
+def _get_verification_code(email: str, code_type: str):
+    client = _get_redis_client()
+    if client:
+        raw = client.get(_verification_key(email, code_type))
+        return json.loads(raw) if raw else None
+    return _verification_codes.get(email)
+
+
+def _delete_verification_code(email: str, code_type: str):
+    client = _get_redis_client()
+    if client:
+        client.delete(_verification_key(email, code_type))
+        return
+    _verification_codes.pop(email, None)
+
+
+def _generate_token(user: dict) -> str:
+    secret = os.getenv('JWT_SECRET_KEY') or os.getenv('JWT_SECRET') or os.getenv('SECRET_KEY') or 'dev-secret'
+    payload = {
+        'sub': str(user['id']),
+        'username': user['username'],
+        'role': user['role'],
+        'iat': int(datetime.now().timestamp()),
+        'exp': int((datetime.now() + timedelta(hours=2)).timestamp()),
+    }
+    payload_json = json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode()
+    payload_b64 = base64.urlsafe_b64encode(payload_json).decode().rstrip('=')
+    signature = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).digest()
+    signature_b64 = base64.urlsafe_b64encode(signature).decode().rstrip('=')
+    return f'{payload_b64}.{signature_b64}'
+
+
+def _format_user(user: dict) -> dict:
+    return {
+        'id': user['id'],
+        'username': user['username'],
+        'name': user.get('nickname') or user.get('name') or user['username'],
+        'email': user.get('email', ''),
+        'role': user.get('role', 'user'),
+        'avatar': user.get('avatar') or 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png',
+    }
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -58,15 +131,15 @@ def login():
                 'message': '用户名和密码不能为空',
             }), 400
         
-        user = users.get(username)
-        if not user or user['password'] != password:
+        success, message, user = get_auth_service().login(username, password, request.remote_addr)
+        if not success:
             return jsonify({
                 'code': 401,
-                'message': '用户名或密码错误',
+                'message': message,
             }), 401
         
-        # 生成模拟token
-        token = f"token_{username}_{datetime.now().timestamp()}"
+        token = _generate_token(user)
+        formatted_user = _format_user(user)
         
         return jsonify({
             'code': 200,
@@ -74,14 +147,7 @@ def login():
             'data': {
                 'accessToken': token,
                 'tokenType': 'Bearer',
-                'user': {
-                    'id': user['id'],
-                    'username': user['username'],
-                    'name': user['name'],
-                    'email': user['email'],
-                    'role': user['role'],
-                    'avatar': user['avatar'],
-                }
+                'user': formatted_user
             }
         })
     except Exception as e:
@@ -102,19 +168,13 @@ def logout():
 @auth_bp.route('/info', methods=['GET'])
 def get_user_info():
     """获取用户信息"""
-    # 简化处理，返回admin用户信息
-    user = users['admin']
+    user = get_auth_service().get_user_by_id(1)
+    if not user:
+        return jsonify({'code': 404, 'message': '用户不存在'}), 404
     return jsonify({
         'code': 200,
         'message': 'success',
-        'data': {
-            'id': user['id'],
-            'username': user['username'],
-            'name': user['name'],
-            'email': user['email'],
-            'role': user['role'],
-            'avatar': user['avatar'],
-        }
+        'data': _format_user(user)
     })
 
 @auth_bp.route('/send-code', methods=['POST'])
@@ -132,24 +192,22 @@ def send_verification_code():
             return jsonify({'code': 400, 'message': '邮箱格式不正确'}), 400
 
         # 注册场景：检查邮箱是否已被注册
-        if code_type == 'register' and email in _email_to_username:
+        if code_type == 'register' and get_auth_service().email_exists(email):
             return jsonify({'code': 409, 'message': '该邮箱已被注册'}), 409
 
         # 防刷：同一邮箱 60 秒内不能重复发送
-        cached = _verification_codes.get(email)
-        if cached and (datetime.now() - cached.get('created_at', datetime.min)).total_seconds() < 60:
+        cached = _get_verification_code(email, code_type)
+        created_at = cached.get('created_at') if cached else None
+        if isinstance(created_at, str):
+            created_at = datetime.fromisoformat(created_at)
+        if cached and created_at and (datetime.now() - created_at).total_seconds() < 60:
             return jsonify({'code': 429, 'message': '发送过于频繁，请60秒后重试'}), 429
 
         # 生成 6 位数字验证码
         code = ''.join(random.choices(string.digits, k=6))
 
         # 存入缓存（5 分钟有效）
-        _verification_codes[email] = {
-            'code': code,
-            'expires': datetime.now() + timedelta(minutes=5),
-            'type': code_type,
-            'created_at': datetime.now(),
-        }
+        _store_verification_code(email, code_type, code)
 
         logger.info(f'验证码已生成: {email} -> {code} (type={code_type})')
 
@@ -177,8 +235,6 @@ def send_verification_code():
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """用户注册"""
-    global _next_user_id
-
     try:
         data = request.json or {}
         email = data.get('email', '').strip()
@@ -200,61 +256,32 @@ def register():
             return jsonify({'code': 400, 'message': '密码必须包含字母和数字'}), 400
 
         # ---- 验证码校验 ----
-        cached = _verification_codes.get(email)
+        cached = _get_verification_code(email, 'register')
         if not cached:
             return jsonify({'code': 400, 'message': '请先获取验证码'}), 400
 
-        if datetime.now() > cached['expires']:
-            _verification_codes.pop(email, None)
+        expires = cached.get('expires')
+        if expires and datetime.now() > expires:
+            _delete_verification_code(email, 'register')
             return jsonify({'code': 400, 'message': '验证码已过期，请重新获取'}), 400
 
         if cached['code'] != code:
             return jsonify({'code': 400, 'message': '验证码错误'}), 400
 
         # 验证通过，移除已使用的验证码
-        _verification_codes.pop(email, None)
-
-        # ---- 重复检查 ----
-        if email in _email_to_username:
-            return jsonify({'code': 409, 'message': '该邮箱已被注册'}), 409
+        _delete_verification_code(email, 'register')
 
         # 用户名默认取邮箱前缀
         if not username:
             username = email.split('@')[0]
 
-        # 用户名去重
-        base_username = username
-        suffix = 1
-        while username in users:
-            username = f'{base_username}{suffix}'
-            suffix += 1
+        success, message, user = get_auth_service().register(username, password, email, username)
+        if not success:
+            return jsonify({'code': 409, 'message': message}), 409
 
-        if username in users:
-            return jsonify({'code': 409, 'message': '用户名已存在'}), 409
-
-        # ---- 创建用户 ----
-        new_user = {
-            'id': _next_user_id,
-            'username': username,
-            'password': password,
-            'name': username,
-            'email': email,
-            'role': 'user',
-            'avatar': 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png',
-            'created_at': datetime.now().isoformat(),
-        }
-
-        users[username] = new_user
-        _email_to_username[email] = username
-        _next_user_id += 1
-
-        logger.info(f'用户注册成功: {username} ({email}), id={new_user["id"]}')
-
-        # 同时写入数据库（如果可用）
-        _save_user_to_db(new_user)
-
-        # 自动登录：生成 token
-        token = f"token_{username}_{datetime.now().timestamp()}"
+        token = _generate_token(user)
+        formatted_user = _format_user(user)
+        logger.info(f'用户注册成功: {username} ({email}), id={user["id"]}')
 
         return jsonify({
             'code': 200,
@@ -262,39 +289,13 @@ def register():
             'data': {
                 'accessToken': token,
                 'tokenType': 'Bearer',
-                'user': {
-                    'id': new_user['id'],
-                    'username': new_user['username'],
-                    'name': new_user['name'],
-                    'email': new_user['email'],
-                    'role': new_user['role'],
-                    'avatar': new_user['avatar'],
-                }
+                'user': formatted_user
             }
         })
 
     except Exception as e:
         logger.error(f'Register failed: {e}', exc_info=True)
         return jsonify({'code': 500, 'message': str(e)}), 500
-
-
-def _save_user_to_db(user: dict):
-    """尝试将用户持久化到 MySQL（非必须，失败静默）"""
-    try:
-        from services.database_service import get_db_service
-        db = get_db_service()
-        with db.get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    """INSERT IGNORE INTO users (username, password, email, roles, status, created_at, updated_at)
-                       VALUES (%s, %s, %s, %s, %s, NOW(), NOW())""",
-                    (user['username'], user['password'], user['email'], user['role'], 'active')
-                )
-            conn.commit()
-        logger.info(f'用户已持久化到数据库: {user["username"]}')
-    except Exception as e:
-        logger.warning(f'用户持久化失败（不影响注册）: {e}')
-
 
 @auth_bp.route('/health', methods=['GET'])
 def health_check():

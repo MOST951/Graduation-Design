@@ -1064,21 +1064,75 @@ class DatabaseService:
                 cursor.execute(sql)
                 return cursor.fetchone()['count']
     
-    def get_unprocessed_weibos(self, limit: int = 1000) -> List[Dict]:
+    def get_unprocessed_weibos(self, limit: int = 1000, batch_id: str = None) -> List[Dict]:
         """获取未处理的微博"""
+        params = []
         sql = """
         SELECT weibo_id, content, user_id, user_name, 
                reposts_count, comments_count, attitudes_count, created_at
         FROM weibo_core_data
         WHERE is_processed = 0 AND graduation_batch = 1
-        ORDER BY crawled_at DESC
-        LIMIT %s
+        """
+        if batch_id:
+            sql += " AND batch_id = %s"
+            params.append(batch_id)
+        sql += " ORDER BY crawled_at DESC LIMIT %s"
+        params.append(limit)
+        
+        with self.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, tuple(params))
+                return cursor.fetchall()
+    
+    def get_weibos_by_batch(self, batch_id: str, page: int = 1, page_size: int = 20) -> Dict:
+        """按采集批次分页获取微博"""
+        page = max(int(page or 1), 1)
+        page_size = max(min(int(page_size or 20), 200), 1)
+        offset = (page - 1) * page_size
+        
+        count_sql = """
+        SELECT COUNT(*) as count
+        FROM weibo_core_data
+        WHERE batch_id = %s AND graduation_batch = 1
+        """
+        data_sql = """
+        SELECT weibo_id, content, source, keyword, user_name, user_id,
+               reposts_count, comments_count, attitudes_count, created_at, crawled_at
+        FROM weibo_core_data
+        WHERE batch_id = %s AND graduation_batch = 1
+        ORDER BY crawled_at DESC, id DESC
+        LIMIT %s OFFSET %s
         """
         
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(sql, (limit,))
-                return cursor.fetchall()
+                cursor.execute(count_sql, (batch_id,))
+                total = cursor.fetchone()['count']
+                cursor.execute(data_sql, (batch_id, page_size, offset))
+                rows = cursor.fetchall()
+        
+        items = []
+        for row in rows:
+            items.append({
+                'id': str(row.get('weibo_id')),
+                'content': row.get('content', ''),
+                'source': row.get('source') or 'weibo',
+                'keyword': row.get('keyword') or '',
+                'author': row.get('user_name') or '',
+                'author_id': str(row.get('user_id') or ''),
+                'likes': row.get('attitudes_count') or 0,
+                'comments': row.get('comments_count') or 0,
+                'shares': row.get('reposts_count') or 0,
+                'timestamp': row.get('created_at').isoformat() if row.get('created_at') else None,
+                'crawl_time': row.get('crawled_at').isoformat() if row.get('crawled_at') else None,
+            })
+        
+        return {
+            'list': items,
+            'total': total,
+            'page': page,
+            'pageSize': page_size,
+        }
     
     def get_unranked_weibos(self, limit: int = 1000) -> List[Dict]:
         """获取未排序的微博（已完成情感分析）"""

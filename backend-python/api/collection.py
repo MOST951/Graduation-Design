@@ -32,6 +32,14 @@ except ImportError as e:
     from utils.logger import get_logger
     get_logger(__name__).warning(f"database service import failed: {e}")
 
+try:
+    from spark.sentiment_analyzer import SentimentLexicon
+    SENTIMENT_AVAILABLE = True
+except ImportError as e:
+    SENTIMENT_AVAILABLE = False
+    from utils.logger import get_logger
+    get_logger(__name__).warning(f"sentiment module import failed: {e}")
+
 # 
 from utils.logger import get_logger, log_operation, log_api_call, log_data_collection
 from services.task_queue import task_queue, QueueTask, TaskStatus
@@ -312,6 +320,7 @@ class CrawlerTask:
                     'progress': self.progress,
                     'collected': self.collected,
                     'failed': self.failed,
+                    'batch_id': self.batch_id,
                     'updatedAt': datetime.now().isoformat(),
                     'summary': self.summary,
                 })
@@ -654,6 +663,25 @@ def get_task_data(task_id: str):
         page = request.args.get('page', 1, type=int)
         page_size = request.args.get('pageSize', 20, type=int)
         
+        if not data and DB_AVAILABLE:
+            batch_id = None
+            task = tasks.get(task_id, {})
+            crawler = task.get('crawler') if isinstance(task, dict) else None
+            if crawler:
+                batch_id = getattr(crawler, 'batch_id', None)
+            batch_id = batch_id or task.get('batch_id') if isinstance(task, dict) else None
+            
+            if batch_id:
+                try:
+                    db_data = get_db_service().get_weibos_by_batch(batch_id, page, page_size)
+                    return jsonify({
+                        'code': 200,
+                        'message': 'success',
+                        'data': db_data,
+                    })
+                except Exception as e:
+                    logger.warning(f'Get task data from MySQL failed: {e}')
+        
         start = (page - 1) * page_size
         end = start + page_size
         
@@ -669,6 +697,91 @@ def get_task_data(task_id: str):
         })
     except Exception as e:
         logger.error(f'Get task data failed: {e}', exc_info=True)
+        return jsonify({
+            'code': 500,
+            'message': str(e),
+        }), 500
+
+
+@collection_bp.route('/tasks/<task_id>/analyze', methods=['POST'])
+def analyze_task_data(task_id: str):
+    """分析指定采集任务已入库的数据"""
+    try:
+        if task_id not in tasks:
+            return jsonify({
+                'code': 404,
+                'message': '任务不存在',
+            }), 404
+        
+        if not DB_AVAILABLE:
+            return jsonify({
+                'code': 503,
+                'message': '数据库服务不可用',
+            }), 503
+        
+        if not SENTIMENT_AVAILABLE:
+            return jsonify({
+                'code': 503,
+                'message': '情感分析模块不可用',
+            }), 503
+        
+        data = request.json or {}
+        limit = data.get('limit', 500)
+        task = tasks.get(task_id, {})
+        crawler = task.get('crawler') if isinstance(task, dict) else None
+        batch_id = getattr(crawler, 'batch_id', None) if crawler else None
+        batch_id = batch_id or task.get('batch_id') if isinstance(task, dict) else None
+        
+        if not batch_id:
+            return jsonify({
+                'code': 400,
+                'message': '任务暂无数据库批次，无法按任务分析',
+            }), 400
+        
+        db = get_db_service()
+        unprocessed = db.get_unprocessed_weibos(limit=limit, batch_id=batch_id)
+        if not unprocessed:
+            return jsonify({
+                'code': 200,
+                'message': '该任务无未分析微博',
+                'data': {
+                    'task_id': task_id,
+                    'batch_id': batch_id,
+                    'analyzed': 0,
+                    'saved': 0,
+                    'errors': 0,
+                },
+            })
+        
+        results = []
+        for weibo in unprocessed:
+            label, score = SentimentLexicon.analyze(weibo.get('content', ''))
+            results.append({
+                'weibo_id': weibo['weibo_id'],
+                'hybrid_score': score,
+                'dict_score': score,
+                'bert_score': None,
+                'sentiment_class': label,
+                'confidence': abs(score),
+                'analysis_method': 'lexicon',
+                'model_version': 'v2.0.0',
+                'processing_time_ms': 0,
+            })
+        
+        save_result = db.save_sentiment_results(results)
+        return jsonify({
+            'code': 200,
+            'message': f'任务情感分析完成，处理{save_result["saved"]}条',
+            'data': {
+                'task_id': task_id,
+                'batch_id': batch_id,
+                'input_count': len(unprocessed),
+                'saved': save_result['saved'],
+                'errors': save_result['errors'],
+            },
+        })
+    except Exception as e:
+        logger.error(f'Analyze task data failed: {e}', exc_info=True)
         return jsonify({
             'code': 500,
             'message': str(e),

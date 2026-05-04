@@ -195,6 +195,80 @@ def get_sentiment_data() -> List[Dict]:
     return sentiment_data if sentiment_data else []
 
 
+def query_sentiment_results_from_db(page: int, page_size: int, sentiment: str = '', keyword: str = '', batch_id: str = '') -> Dict:
+    """从MySQL分页查询情感分析结果"""
+    if not DB_AVAILABLE:
+        return {}
+    
+    db = get_db_service()
+    where_clauses = ["s.graduation_flag = 1"]
+    params = []
+    
+    if sentiment:
+        where_clauses.append("s.sentiment_class = %s")
+        params.append(sentiment)
+    if keyword:
+        where_clauses.append("(w.content LIKE %s OR w.keyword LIKE %s)")
+        like_keyword = f"%{keyword}%"
+        params.extend([like_keyword, like_keyword])
+    if batch_id:
+        where_clauses.append("w.batch_id = %s")
+        params.append(batch_id)
+    
+    where_sql = " AND ".join(where_clauses)
+    offset = (page - 1) * page_size
+    count_sql = f"""
+        SELECT COUNT(*) as count
+        FROM sentiment_analysis_results s
+        JOIN weibo_core_data w ON s.weibo_id = w.weibo_id
+        WHERE {where_sql}
+    """
+    data_sql = f"""
+        SELECT s.weibo_id, w.content, w.keyword, w.batch_id,
+               s.hybrid_score, s.sentiment_class, s.confidence, s.analysis_method,
+               s.analysis_time, w.created_at, w.attitudes_count, w.comments_count, w.reposts_count
+        FROM sentiment_analysis_results s
+        JOIN weibo_core_data w ON s.weibo_id = w.weibo_id
+        WHERE {where_sql}
+        ORDER BY s.analysis_time DESC
+        LIMIT %s OFFSET %s
+    """
+    
+    with db.get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(count_sql, tuple(params))
+            total = cursor.fetchone()['count']
+            cursor.execute(data_sql, tuple(params + [page_size, offset]))
+            rows = cursor.fetchall()
+    
+    items = []
+    for row in rows:
+        ts = row.get('created_at')
+        items.append({
+            'id': row['weibo_id'],
+            'content': row.get('content', ''),
+            'keyword': row.get('keyword') or '',
+            'batch_id': row.get('batch_id') or '',
+            'sentiment': row.get('sentiment_class', 'neutral'),
+            'confidence': float(row.get('confidence', 0.7)),
+            'score': float(row.get('hybrid_score', 0)),
+            'method': row.get('analysis_method', 'cascade'),
+            'timestamp': ts.isoformat() if hasattr(ts, 'isoformat') else str(ts or ''),
+            'analysis_time': row.get('analysis_time').isoformat() if hasattr(row.get('analysis_time'), 'isoformat') else str(row.get('analysis_time') or ''),
+            'source': '微博',
+            'likes': row.get('attitudes_count', 0),
+            'comments': row.get('comments_count', 0),
+            'shares': row.get('reposts_count', 0),
+        })
+    
+    return {
+        'list': items,
+        'total': total,
+        'page': page,
+        'pageSize': page_size,
+    }
+
+
 def calculate_sentiment_distribution(data: List[Dict]) -> Dict:
     """计算情感分布"""
     total = len(data)
@@ -909,6 +983,79 @@ def run_sentiment_on_db():
         })
     except Exception as e:
         logger.error(f'Run sentiment on DB failed: {e}', exc_info=True)
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@sentiment_bp.route('/results', methods=['GET'])
+def get_sentiment_results():
+    try:
+        page = max(int(request.args.get('page', 1)), 1)
+        page_size = min(max(int(request.args.get('pageSize', 20)), 1), 100)
+        sentiment = request.args.get('sentiment', '').strip()
+        keyword = request.args.get('keyword', '').strip()
+        batch_id = (request.args.get('batchId') or request.args.get('batch_id') or '').strip()
+
+        if DB_AVAILABLE:
+            try:
+                db_result = query_sentiment_results_from_db(page, page_size, sentiment, keyword, batch_id)
+                if db_result:
+                    return jsonify({
+                        'code': 200,
+                        'message': 'success',
+                        'data': db_result,
+                    })
+            except Exception as e:
+                logger.warning(f'Query sentiment results from MySQL failed: {e}')
+
+        data = get_sentiment_data()
+        if sentiment:
+            data = [item for item in data if item.get('sentiment') == sentiment]
+        if keyword:
+            data = [item for item in data if keyword in item.get('content', '')]
+        if batch_id:
+            data = [item for item in data if item.get('batch_id') == batch_id]
+
+        total = len(data)
+        start = (page - 1) * page_size
+        end = start + page_size
+        items = data[start:end]
+
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'list': items,
+                'total': total,
+                'page': page,
+                'pageSize': page_size,
+            },
+        })
+    except Exception as e:
+        logger.error(f'Get sentiment results failed: {e}', exc_info=True)
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@sentiment_bp.route('/tasks/<task_id>', methods=['GET'])
+def get_analysis_task_status(task_id: str):
+    try:
+        task = analysis_results.get(task_id)
+        if task:
+            return jsonify({'code': 200, 'message': 'success', 'data': task})
+
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'id': task_id,
+                'taskId': task_id,
+                'status': 'completed',
+                'progress': 100,
+                'message': '分析任务已完成或结果可直接查询',
+                'updatedAt': datetime.now().isoformat(),
+            },
+        })
+    except Exception as e:
+        logger.error(f'Get analysis task status failed: {e}', exc_info=True)
         return jsonify({'code': 500, 'message': str(e)}), 500
 
 

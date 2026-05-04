@@ -13,7 +13,7 @@ try:
     # Load .env from backend-python directory
     _env_path = Path(__file__).parent / '.env'
     if _env_path.exists():
-        load_dotenv(_env_path, override=True)
+        load_dotenv(_env_path, override=False)
 except ImportError:
     pass
 
