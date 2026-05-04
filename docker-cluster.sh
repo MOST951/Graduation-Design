@@ -628,16 +628,18 @@ do_start_existing() {
 # 等待核心服务就绪 (应用层检测)
 wait_for_healthy() {
     step "等待核心服务就绪 (最多 180 秒)..."
-    local max_wait=180
-    local waited=0
+    local overall_ok=true
 
     # 阶段 1: 等待 MySQL (应用层: mysqladmin ping + SELECT 1)
+    local waited=0
+    local mysql_ok=false
     while [[ ${waited} -lt 60 ]]; do
         if docker exec "${SENTINEL_CONTAINER}" mysqladmin ping -h localhost \
             -u root -p"$(get_env_val DB_ROOT_PASSWORD 'root')" &>/dev/null && \
            docker exec "${SENTINEL_CONTAINER}" mysql -u root \
             -p"$(get_env_val DB_ROOT_PASSWORD 'root')" -e "SELECT 1" &>/dev/null; then
             info "MySQL 服务就绪 (应用层验证通过)"
+            mysql_ok=true
             break
         fi
         local db_status
@@ -646,14 +648,20 @@ wait_for_healthy() {
         sleep 5
         waited=$((waited + 5))
     done
+    if [[ "${mysql_ok}" != "true" ]]; then
+        overall_ok=false
+    fi
 
     # 阶段 2: 等待 HDFS NameNode (应用层: 安全模式检测)
     local nn_container="weibo_sentiment_namenode"
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${nn_container}"; then
         step "等待 HDFS NameNode 就绪..."
-        while [[ ${waited} -lt ${max_wait} ]]; do
+        waited=0
+        local hdfs_ok=false
+        while [[ ${waited} -lt 90 ]]; do
             if timeout 10 docker exec "${nn_container}" hdfs dfsadmin -safemode get 2>/dev/null | grep -q "OFF"; then
                 info "HDFS NameNode 就绪 (安全模式已关闭)"
+                hdfs_ok=true
                 break
             fi
             local nn_status
@@ -662,28 +670,40 @@ wait_for_healthy() {
             sleep 5
             waited=$((waited + 5))
         done
+        if [[ "${hdfs_ok}" != "true" ]]; then
+            overall_ok=false
+        fi
     fi
 
-    # 阶段 3: 等待 HBase Master (应用层: ZooKeeper 连通 + hbase status)
+    # 阶段 3: 等待 HBase Master (优先使用 Docker healthcheck / Web UI)
     local hb_container="weibo_sentiment_hbase_master"
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${hb_container}"; then
         step "等待 HBase Master 就绪..."
-        while [[ ${waited} -lt ${max_wait} ]]; do
-            if timeout 15 docker exec "${hb_container}" /opt/hbase/bin/hbase shell <<< "status" 2>/dev/null | grep -q "servers"; then
-                info "HBase Master 就绪 (应用层验证通过)"
-                break
-            fi
+        waited=0
+        local hbase_ok=false
+        while [[ ${waited} -lt 120 ]]; do
             local hb_status
             hb_status=$(docker inspect --format='{{.State.Health.Status}}' "${hb_container}" 2>/dev/null || echo "unknown")
+            if [[ "${hb_status}" == "healthy" ]] || \
+               docker exec "${hb_container}" sh -c "curl -sf http://localhost:16010/master-status >/dev/null 2>&1 || wget -q -O /dev/null http://localhost:16010/master-status" &>/dev/null; then
+                info "HBase Master 就绪 (healthcheck/Web UI 验证通过)"
+                hbase_ok=true
+                break
+            fi
             echo -ne "  [${waited}s] 等待 HBase Master... (${hb_status})\r"
             sleep 5
             waited=$((waited + 5))
         done
+        if [[ "${hbase_ok}" != "true" ]]; then
+            overall_ok=false
+        fi
     fi
 
     echo ""
-    if [[ ${waited} -ge ${max_wait} ]]; then
+    if [[ "${overall_ok}" != "true" ]]; then
         warn "部分服务可能还未完全就绪，请用 './docker-cluster.sh status' 查看"
+    else
+        info "核心服务全部就绪"
     fi
 }
 
