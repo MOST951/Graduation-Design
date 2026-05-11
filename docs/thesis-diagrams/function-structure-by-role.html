@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>图 4-2 系统功能结构图（按角色）</title>
+<style>
+  body {
+    font-family: "Microsoft YaHei", "SimSun", sans-serif;
+    background:#f5f6f8; margin:0; padding:24px; color:#222;
+  }
+  h2 { text-align:center; margin:6px 0 18px; font-size:18px; font-weight:600; }
+  .figure {
+    background:#fff; border:1px solid #d9dde3; border-radius:8px;
+    padding:24px 16px 18px; margin: 0 auto 18px; max-width: 1180px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .caption { text-align:center; font-size:14px; margin-top:6px; color:#333; }
+  .print-btn {
+    position:fixed; top:16px; right:24px; padding:8px 16px;
+    background:#3b5bdb; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px;
+  }
+
+  /* 顶部系统标题 */
+  .sys-title {
+    display:flex; justify-content:center; margin-bottom:0;
+  }
+  .sys-title .box {
+    background:#3b5bdb; color:#fff; padding:8px 28px;
+    border-radius:6px; font-size:15px; font-weight:600;
+    box-shadow: 0 2px 6px rgba(59,91,219,0.3);
+  }
+  .v-line { width:2px; height:18px; background:#888; margin:0 auto; }
+  .h-trunk { height:2px; background:#888; margin:0 auto; }
+
+  /* 角色层 */
+  .role-row { display:flex; justify-content:space-around; align-items:flex-start; margin-top:0; }
+  .role-col { flex:1; max-width:560px; }
+  .role-head {
+    background:#eaf2ff; border:1.6px solid #3b5bdb; color:#1f3a8a;
+    padding:8px 0; text-align:center; font-weight:700; font-size:14px;
+    border-radius:6px;
+  }
+  .role-head.admin { background:#fff2e6; border-color:#d9480f; color:#a02000; }
+
+  /* 模块容器：3 列网格 */
+  .module-grid {
+    display:grid; grid-template-columns: repeat(3, 1fr);
+    gap:10px; margin-top:14px;
+  }
+  .module-grid.two { grid-template-columns: repeat(2, 1fr); }
+  .module-grid.four { grid-template-columns: repeat(4, 1fr); }
+
+  .module {
+    border:1.4px solid #3b5bdb; border-radius:4px; overflow:hidden;
+    display:flex; flex-direction:column; background:#fff;
+  }
+  .module .m-head {
+    background:#eaf2ff; color:#1f3a8a; text-align:center;
+    padding:6px 4px; font-size:13px; font-weight:600;
+    border-bottom:1.4px solid #3b5bdb;
+  }
+  .module ul {
+    margin:0; padding:8px 6px 8px 6px; list-style:none; font-size:12px; line-height:1.7;
+    color:#333;
+  }
+  .module ul li { text-align:center; }
+
+  .module.admin { border-color:#d9480f; }
+  .module.admin .m-head { background:#fff2e6; color:#a02000; border-bottom-color:#d9480f; }
+
+  /* 横向连线 */
+  .branch-line {
+    position:relative; height:18px;
+  }
+  .branch-line::before {
+    content:""; position:absolute; left:0; right:0; top:8px; height:2px; background:#888;
+  }
+  .branch-line::after {
+    content:""; position:absolute; left:50%; top:0; width:2px; height:8px; background:#888;
+  }
+  .branch-line .tick {
+    position:absolute; top:8px; width:2px; height:10px; background:#888;
+  }
+
+  .legend {
+    text-align:center; font-size:12px; color:#555; margin-top:10px;
+  }
+  .legend span.dot {
+    display:inline-block; width:10px; height:10px; border-radius:2px;
+    vertical-align:middle; margin:0 4px 2px 14px;
+  }
+
+  @media print {
+    body { background:#fff; padding:0; }
+    .figure { border:none; box-shadow:none; page-break-inside:avoid; }
+    .print-btn { display:none; }
+  }
+</style>
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">打印 / 导出 PDF</button>
+
+<div class="figure">
+
+  <!-- 顶部：系统名 -->
+  <div class="sys-title"><div class="box">微博舆情情感分析系统功能模块</div></div>
+  <div class="v-line"></div>
+  <!-- 角色分支主干 -->
+  <div style="position:relative; height:18px;">
+    <div style="position:absolute; left:25%; right:25%; top:8px; height:2px; background:#888;"></div>
+    <div style="position:absolute; left:25%; top:8px; width:2px; height:10px; background:#888;"></div>
+    <div style="position:absolute; left:75%; top:8px; width:2px; height:10px; background:#888;"></div>
+  </div>
+
+  <!-- 角色行：普通用户（左） / 管理员（右） -->
+  <div class="role-row">
+
+    <!-- ========== 普通用户分支 ========== -->
+    <div class="role-col">
+      <div class="role-head">普通用户</div>
+      <div class="v-line"></div>
+
+      <!-- 第一排：3 个核心业务模块 -->
+      <div class="module-grid">
+        <div class="module">
+          <div class="m-head">数据采集</div>
+          <ul>
+            <li>关键词/时间范围设置</li>
+            <li>增量采集</li>
+            <li>任务控制（启停）</li>
+            <li>采集日志记录</li>
+          </ul>
+        </div>
+        <div class="module">
+          <div class="m-head">数据预处理</div>
+          <ul>
+            <li>数据去重</li>
+            <li>数据去噪</li>
+            <li>文本标准化</li>
+            <li>分词与停用词过滤</li>
+          </ul>
+        </div>
+        <div class="module">
+          <div class="m-head">情感分析</div>
+          <ul>
+            <li>词典模式分析</li>
+            <li>ChineseBERT 分析</li>
+            <li>级联融合分析</li>
+            <li>分析结果存储</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="v-line"></div>
+
+      <!-- 第二排：4 个交互/展示模块 -->
+      <div class="module-grid four">
+        <div class="module">
+          <div class="m-head">热点话题分析</div>
+          <ul>
+            <li>词云展示</li>
+            <li>三维度排序</li>
+            <li>权重动态调节</li>
+            <li>关键词检索</li>
+          </ul>
+        </div>
+        <div class="module">
+          <div class="m-head">实时舆情监控</div>
+          <ul>
+            <li>关键词订阅</li>
+            <li>实时情感分析</li>
+            <li>舆情预警</li>
+            <li>实时数据展示</li>
+          </ul>
+        </div>
+        <div class="module">
+          <div class="m-head">流水线管理</div>
+          <ul>
+            <li>全流程执行</li>
+            <li>断点续跑</li>
+            <li>任务状态监控</li>
+            <li>批次管理</li>
+          </ul>
+        </div>
+        <div class="module">
+          <div class="m-head">可视化展示</div>
+          <ul>
+            <li>情感分布饼图</li>
+            <li>情感趋势折线</li>
+            <li>热点词云</li>
+            <li>传播路径图</li>
+            <li>图表导出</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 管理员分支 ========== -->
+    <div class="role-col" style="max-width:420px;">
+      <div class="role-head admin">管理员（含普通用户全部功能 + 后台管理）</div>
+      <div class="v-line"></div>
+
+      <div class="module-grid two">
+        <div class="module admin">
+          <div class="m-head">用户与权限管理</div>
+          <ul>
+            <li>用户新增/禁用</li>
+            <li>密码重置</li>
+            <li>角色与权限分配</li>
+            <li>操作审计日志</li>
+          </ul>
+        </div>
+        <div class="module admin">
+          <div class="m-head">Spark 参数配置</div>
+          <ul>
+            <li>Executor 内存/核数</li>
+            <li>并行度配置</li>
+            <li>批量推理 batch_size</li>
+            <li>配置即时生效</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="v-line"></div>
+
+      <div class="module-grid two">
+        <div class="module admin">
+          <div class="m-head">数据库与系统参数</div>
+          <ul>
+            <li>MySQL/HBase 连接</li>
+            <li>词典路径维护</li>
+            <li>θ 阈值与排序权重</li>
+            <li>采集任务管理</li>
+          </ul>
+        </div>
+        <div class="module admin">
+          <div class="m-head">系统日志查看</div>
+          <ul>
+            <li>级别筛选</li>
+            <li>关键词搜索</li>
+            <li>错误徽章提示</li>
+            <li>日志导出</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <span class="dot" style="background:#eaf2ff; border:1.4px solid #3b5bdb;"></span>普通用户可访问模块
+    <span class="dot" style="background:#fff2e6; border:1.4px solid #d9480f;"></span>管理员独有后台管理模块
+  </div>
+
+  <div class="caption" style="margin-top:14px;">图 4-2 系统功能结构图（按角色组织）</div>
+</div>
+
+</body>
+</html>

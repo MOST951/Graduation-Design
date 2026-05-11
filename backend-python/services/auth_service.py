@@ -88,21 +88,91 @@ class AuthService:
             logger.info("用户表已就绪")
         except Exception as e:
             logger.error(f"创建用户表失败: {e}")
+
+        try:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("SHOW COLUMNS FROM users")
+                columns = {row['Field'] for row in cursor.fetchall()}
+                alter_sql = []
+                if 'password_hash' not in columns:
+                    alter_sql.append("ADD COLUMN `password_hash` VARCHAR(255) DEFAULT '' COMMENT '密码哈希'")
+                if 'salt' not in columns:
+                    alter_sql.append("ADD COLUMN `salt` VARCHAR(64) DEFAULT '' COMMENT '密码盐值'")
+                if 'nickname' not in columns:
+                    alter_sql.append("ADD COLUMN `nickname` VARCHAR(64) DEFAULT '' COMMENT '昵称'")
+                if 'avatar' not in columns:
+                    alter_sql.append("ADD COLUMN `avatar` VARCHAR(512) DEFAULT '/avatars/default.png' COMMENT '头像URL'")
+                if 'role' not in columns:
+                    alter_sql.append("ADD COLUMN `role` VARCHAR(32) DEFAULT 'user' COMMENT '角色'")
+                if 'last_login_at' not in columns:
+                    alter_sql.append("ADD COLUMN `last_login_at` DATETIME NULL COMMENT '最后登录时间'")
+                if 'last_login_ip' not in columns:
+                    alter_sql.append("ADD COLUMN `last_login_ip` VARCHAR(64) DEFAULT '' COMMENT '最后登录IP'")
+                if 'login_count' not in columns:
+                    alter_sql.append("ADD COLUMN `login_count` INT DEFAULT 0 COMMENT '登录次数'")
+                if alter_sql:
+                    cursor.execute(f"ALTER TABLE users {', '.join(alter_sql)}")
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"修复用户表结构失败: {e}")
     
     def _seed_default_users(self):
         """自动创建默认用户（幂等）"""
         try:
             conn = self._get_connection()
             with conn.cursor() as cursor:
+                cursor.execute("SHOW COLUMNS FROM users")
+                columns = {row['Field'] for row in cursor.fetchall()}
                 for u in self.DEFAULT_USERS:
-                    cursor.execute("SELECT id FROM users WHERE username = %s", (u['username'],))
-                    if cursor.fetchone():
-                        continue
+                    cursor.execute("SELECT * FROM users WHERE username = %s", (u['username'],))
+                    existing = cursor.fetchone()
                     password_hash, salt = self._hash_password(u['password'])
-                    cursor.execute("""
-                        INSERT INTO users (username, password_hash, salt, nickname, email, role)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """, (u['username'], password_hash, salt, u['nickname'], u['email'], u['role']))
+                    if existing:
+                        needs_reset = (
+                            not existing.get('password_hash')
+                            or not existing.get('salt')
+                            or not self._verify_password(u['password'], existing.get('password_hash', ''), existing.get('salt', ''))
+                        )
+                        if needs_reset:
+                            fields = ['password_hash', 'salt']
+                            values = [password_hash, salt]
+                            for field, value in [
+                                ('password', u['password']),
+                                ('nickname', u['nickname']),
+                                ('email', u['email']),
+                                ('role', u['role']),
+                                ('status', 'active'),
+                            ]:
+                                if field in columns:
+                                    fields.append(field)
+                                    values.append(value)
+                            set_clause = ', '.join(f'{field} = %s' for field in fields)
+                            cursor.execute(
+                                f"UPDATE users SET {set_clause} WHERE username = %s",
+                                (*values, u['username'])
+                            )
+                            logger.info(f"默认用户密码已重置: {u['username']} ({u['role']})")
+                        continue
+                    fields = ['username', 'password_hash', 'salt']
+                    values = [u['username'], password_hash, salt]
+                    for field, value in [
+                        ('password', u['password']),
+                        ('nickname', u['nickname']),
+                        ('email', u['email']),
+                        ('role', u['role']),
+                        ('roles', 'ROLE_ADMIN,ROLE_USER' if u['role'] == 'admin' else 'ROLE_USER'),
+                        ('status', 'active'),
+                    ]:
+                        if field in columns:
+                            fields.append(field)
+                            values.append(value)
+                    placeholders = ', '.join(['%s'] * len(fields))
+                    cursor.execute(
+                        f"INSERT INTO users ({', '.join(fields)}) VALUES ({placeholders})",
+                        values
+                    )
                     logger.info(f"默认用户已创建: {u['username']} ({u['role']})")
             conn.commit()
             conn.close()
@@ -135,10 +205,15 @@ class AuthService:
                     conn.close()
                     return False, "用户不存在", {}
                 
-                if user['status'] == 'banned':
+                status = str(user.get('status') or 'active').lower()
+                if status == 'banned':
                     conn.close()
                     return False, "账号已被禁用", {}
                 
+                if not user.get('password_hash') or not user.get('salt'):
+                    conn.close()
+                    return False, "密码未初始化，请重启后端服务后重试", {}
+
                 if not self._verify_password(password, user['password_hash'], user['salt']):
                     conn.close()
                     return False, "密码错误", {}
@@ -157,10 +232,10 @@ class AuthService:
                 return True, "登录成功", {
                     'id': user['id'],
                     'username': user['username'],
-                    'nickname': user['nickname'],
-                    'email': user['email'],
-                    'avatar': user['avatar'],
-                    'role': user['role']
+                    'nickname': user.get('nickname') or user['username'],
+                    'email': user.get('email', ''),
+                    'avatar': user.get('avatar') or '/avatars/default.png',
+                    'role': user.get('role') or 'user'
                 }
                 
         except Exception as e:

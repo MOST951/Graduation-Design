@@ -95,6 +95,12 @@
             <artifactId>jjwt-jackson</artifactId>
         </dependency>
 
+        <!-- WebSocket -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+
         <!-- API文档 -->
         <dependency>
             <groupId>org.springdoc</groupId>

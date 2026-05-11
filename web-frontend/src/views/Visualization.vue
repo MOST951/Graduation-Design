@@ -1257,15 +1257,49 @@ watch(showNetworkGraph, (val) => {
   }
 });
 
-// PDF导出
+// PDF 导出（基于 html2canvas + jsPDF，失败时回退为 PNG 下载）
 const exportToPDF = async () => {
   ElMessage.info('正在生成PDF...');
   try {
+    const target = document.querySelector('.visualization-module') as HTMLElement;
+    if (!target) {
+      ElMessage.warning('未找到可视化区域');
+      return;
+    }
     const { default: html2canvas } = await import('html2canvas');
-    const canvas = await html2canvas(document.querySelector('.visualization-module') as HTMLElement, {
+    const canvas = await html2canvas(target, {
       scale: 2, useCORS: true, logging: false,
+      backgroundColor: '#ffffff',
     });
-    
+
+    // 优先尝试 jsPDF；失败则降级为 PNG
+    try {
+      const jspdfModule: any = await import('jspdf');
+      const JsPDF = jspdfModule.jsPDF || jspdfModule.default;
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new JsPDF({ orientation: canvas.width > canvas.height ? 'l' : 'p', unit: 'pt', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      // 高度超过一页时自动分页
+      let heightLeft = imgHeight;
+      let position = 0;
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      while (heightLeft > 0) {
+        position -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      pdf.save(`visualization-${new Date().toISOString().slice(0, 10)}.pdf`);
+      ElMessage.success('PDF 已导出');
+      return;
+    } catch (pdfErr) {
+      console.warn('[exportToPDF] jsPDF 不可用，降级为 PNG:', pdfErr);
+    }
+
     const imgData = canvas.toDataURL('image/png');
     const link = document.createElement('a');
     link.href = imgData;

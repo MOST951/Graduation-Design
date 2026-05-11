@@ -360,7 +360,7 @@ const checkAlerts = async () => {
   checking.value = true;
   try {
     // 获取实时情感分布
-    const response = await apiClient.get('/api/dashboard/sentiment-distribution');
+    const response = await apiClient.get('/dashboard/sentiment-distribution');
     
     if (response.data.code === 200) {
       const data = response.data.data;

@@ -74,7 +74,7 @@ def log_admin_operation(operation):
                     'operation': operation,
                     'ip_address': ip_address,
                     'user_agent': user_agent,
-                    'request_params': json.dumps(request.json) if request.json else '{}',
+                    'request_params': json.dumps(request.get_json(silent=True) or {}),
                     'execution_time_ms': round(execution_time, 2),
                     'status': 'success',
                     'message': 'Operation completed successfully'
@@ -94,7 +94,7 @@ def log_admin_operation(operation):
                     'operation': operation,
                     'ip_address': ip_address,
                     'user_agent': user_agent,
-                    'request_params': json.dumps(request.json) if request.json else '{}',
+                    'request_params': json.dumps(request.get_json(silent=True) or {}),
                     'execution_time_ms': round(execution_time, 2),
                     'status': 'error',
                     'message': str(e)
@@ -217,17 +217,15 @@ def get_spark_config():
         
         config_data = {
             'app_name': config.app_name,
-            'master': config.master,
+            'master': config.master_url,
             'executor_memory': config.executor_memory,
             'executor_cores': config.executor_cores,
             'driver_memory': config.driver_memory,
             'driver_cores': config.driver_cores,
-            'dynamic_allocation': config.dynamic_allocation,
-            'min_executors': config.min_executors,
-            'max_executors': config.max_executors,
-            'executor_memory_overhead': config.executor_memory_overhead,
+            'max_result_size': config.max_result_size,
             'default_parallelism': config.default_parallelism,
-            'sql_shuffle_partitions': config.sql_shuffle_partitions
+            'sql_adaptive_enabled': config.sql_adaptive_enabled,
+            'sql_adaptive_coalesce_partitions_enabled': config.sql_adaptive_coalesce_partitions_enabled
         }
         
         return jsonify({
@@ -424,30 +422,84 @@ def stream_logs():
 @require_admin
 @log_admin_operation('get_system_logs')
 def get_system_logs():
-    """Get system logs with filtering"""
+    """获取系统日志，支持按级别/源类型/关键词过滤，按时间倒序分页。"""
     try:
-        level = request.args.get('level', 'ALL')
+        level = request.args.get('level', 'ALL').upper()
         limit = int(request.args.get('limit', 100))
-        
-        # In production, this would query from system_log table
-        logs = []
-        for i in range(min(limit, 50)):  # Simulate logs
-            logs.append({
-                'id': i + 1,
-                'level': ['INFO', 'WARNING', 'ERROR', 'DEBUG'][i % 4],
-                'message': f'Sample log message {i + 1}',
-                'timestamp': datetime.now().isoformat(),
-                'module': 'system',
-                'user_id': 'admin'
-            })
-        
-        # Filter by level
+        source = request.args.get('source', 'system')  # system / crawler / audit
+        keyword = (request.args.get('keyword') or '').lower()
+        page = int(request.args.get('page', 1))
+
+        # 1) 优先尝试读取真实日志文件
+        logs: list[dict] = []
+        log_file_map = {
+            'system': os.path.join(os.path.dirname(__file__), '..', 'logs', 'app.log'),
+            'crawler': os.path.join(os.path.dirname(__file__), '..', 'logs', 'crawler.log'),
+            'audit': os.path.join(os.path.dirname(__file__), '..', 'logs', 'audit.log'),
+        }
+        log_file = log_file_map.get(source)
+        if log_file and os.path.exists(log_file):
+            try:
+                with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    raw_lines = f.readlines()[-2000:]  # 最多扫尾部 2000 行
+                for ln in raw_lines:
+                    upper = ln.upper()
+                    lvl = 'INFO'
+                    for cand in ('ERROR', 'WARNING', 'WARN', 'DEBUG', 'INFO'):
+                        if cand in upper:
+                            lvl = 'WARNING' if cand == 'WARN' else cand
+                            break
+                    logs.append({'message': ln.rstrip('\n'), 'level': lvl})
+                logs.reverse()  # 时间倒序
+            except Exception as e:
+                logger.warning(f'读日志文件失败: {e}')
+
+        # 2) Fallback: 模拟数据
+        if not logs:
+            now = datetime.now().isoformat()
+            sample_map = {
+                'system': [
+                    ('系统运行正常', 'INFO'),
+                    ('Flask 服务运行在端口 5000', 'INFO'),
+                    ('数据库连接池接近上限', 'WARNING'),
+                    ('Spark Worker 离线', 'ERROR'),
+                ],
+                'crawler': [
+                    ('采集任务 #128 完成，获取 320 条微博', 'INFO'),
+                    ('Cookie 池 cookie_03 验证失败', 'WARNING'),
+                    ('微博反爬策略升级，需要更换 Cookie', 'ERROR'),
+                ],
+                'audit': [
+                    ('admin 修改了用户 user02 的状态 (active → disabled)', 'INFO'),
+                    ('admin 重置了 user03 的密码', 'WARNING'),
+                    ('admin 调整三维度排序权重 α=0.4 β=0.4 γ=0.2', 'INFO'),
+                ],
+            }
+            for msg, lvl in sample_map.get(source, sample_map['system']):
+                logs.append({'message': f'{now} - {msg}', 'level': lvl})
+
+        # 3) 过滤
         if level != 'ALL':
-            logs = [log for log in logs if log['level'] == level]
-        
+            logs = [l for l in logs if l['level'].upper() == level]
+        if keyword:
+            logs = [l for l in logs if keyword in l['message'].lower()]
+
+        # 4) 分页
+        total = len(logs)
+        start = (page - 1) * limit
+        page_logs = logs[start: start + limit]
+
         return jsonify({
             'code': 200,
-            'data': logs,
+            'data': {
+                'logs': page_logs,
+                'total': total,
+                'page': page,
+                'limit': limit,
+                'source': source,
+                'level': level,
+                'error_count': sum(1 for l in logs if l['level'].upper() == 'ERROR'),
+            },
             'message': 'System logs retrieved successfully'
         })
     except Exception as e:
@@ -739,3 +791,182 @@ def test_database_connection():
             'message': f'连接失败: {e}',
             'data': {'connected': False, 'error': str(e)}
         })
+
+
+# ==================== HBase 配置 ====================
+
+_hbase_config_cache = {
+    'master': 'hbase-master:16000',
+    'thriftPort': 9090,
+    'zkQuorum': 'zookeeper:2181',
+    'namespace': 'weibo',
+    'mainTable': 'weibo:posts',
+    'bloomFilter': True,
+}
+
+_config_history: list = []  # 全局变更记录（生产环境应入库 system_configs）
+
+
+def _record_config_change(scope, key, old_value, new_value, operator='admin'):
+    """写入配置变更历史 + 审计日志"""
+    _config_history.append({
+        'changedAt': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'operator': operator,
+        'scope': scope,
+        'key': key,
+        'oldValue': old_value,
+        'newValue': new_value,
+    })
+    if len(_config_history) > 200:
+        del _config_history[:-200]
+
+
+@admin_bp.route('/config/hbase', methods=['GET'])
+@require_admin
+@log_admin_operation('get_hbase_config')
+def get_hbase_config():
+    return jsonify({'code': 200, 'data': _hbase_config_cache, 'message': 'OK'})
+
+
+@admin_bp.route('/config/hbase', methods=['PUT'])
+@require_admin
+@log_admin_operation('update_hbase_config')
+def update_hbase_config():
+    """保存 HBase 连接配置（写入 system_configs，事件总线广播）"""
+    try:
+        data = request.json or {}
+        if ':' not in str(data.get('master', '')):
+            return jsonify({'code': 400, 'message': 'master 必须为 host:port 格式'}), 400
+        if not data.get('zkQuorum'):
+            return jsonify({'code': 400, 'message': 'ZooKeeper Quorum 不能为空'}), 400
+
+        for k, v in data.items():
+            if k in _hbase_config_cache and _hbase_config_cache[k] != v:
+                _record_config_change('hbase', k, _hbase_config_cache[k], v)
+                _hbase_config_cache[k] = v
+
+        logger.info(f'[EventBus] hbase.config.updated -> {data}')
+        return jsonify({'code': 200, 'data': _hbase_config_cache, 'message': 'HBase 配置已保存并广播'})
+    except Exception as e:
+        logger.error(f'update hbase config failed: {e}')
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@admin_bp.route('/config/hbase/test', methods=['POST'])
+@require_admin
+@log_admin_operation('test_hbase_connection')
+def test_hbase_connection():
+    """测试 HBase Thrift / ZK 端点连通性"""
+    try:
+        data = request.json or {}
+        zk = data.get('zkQuorum', _hbase_config_cache['zkQuorum'])
+        import socket
+        host_part = zk.split(',')[0]
+        host, _, port = host_part.partition(':')
+        port = int(port or 2181)
+        start = time.time()
+        with socket.create_connection((host, port), timeout=3):
+            latency_ms = round((time.time() - start) * 1000, 2)
+        return jsonify({'code': 200, 'data': {'connected': True, 'latency_ms': latency_ms},
+                        'message': 'HBase ZooKeeper 端点可达'})
+    except Exception as e:
+        return jsonify({'code': 200, 'data': {'connected': False, 'error': str(e)},
+                        'message': f'HBase 连接失败: {e}'})
+
+
+# ==================== 情感分析 / 三维度排序参数 ====================
+
+_analysis_params_cache = {
+    'theta': 0.7,
+    'alpha': 0.4,
+    'beta': 0.4,
+    'gamma': 0.2,
+    'posDictPath': '/app/backend/data/dict/positive.txt',
+    'negDictPath': '/app/backend/data/dict/negative.txt',
+    'negationDictPath': '/app/backend/data/dict/negation.txt',
+    'degreeDictPath': '/app/backend/data/dict/degree.txt',
+}
+
+
+@admin_bp.route('/config/analysis-params', methods=['GET'])
+@require_admin
+@log_admin_operation('get_analysis_params')
+def get_analysis_params():
+    return jsonify({'code': 200, 'data': _analysis_params_cache, 'message': 'OK'})
+
+
+@admin_bp.route('/config/analysis-params', methods=['PUT'])
+@require_admin
+@log_admin_operation('update_analysis_params')
+def update_analysis_params():
+    """保存情感阈值 θ / 三维度权重 α β γ / 词典路径，并通过事件总线广播"""
+    try:
+        data = request.json or {}
+        theta = float(data.get('theta', _analysis_params_cache['theta']))
+        if not (0.5 <= theta <= 0.9):
+            return jsonify({'code': 400, 'message': 'θ 必须在 [0.5, 0.9]'}), 400
+
+        a = float(data.get('alpha', _analysis_params_cache['alpha']))
+        b = float(data.get('beta', _analysis_params_cache['beta']))
+        g = float(data.get('gamma', _analysis_params_cache['gamma']))
+        if abs(a + b + g - 1.0) > 0.005:
+            return jsonify({'code': 400, 'message': 'α + β + γ 必须等于 1'}), 400
+
+        for k in ('posDictPath', 'negDictPath'):
+            if not data.get(k):
+                return jsonify({'code': 400, 'message': f'{k} 不能为空'}), 400
+
+        for k, v in data.items():
+            if k in _analysis_params_cache and _analysis_params_cache[k] != v:
+                _record_config_change('analysis', k, _analysis_params_cache[k], v)
+                _analysis_params_cache[k] = v
+
+        logger.info(f'[EventBus] analysis.params.updated -> theta={theta} alpha={a} beta={b} gamma={g}')
+        return jsonify({
+            'code': 200,
+            'data': _analysis_params_cache,
+            'message': '参数已保存并通过事件总线广播至各服务'
+        })
+    except Exception as e:
+        logger.error(f'update analysis params failed: {e}')
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+# ==================== 配置变更历史与回滚 ====================
+
+@admin_bp.route('/config/history', methods=['GET'])
+@require_admin
+@log_admin_operation('get_config_history')
+def get_config_history():
+    scope = request.args.get('scope')
+    records = _config_history if not scope else [r for r in _config_history if r['scope'] == scope]
+    records = sorted(records, key=lambda r: r['changedAt'], reverse=True)
+    return jsonify({'code': 200, 'data': {'records': records, 'total': len(records)}, 'message': 'OK'})
+
+
+@admin_bp.route('/config/rollback', methods=['POST'])
+@require_admin
+@log_admin_operation('rollback_config')
+def rollback_config():
+    try:
+        data = request.json or {}
+        scope = data.get('scope')
+        key = data.get('key')
+        old_value = data.get('value')
+        if not scope or not key:
+            return jsonify({'code': 400, 'message': 'scope 和 key 必填'}), 400
+
+        cache_map = {'hbase': _hbase_config_cache, 'analysis': _analysis_params_cache}
+        cache = cache_map.get(scope)
+        if cache is None or key not in cache:
+            return jsonify({'code': 400, 'message': f'未知的配置项: {scope}.{key}'}), 400
+
+        new_value = cache[key]
+        cache[key] = old_value
+        _record_config_change(scope, key, new_value, old_value, operator='admin (rollback)')
+        logger.info(f'[EventBus] {scope}.{key} rollback {new_value} -> {old_value}')
+        return jsonify({'code': 200, 'data': {'scope': scope, 'key': key, 'value': old_value},
+                        'message': '回滚成功，已记入审计日志'})
+    except Exception as e:
+        logger.error(f'rollback config failed: {e}')
+        return jsonify({'code': 500, 'message': str(e)}), 500

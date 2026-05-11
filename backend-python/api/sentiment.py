@@ -49,6 +49,8 @@ try:
 except ImportError:
     PIPELINE_AVAILABLE = False
 
+from api.auth_middleware import token_required, optional_token
+
 # 创建蓝图
 sentiment_bp = Blueprint('sentiment', __name__, url_prefix='/api/sentiment')
 
@@ -378,6 +380,7 @@ def generate_confusion_matrix() -> Dict:
 # ==================== API路由 ====================
 
 @sentiment_bp.route('/analyze', methods=['POST'])
+@optional_token
 def analyze_text():
     """
     分析文本情感

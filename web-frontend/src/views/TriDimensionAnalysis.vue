@@ -30,7 +30,7 @@
         <!-- 论文公式卡片 -->
         <el-card shadow="hover" class="formula-card">
           <template #header>
-            <div class="card-hdr"><span>三维度排序公式</span><el-tag size="small" type="warning">公式4-7</el-tag></div>
+            <div class="card-hdr"><span>热点话题综合排序公式</span><el-tag size="small" type="warning">公式4-7</el-tag></div>
           </template>
           <div class="formula-display">
             <div class="formula-tex">Score = ω₁·N(S) + ω₂·H<sub>norm</sub> + ω₃·γ(t)</div>
@@ -62,9 +62,10 @@
             <div class="weight-item">
               <div class="weight-header">
                 <span>ω₃ 时效性 γ(t)</span>
-                <el-tag type="warning">{{ (config.timeliness_weight * 100).toFixed(0) }}%</el-tag>
+                <el-tag type="warning">{{ (config.timeliness_weight * 100).toFixed(0) }}% (自动)</el-tag>
               </div>
-              <el-slider v-model="config.timeliness_weight" :min="0" :max="1" :step="0.05" @change="onTriWeightChange('timeliness')" />
+              <el-slider v-model="config.timeliness_weight" :min="0" :max="1" :step="0.05" disabled />
+              <div class="weight-hint">时效权重 = 1 - 情感 - 热度，自动补足</div>
             </div>
             <!-- 权重可视化条 -->
             <div class="weight-bar">
@@ -128,8 +129,9 @@
         <el-card shadow="hover">
           <template #header>
             <div class="chart-header">
-              <span>情感-热度三维度散点图</span>
+              <span>热点话题情感-热度分布图</span>
               <el-radio-group v-model="chartMode" size="small">
+                <el-radio-button label="wordcloud">词云图</el-radio-button>
                 <el-radio-button label="scatter">散点图</el-radio-button>
                 <el-radio-button label="heatmap">热力图</el-radio-button>
               </el-radio-group>
@@ -166,7 +168,7 @@
         <el-card shadow="hover">
           <template #header>
             <div class="rank-header">
-              <span>三维度排名 Top {{ rankList.length }}</span>
+              <span>热点话题 Top {{ rankList.length }}</span>
               <el-select v-model="rankFilter" size="small" style="width: 100px">
                 <el-option label="全部" value="all" />
                 <el-option label="高情感高热" value="high_sentiment_high_heat" />
@@ -177,6 +179,10 @@
             </div>
           </template>
           
+          <div v-if="selectedKeyword" class="keyword-filter">
+            <span>关键词筛选：</span>
+            <el-tag closable type="primary" @close="selectedKeyword = ''">{{ selectedKeyword }}</el-tag>
+          </div>
           <div class="rank-list">
             <div 
               v-for="item in filteredRankList" 
@@ -210,7 +216,7 @@
           <el-descriptions-item label="排名">
             <el-tag type="primary">第 {{ selectedItem.rank }} 名</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="三维度得分">
+          <el-descriptions-item label="热点综合得分">
             <span class="highlight">{{ selectedItem.tri_score }}</span>
           </el-descriptions-item>
           <el-descriptions-item label="情感极性">
@@ -322,6 +328,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import * as echarts from 'echarts';
+import 'echarts-wordcloud';
 import { DataAnalysis, Setting, Download, TrendCharts } from '@element-plus/icons-vue';
 import { SUCCESS, PRIMARY, DANGER, INFO, WARNING } from '@/styles/colors';
 
@@ -337,8 +344,9 @@ const showConfigPanel = ref(false);
 const showDetailDialog = ref(false);
 const showHistoricalDialog = ref(false);
 const selectedConfig = ref('default');
-const chartMode = ref('scatter');
+const chartMode = ref('wordcloud');
 const rankFilter = ref('all');
+const selectedKeyword = ref('');
 const configName = ref('');
 const selectedItem = ref<any>(null);
 
@@ -403,10 +411,14 @@ const quadrantStats = ref<Record<string, any>>({});
 
 // 计算属性
 const filteredRankList = computed(() => {
-  if (rankFilter.value === 'all') {
-    return rankList.value.slice(0, 20);
+  let list = rankList.value;
+  if (rankFilter.value !== 'all') {
+    list = list.filter(item => item.quadrant === rankFilter.value);
   }
-  return rankList.value.filter(item => item.quadrant === rankFilter.value).slice(0, 20);
+  if (selectedKeyword.value) {
+    list = list.filter(item => (item.text || '').includes(selectedKeyword.value));
+  }
+  return list.slice(0, 20);
 });
 
 // 三维权重联动 (ω₁+ω₂+ω₃=1)
@@ -414,53 +426,21 @@ const weightSum = computed(() => {
   return Number((config.sentiment_weight + config.heat_weight + config.timeliness_weight).toFixed(2));
 });
 
+// 时效权重自动补足：用户只调情感与热度，时效=1-情感-热度
 const onTriWeightChange = (changed: string) => {
-  const total = 1;
-  const currentSum = config.sentiment_weight + config.heat_weight + config.timeliness_weight;
-  
-  if (currentSum === total) return; // Already balanced
-  
-  if (changed === 'sentiment') {
-    const remaining = Math.max(0, total - config.sentiment_weight);
-    const otherSum = config.heat_weight + config.timeliness_weight;
-    if (otherSum > 0) {
-      const scale = remaining / otherSum;
-      config.heat_weight = Number((config.heat_weight * scale).toFixed(2));
-      config.timeliness_weight = Number((config.timeliness_weight * scale).toFixed(2));
-    } else {
-      config.heat_weight = Number((remaining / 2).toFixed(2));
-      config.timeliness_weight = Number((remaining / 2).toFixed(2));
-    }
-  } else if (changed === 'heat') {
-    const remaining = Math.max(0, total - config.heat_weight);
-    const otherSum = config.sentiment_weight + config.timeliness_weight;
-    if (otherSum > 0) {
-      const scale = remaining / otherSum;
-      config.sentiment_weight = Number((config.sentiment_weight * scale).toFixed(2));
-      config.timeliness_weight = Number((config.timeliness_weight * scale).toFixed(2));
-    } else {
-      config.sentiment_weight = Number((remaining / 2).toFixed(2));
-      config.timeliness_weight = Number((remaining / 2).toFixed(2));
-    }
-  } else if (changed === 'timeliness') {
-    const remaining = Math.max(0, total - config.timeliness_weight);
-    const otherSum = config.sentiment_weight + config.heat_weight;
-    if (otherSum > 0) {
-      const scale = remaining / otherSum;
+  if (changed === 'sentiment' || changed === 'heat') {
+    // 若情感+热度>1，按比例缩放至1
+    const sh = config.sentiment_weight + config.heat_weight;
+    if (sh > 1) {
+      const scale = 1 / sh;
       config.sentiment_weight = Number((config.sentiment_weight * scale).toFixed(2));
       config.heat_weight = Number((config.heat_weight * scale).toFixed(2));
-    } else {
-      config.sentiment_weight = Number((remaining / 2).toFixed(2));
-      config.heat_weight = Number((remaining / 2).toFixed(2));
     }
   }
-  
-  // Ensure sum equals exactly 1 (handle floating point precision)
-  const finalSum = config.sentiment_weight + config.heat_weight + config.timeliness_weight;
-  if (Math.abs(finalSum - total) > 0.001) {
-    const diff = total - finalSum;
-    config.timeliness_weight = Number((config.timeliness_weight + diff).toFixed(2));
-  }
+  // 时效权重 = 1 - 情感 - 热度
+  config.timeliness_weight = Number(
+    Math.max(0, 1 - config.sentiment_weight - config.heat_weight).toFixed(2)
+  );
 };
 
 // 加载预设配置 (论文 ω₁=0.4, ω₂=0.4, ω₃=0.2)
@@ -517,9 +497,9 @@ const runAnalysis = async () => {
       };
     });
 
-    ElMessage.info(`获取到 ${analysisData.length} 条热搜，开始三维度分析...`);
+    ElMessage.info(`获取到 ${analysisData.length} 条热搜，开始热点话题分析...`);
 
-    // 3. 调用后端三维度分析接口
+    // 3. 调用后端热点话题分析接口
     const response = await apiClient.post('/weibo/rank/tri', {
       data: analysisData,
       sentiment_weight: config.sentiment_weight,
@@ -598,7 +578,7 @@ const generateMockData = () => {
   for (let i = 0; i < 100; i++) {
     data.push({
       id: `${i + 1}`,
-      text: `这是第${i + 1}条测试微博内容，用于展示三维度分析效果...`,
+      text: `这是第${i + 1}条测试微博内容，用于展示热点话题分析效果...`,
       reposts_count: Math.floor(Math.random() * 10000),
       comments_count: Math.floor(Math.random() * 5000),
       attitudes_count: Math.floor(Math.random() * 20000),
@@ -690,10 +670,93 @@ const updateScatterChart = () => {
   if (chartMode.value === 'heatmap') {
     // 热力图模式
     updateHeatmapChart();
+  } else if (chartMode.value === 'wordcloud') {
+    // 词云图模式
+    updateWordcloudChart();
   } else {
     // 散点图模式
     updateScatterMode();
   }
+};
+
+// 词云图模式：基于热点话题文本分词词频，颜色映射情感倾向
+const CN_STOPWORDS = new Set(['的','了','是','在','和','与','也','就','都','而','及','或','以','对','中','为','上','下','并','等','一','一个','一些','这','那','有','到','被','把','给','从','向','你','我','他','她','它','们','这个','那个','大家','以及','还','又','只','要','会','能','可以','需要','已经','正在','可能','应该','一直','还是','不是','没有','虽然','但是','所以','因为','不过','其实','只是','如果','即使','虽然','除了','关于','针对','按照','根据','通过']);
+
+const tokenize = (text: string): string[] => {
+  if (!text) return [];
+  // 简单按非中英文字符切分
+  const segments = text.split(/[^\u4e00-\u9fa5A-Za-z0-9]+/).filter(Boolean);
+  // 滑窗 2-gram 提取中文词（无 jieba 时的退化方案）
+  const tokens: string[] = [];
+  for (const seg of segments) {
+    if (/^[A-Za-z]+$/.test(seg)) {
+      if (seg.length >= 2) tokens.push(seg.toLowerCase());
+      continue;
+    }
+    if (seg.length >= 2) {
+      // 取 2-gram
+      for (let i = 0; i < seg.length - 1; i++) {
+        const bg = seg.slice(i, i + 2);
+        if (!/[0-9]/.test(bg)) tokens.push(bg);
+      }
+    }
+  }
+  return tokens.filter(t => !CN_STOPWORDS.has(t) && t.length >= 2);
+};
+
+const updateWordcloudChart = () => {
+  if (!scatterChart) return;
+  // 词频统计 + 情感倾向加权
+  const wordStats: Record<string, { freq: number; sentSum: number; sentCount: number }> = {};
+  for (const item of rankList.value) {
+    const tokens = tokenize(item.text || '');
+    const sentScore = parseFloat(item.sentiment?.score ?? '0') || 0;
+    for (const w of tokens) {
+      if (!wordStats[w]) wordStats[w] = { freq: 0, sentSum: 0, sentCount: 0 };
+      wordStats[w].freq++;
+      wordStats[w].sentSum += sentScore;
+      wordStats[w].sentCount++;
+    }
+  }
+  const data = Object.entries(wordStats)
+    .map(([name, s]) => {
+      const avgSent = s.sentCount > 0 ? s.sentSum / s.sentCount : 0;
+      // 红负面 / 灰中性 / 绿正面
+      let color = '#909399';
+      if (avgSent > 0.2) color = '#67c23a';
+      else if (avgSent < -0.2) color = '#f56c6c';
+      return { name, value: s.freq, textStyle: { color } };
+    })
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 100);
+
+  scatterChart.setOption({
+    tooltip: {
+      show: true,
+      formatter: (p: any) => `<b>${p.name}</b><br/>词频: ${p.value}`,
+    },
+    series: [{
+      type: 'wordCloud',
+      shape: 'circle',
+      sizeRange: [14, 60],
+      rotationRange: [-30, 30],
+      gridSize: 8,
+      drawOutOfBound: false,
+      left: 'center',
+      top: 'center',
+      width: '95%',
+      height: '95%',
+      data,
+    }],
+  }, { notMerge: true });
+  // 点击词云关键词 → 筛选列表
+  scatterChart.off('click');
+  scatterChart.on('click', (params: any) => {
+    if (params?.name) {
+      selectedKeyword.value = params.name;
+      ElMessage.success(`已按关键词「${params.name}」筛选热门微博`);
+    }
+  });
 };
 
 // 散点图模式
@@ -1236,6 +1299,23 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.weight-hint {
+  font-size: 11px;
+  color: $text-secondary;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.keyword-filter {
+  padding: 8px 12px;
+  border-bottom: 1px solid $border-base;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: $text-secondary;
 }
 
 .quadrant-card {

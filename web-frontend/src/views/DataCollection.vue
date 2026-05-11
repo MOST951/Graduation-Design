@@ -142,7 +142,8 @@
             </el-form-item>
             
             <el-form-item label="采集数量上限">
-              <el-input-number v-model="config.maxCount" :min="100" :max="100000" :step="1000" />
+              <el-input-number v-model="config.maxCount" :min="100" :max="50000" :step="1000" />
+              <span style="margin-left: 8px; color: #909399; font-size: 12px">单次最多采集 50 000 条，超出请拆分为多个任务</span>
             </el-form-item>
           </el-form>
         </el-card>
@@ -1008,9 +1009,22 @@ const showInput = () => {
 };
 
 const handleInputConfirm = () => {
-  if (inputValue.value && config.keywords.indexOf(inputValue.value) === -1) {
-    config.keywords.push(inputValue.value);
-    addLog('info', `Added keyword: ${inputValue.value}`);
+  if (inputValue.value) {
+    // 支持中英文逗号、分号、空格、换行批量粘贴
+    const tokens = inputValue.value
+      .split(/[,，;；\s\n]+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    const added: string[] = [];
+    for (const t of tokens) {
+      if (config.keywords.indexOf(t) === -1) {
+        config.keywords.push(t);
+        added.push(t);
+      }
+    }
+    if (added.length) {
+      addLog('info', `添加关键词: ${added.join(', ')}`);
+    }
   }
   inputVisible.value = false;
   inputValue.value = '';

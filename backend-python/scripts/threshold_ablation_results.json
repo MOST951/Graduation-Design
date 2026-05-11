@@ -1,0 +1,73 @@
+{
+  "dataset_size": 10000,
+  "class_distribution": {
+    "负面": 3333,
+    "正面": 3334,
+    "中性": 3333
+  },
+  "baselines": {
+    "lexicon_only": {
+      "accuracy": 0.6359,
+      "macro_f1": 0.6264888778978649,
+      "correct": 6359,
+      "total": 10000,
+      "avg_time_ms": 0.08015854260011111
+    },
+    "bert_only": {
+      "accuracy": 0.8779,
+      "macro_f1": 0.8782852683726069,
+      "correct": 8779,
+      "total": 10000,
+      "avg_time_ms": 186.6683216682999
+    }
+  },
+  "threshold_sweep": [
+    {
+      "theta": 0.5,
+      "accuracy": 0.8573,
+      "macro_f1": 0.858208626037419,
+      "lex_path_ratio": 0.1716,
+      "bert_path_ratio": 0.8284,
+      "avg_time_ms": 154.71619621261976,
+      "speedup_vs_bert": 1.2065208829964365
+    },
+    {
+      "theta": 0.6,
+      "accuracy": 0.8573,
+      "macro_f1": 0.858208626037419,
+      "lex_path_ratio": 0.1716,
+      "bert_path_ratio": 0.8284,
+      "avg_time_ms": 154.71619621261976,
+      "speedup_vs_bert": 1.2065208829964365
+    },
+    {
+      "theta": 0.7,
+      "accuracy": 0.8573,
+      "macro_f1": 0.858208626037419,
+      "lex_path_ratio": 0.1716,
+      "bert_path_ratio": 0.8284,
+      "avg_time_ms": 154.71619621261976,
+      "speedup_vs_bert": 1.2065208829964365
+    },
+    {
+      "theta": 0.8,
+      "accuracy": 0.8573,
+      "macro_f1": 0.858208626037419,
+      "lex_path_ratio": 0.1716,
+      "bert_path_ratio": 0.8284,
+      "avg_time_ms": 154.71619621261976,
+      "speedup_vs_bert": 1.2065208829964365
+    },
+    {
+      "theta": 0.9,
+      "accuracy": 0.8576,
+      "macro_f1": 0.8584918503182036,
+      "lex_path_ratio": 0.1673,
+      "bert_path_ratio": 0.8327,
+      "avg_time_ms": 155.51886999579344,
+      "speedup_vs_bert": 1.2002937114534655
+    }
+  ],
+  "bert_fallback_threshold": 0.55,
+  "timestamp": "2026-05-07 01:14:23"
+}

@@ -617,10 +617,10 @@ class SparkService:
         try:
             logger.info(f"执行命令: {' '.join(cmd)}")
             
-            # 检查JAR文件是否存在
+            # 检查JAR文件是否存在（PySpark模式下不需要JAR，属于正常情况）
             if not os.path.exists(self.config.preprocessing_jar):
-                logger.warning(f"JAR文件不存在: {self.config.preprocessing_jar}")
-                logger.info("使用模拟执行模式...")
+                logger.debug(f"JAR文件不存在: {self.config.preprocessing_jar}，使用PySpark模式")
+                logger.info("使用PySpark模拟执行模式...")
                 
                 # 模拟执行（开发环境）
                 for i in range(10):

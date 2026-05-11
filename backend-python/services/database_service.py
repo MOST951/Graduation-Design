@@ -575,11 +575,10 @@ class DatabaseService:
             if field not in weibo or not weibo[field]:
                 return False, f"缺少必要字段: {field}"
         
-        # 验证ID
-        try:
-            int(weibo['id'])
-        except (ValueError, TypeError):
-            return False, f"无效的微博ID: {weibo.get('id')}"
+        # 验证ID（允许数字ID或字符串ID如gen_xxx）
+        weibo_id = weibo.get('id')
+        if weibo_id is None:
+            return False, "缺少微博ID"
         
         # 验证内容长度
         if len(str(weibo.get('text', ''))) < 2:
@@ -655,12 +654,25 @@ class DatabaseService:
                 elif not created_at:
                     created_at = datetime.now()
                 
+                # 处理ID：纯数字直接用，否则哈希为整数
+                raw_id = weibo['id']
+                try:
+                    weibo_id = int(raw_id)
+                except (ValueError, TypeError):
+                    weibo_id = abs(hash(str(raw_id))) % (10**18)
+                
+                raw_user_id = user.get('id', 0)
+                try:
+                    user_id = int(raw_user_id)
+                except (ValueError, TypeError):
+                    user_id = abs(hash(str(raw_user_id))) % (10**18)
+                
                 values.append((
-                    int(weibo['id']),
+                    weibo_id,
                     self.clean_text(weibo.get('text', ''), 5000),
                     created_at,
                     datetime.now(),
-                    int(user.get('id', 0)),
+                    user_id,
                     self.clean_text(user.get('screen_name', '未知用户'), 128),
                     1 if user.get('verified') else 0,
                     int(user.get('followers_count', 0)),
@@ -753,8 +765,14 @@ class DatabaseService:
                 else:
                     sentiment_class = 'neutral'
                 
+                raw_wid = r['weibo_id']
+                try:
+                    wid = int(raw_wid)
+                except (ValueError, TypeError):
+                    wid = abs(hash(str(raw_wid))) % (10**18)
+                
                 values.append((
-                    int(r['weibo_id']),
+                    wid,
                     r.get('dict_score'),
                     r.get('bert_score'),
                     hybrid_score,
@@ -833,7 +851,7 @@ class DatabaseService:
         for idx, r in enumerate(results):
             try:
                 sentiment_score = float(r.get('sentiment_score', 0))
-                popularity_score = float(r.get('popularity_score', 0))
+                popularity_score = float(r.get('popularity_score', r.get('heat_score', 0)))
                 
                 # 情感分类
                 if sentiment_score >= 0.6:
@@ -855,8 +873,15 @@ class DatabaseService:
                 else:
                     popularity_class = 'low'
                 
+                # 兼容 id / weibo_id 两种字段名
+                raw_wid = r.get('weibo_id', r.get('id'))
+                try:
+                    wid = int(raw_wid)
+                except (ValueError, TypeError):
+                    wid = abs(hash(str(raw_wid))) % (10**18)
+                
                 values.append((
-                    int(r['weibo_id']),
+                    wid,
                     sentiment_score,
                     r.get('sentiment_category', sentiment_category),
                     r.get('reposts_count', 0),
@@ -869,8 +894,8 @@ class DatabaseService:
                     r.get('alpha_weight', 0.4),
                     r.get('beta_weight', 0.4),
                     r.get('gamma_weight', 0.2),
-                    float(r.get('composite_score', 0)),
-                    r.get('ranking_position', idx + 1),
+                    float(r.get('composite_score', r.get('tri_score', 0))),
+                    r.get('ranking_position', r.get('rank', idx + 1)),
                     batch_id,
                     datetime.now(),
                     r.get('algorithm_version', 'v1.0.0'),

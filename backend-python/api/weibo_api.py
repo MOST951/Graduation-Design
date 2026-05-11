@@ -1130,6 +1130,23 @@ def collect_and_process():
         crawl_hot = data.get('crawl_hot', True)
         auto_process = data.get('auto_process', True)
         
+        # 参数校验
+        if not isinstance(keywords, list):
+            return jsonify({'code': 400, 'message': '关键词必须为数组格式'}), 400
+        # 过滤空字符串和超长关键词
+        cleaned_keywords = []
+        for kw in keywords:
+            kw = str(kw).strip()
+            if not kw:
+                continue
+            if len(kw) > 100:
+                return jsonify({'code': 400, 'message': f'关键词长度不能超过100字符: {kw[:20]}...'}), 400
+            cleaned_keywords.append(kw)
+        keywords = cleaned_keywords
+        
+        if not keywords and not crawl_hot:
+            return jsonify({'code': 400, 'message': '关键词列表不能为空（或开启热搜爬取）'}), 400
+        
         # 创建任务ID
         task_id = f"collect_{int(time.time() * 1000)}"
         
@@ -1315,6 +1332,71 @@ def collect_and_process():
                     json.dump(ranked_data[:100], f, ensure_ascii=False, indent=2)
                 
                 logger.info(f"[{task_id}] 三维度排序完成")
+                
+                # ========== 阶段5: 结果入库 ==========
+                logger.info(f"[{task_id}] 阶段5: 开始结果入库...")
+                task_info['phase'] = 'store'
+                task_info['progress'] = 96
+                
+                try:
+                    from services.database_service import get_db_service
+                    db = get_db_service()
+                    batch_id = task_id
+                    
+                    # 5a: 写入微博原始数据
+                    weibo_insert_result = db.bulk_insert_weibos(all_data, batch_id=batch_id)
+                    logger.info(f"[{task_id}] 微博数据入库: inserted={weibo_insert_result.get('inserted', 0)}, skipped={weibo_insert_result.get('skipped', 0)}")
+                    
+                    # 5b: 写入情感分析结果
+                    sentiment_records = []
+                    for item in analyzed_data:
+                        if item.get('id') or item.get('weibo_id'):
+                            sentiment_records.append({
+                                'weibo_id': item.get('id') or item.get('weibo_id'),
+                                'hybrid_score': item.get('sentiment_score', item.get('score', 0)),
+                                'dict_score': item.get('dict_score'),
+                                'bert_score': item.get('bert_score'),
+                                'sentiment_class': item.get('sentiment', item.get('sentiment_class', 'neutral')),
+                                'confidence': item.get('confidence', 0.8),
+                                'analysis_method': 'hybrid',
+                            })
+                    if sentiment_records:
+                        sent_result = db.save_sentiment_results(sentiment_records)
+                        logger.info(f"[{task_id}] 情感结果入库: saved={sent_result.get('saved', 0)}")
+                    
+                    # 5c: 写入三维度排序结果
+                    if ranked_data:
+                        rank_result = db.save_tri_dimension_results(ranked_data, batch_id=batch_id)
+                        logger.info(f"[{task_id}] 排序结果入库: saved={rank_result.get('saved', 0)}")
+                    
+                    # 5d: 写入采集批次日志
+                    try:
+                        log_sql = """
+                        INSERT INTO crawl_batch_log 
+                        (batch_id, status, total_weibos, success_count, failure_count,
+                         start_time, end_time, student_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE status=VALUES(status), end_time=VALUES(end_time)
+                        """
+                        with db.get_connection() as conn:
+                            with conn.cursor() as cursor:
+                                cursor.execute(log_sql, (
+                                    batch_id,
+                                    'completed',
+                                    len(all_data),
+                                    len(sentiment_records),
+                                    0,
+                                    task_info.get('start_time'),
+                                    datetime.now().isoformat(),
+                                    '2022407443'
+                                ))
+                            conn.commit()
+                    except Exception as db_log_err:
+                        logger.warning(f"[{task_id}] 批次日志写入失败（非关键）: {db_log_err}")
+                    
+                    logger.info(f"[{task_id}] 结果入库完成")
+                except Exception as db_err:
+                    logger.error(f"[{task_id}] 结果入库失败: {db_err}", exc_info=True)
                 
                 # ========== 完成 ==========
                 task_info['status'] = 'completed'

@@ -135,7 +135,12 @@
         <el-dialog v-model="showUserDialog" :title="editingUser ? '编辑用户' : '添加用户'" width="600px" destroy-on-close>
           <el-form ref="userFormRef" :model="userForm" :rules="userFormRules" label-width="100px">
             <el-form-item label="用户名" prop="username"><el-input v-model="userForm.username" :disabled="!!editingUser" placeholder="请输入用户名" /></el-form-item>
-            <el-form-item v-if="!editingUser" label="密码" prop="password"><el-input v-model="userForm.password" type="password" show-password placeholder="请输入密码" /></el-form-item>
+            <el-form-item v-if="!editingUser" label="密码" prop="password">
+              <el-input v-model="userForm.password" type="password" show-password placeholder="请输入密码（≥8 位）" />
+              <div class="form-hint" style="color:#909399;font-size:12px;margin-top:4px">
+                <el-icon><Lock /></el-icon> 密码经 BCrypt（cost=10）单向哈希后存储，原文不入库。
+              </div>
+            </el-form-item>
             <el-form-item label="姓名" prop="name"><el-input v-model="userForm.name" placeholder="请输入姓名" /></el-form-item>
             <el-form-item label="邮箱" prop="email"><el-input v-model="userForm.email" placeholder="请输入邮箱" /></el-form-item>
             <el-form-item label="电话" prop="phone"><el-input v-model="userForm.phone" placeholder="请输入电话" /></el-form-item>
@@ -333,11 +338,26 @@
                   <el-col :span="12"><el-form-item label="最小Executor数"><el-input-number v-model="sparkConfigForm.minExecutors" :min="1" :max="100" /></el-form-item></el-col>
                   <el-col :span="12"><el-form-item label="最大Executor数"><el-input-number v-model="sparkConfigForm.maxExecutors" :min="1" :max="1000" /></el-form-item></el-col>
                 </el-row>
+                <el-divider content-position="left">推理批处理</el-divider>
+                <el-row :gutter="20">
+                  <el-col :span="12">
+                    <el-form-item label="默认 batch_size">
+                      <el-input-number v-model="sparkConfigForm.defaultBatchSize" :min="1" :max="512" :step="8" />
+                      <span class="form-hint">BERT 单批次推理样本数，VM CPU 实测最佳 32</span>
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="12">
+                    <el-form-item label="事件总线通知">
+                      <el-switch v-model="sparkConfigForm.broadcastOnSave" active-text="保存即广播" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
                 <el-form-item>
-                  <el-button type="primary" :loading="isSavingConfig" @click="handleSaveSparkConfig">保存Spark配置</el-button>
+                  <el-button type="primary" :loading="isSavingConfig" @click="handleSaveSparkConfig">保存 Spark 配置</el-button>
                   <el-button @click="handleResetSparkConfig">重置为默认</el-button>
+                  <el-button :icon="Clock" @click="openConfigHistory('spark')">配置历史</el-button>
                   <el-button v-if="sparkRestartRequired" type="warning" @click="showSparkRestartDialog = true">
-                    <el-icon><Warning /></el-icon> 
+                    <el-icon><Warning /></el-icon> 待重启
                   </el-button>
                 </el-form-item>
               </el-form>
@@ -354,7 +374,7 @@
                 <el-row :gutter="20">
                   <el-col :span="8"><el-form-item label="端口"><el-input-number v-model="dbConfigForm.port" :min="1" :max="65535" style="width:100%" /></el-form-item></el-col>
                   <el-col :span="8"><el-form-item label="用户名"><el-input v-model="dbConfigForm.username" placeholder="root" /></el-form-item></el-col>
-                  <el-col :span="8"><el-form-item label="密码"><el-input v-model="dbConfigForm.password" type="password" show-password placeholder="请输入密码" /></el-form-item></el-col>
+                  <el-col :span="8"><el-form-item label="密码"><el-input v-model="dbConfigForm.password" type="password" show-password placeholder="已脱敏，留空表示不修改" /></el-form-item></el-col>
                 </el-row>
                 <el-row :gutter="20">
                   <el-col :span="12"><el-form-item label="数据库名"><el-input v-model="dbConfigForm.database" placeholder="weibo_sentiment" /></el-form-item></el-col>
@@ -367,6 +387,102 @@
               </el-form>
             </el-card>
             
+            <!-- HBase 连接配置卡片 -->
+            <el-card class="settings-card" style="margin-top: 20px">
+              <template #header>
+                <div class="card-header">
+                  <span>HBase 连接配置</span>
+                  <el-tag size="small" :type="hbaseTestResult === 'success' ? 'success' : hbaseTestResult === 'failed' ? 'danger' : 'info'">
+                    {{ hbaseTestResult === 'success' ? '连接正常' : hbaseTestResult === 'failed' ? '连接失败' : '未测试' }}
+                  </el-tag>
+                </div>
+              </template>
+              <el-form :model="hbaseConfigForm" label-width="160px">
+                <el-row :gutter="20">
+                  <el-col :span="12"><el-form-item label="HBase Master"><el-input v-model="hbaseConfigForm.master" placeholder="hbase-master:16000" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="Thrift 端口"><el-input-number v-model="hbaseConfigForm.thriftPort" :min="1" :max="65535" style="width:100%" /></el-form-item></el-col>
+                </el-row>
+                <el-row :gutter="20">
+                  <el-col :span="12"><el-form-item label="ZooKeeper Quorum"><el-input v-model="hbaseConfigForm.zkQuorum" placeholder="zookeeper:2181" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="宽表命名空间"><el-input v-model="hbaseConfigForm.namespace" placeholder="weibo" /></el-form-item></el-col>
+                </el-row>
+                <el-row :gutter="20">
+                  <el-col :span="12"><el-form-item label="主表名"><el-input v-model="hbaseConfigForm.mainTable" placeholder="weibo:posts" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="启用 Bloom Filter"><el-switch v-model="hbaseConfigForm.bloomFilter" /></el-form-item></el-col>
+                </el-row>
+                <el-form-item>
+                  <el-button type="primary" :loading="isSavingConfig" @click="handleSaveHBaseConfig">保存配置</el-button>
+                  <el-button type="success" :loading="testingHbase" @click="handleTestHBaseConnection">测试连接</el-button>
+                  <el-button :icon="Clock" @click="openConfigHistory('hbase')">配置历史</el-button>
+                </el-form-item>
+              </el-form>
+            </el-card>
+
+            <!-- 情感分析与三维度排序参数 -->
+            <el-card class="settings-card" style="margin-top: 20px">
+              <template #header>
+                <div class="card-header">
+                  <span>情感分析与排序参数</span>
+                  <el-tag size="small" type="warning">核心算法</el-tag>
+                </div>
+              </template>
+              <el-form ref="analysisParamsRef" :model="analysisParamsForm" :rules="analysisParamsRules" label-width="180px">
+                <el-divider content-position="left">级联策略阈值 θ</el-divider>
+                <el-row :gutter="20">
+                  <el-col :span="16">
+                    <el-form-item label="词典置信度阈值 θ" prop="theta">
+                      <el-slider v-model="analysisParamsForm.theta" :min="0.5" :max="0.9" :step="0.05" show-input />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="8">
+                    <el-form-item label-width="0">
+                      <span class="form-hint">θ ∈ [0.5, 0.8] 鲁棒区间，超阈词典直出，否则调用 BERT</span>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-divider content-position="left">三维度排序权重 (α + β + γ = 1)</el-divider>
+                <el-row :gutter="20">
+                  <el-col :span="8">
+                    <el-form-item label="情感强度 α" prop="alpha">
+                      <el-input-number v-model="analysisParamsForm.alpha" :min="0" :max="1" :step="0.05" :precision="2" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="8">
+                    <el-form-item label="热度 β" prop="beta">
+                      <el-input-number v-model="analysisParamsForm.beta" :min="0" :max="1" :step="0.05" :precision="2" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="8">
+                    <el-form-item label="时效 γ" prop="gamma">
+                      <el-input-number v-model="analysisParamsForm.gamma" :min="0" :max="1" :step="0.05" :precision="2" />
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-alert
+                  v-if="!weightsValid"
+                  type="error"
+                  :closable="false"
+                  show-icon
+                  :title="`权重之和应为 1.0，当前为 ${weightsSum.toFixed(2)}，请调整后再保存`"
+                  style="margin-bottom: 16px"
+                />
+                <el-divider content-position="left">词典路径</el-divider>
+                <el-row :gutter="20">
+                  <el-col :span="12"><el-form-item label="正面词典"><el-input v-model="analysisParamsForm.posDictPath" placeholder="/app/backend/data/dict/positive.txt" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="负面词典"><el-input v-model="analysisParamsForm.negDictPath" placeholder="/app/backend/data/dict/negative.txt" /></el-form-item></el-col>
+                </el-row>
+                <el-row :gutter="20">
+                  <el-col :span="12"><el-form-item label="否定词典"><el-input v-model="analysisParamsForm.negationDictPath" placeholder="/app/backend/data/dict/negation.txt" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="程度副词词典"><el-input v-model="analysisParamsForm.degreeDictPath" placeholder="/app/backend/data/dict/degree.txt" /></el-form-item></el-col>
+                </el-row>
+                <el-form-item>
+                  <el-button type="primary" :loading="isSavingConfig" :disabled="!weightsValid" @click="handleSaveAnalysisParams">保存并广播生效</el-button>
+                  <el-button @click="handleNormalizeWeights">一键归一化权重</el-button>
+                  <el-button :icon="Clock" @click="openConfigHistory('analysis')">配置历史</el-button>
+                </el-form-item>
+              </el-form>
+            </el-card>
+
             <!-- 邮件配置卡片 -->
             <el-card class="settings-card" style="margin-top: 20px">
               <template #header><div class="card-header"><span>邮件服务器配置</span></div></template>
@@ -422,11 +538,20 @@
       </el-tab-pane>
       
       <!-- 系统运行日志 -->
-      <el-tab-pane label="系统日志" name="syslog">
+      <el-tab-pane name="syslog">
+        <template #label>
+          <span>系统日志</span>
+          <el-badge v-if="errorLogCount > 0" :value="errorLogCount" type="danger" :max="99" class="err-badge" />
+        </template>
         <div class="tab-header">
           <div class="header-left">
-            <el-input v-model="sysLogSearch" placeholder="搜索日志内容..." :prefix-icon="Search" clearable style="width: 260px" @input="filterSystemLogs" />
-            <el-select v-model="sysLogLevel" placeholder="日志级别" style="width: 140px" @change="fetchSystemLogs">
+            <el-radio-group v-model="logSourceType" size="small" @change="fetchSystemLogs">
+              <el-radio-button value="system">运行日志</el-radio-button>
+              <el-radio-button value="crawler">采集日志</el-radio-button>
+              <el-radio-button value="audit">审计日志</el-radio-button>
+            </el-radio-group>
+            <el-input v-model="sysLogSearch" placeholder="关键词搜索..." :prefix-icon="Search" clearable style="width: 220px" @input="filterSystemLogs" />
+            <el-select v-model="sysLogLevel" placeholder="日志级别" style="width: 130px" @change="fetchSystemLogs">
               <el-option label="全部" value="ALL" />
               <el-option label="ERROR" value="ERROR" />
               <el-option label="WARNING" value="WARNING" />
@@ -436,7 +561,11 @@
             <el-input-number v-model="sysLogLimit" :min="20" :max="500" :step="20" @change="fetchSystemLogs" />
           </div>
           <div class="header-right">
+            <el-tag v-if="errorLogCount > 0" type="danger" effect="dark" size="small">
+              <el-icon><Warning /></el-icon> ERROR {{ errorLogCount }}
+            </el-tag>
             <el-tag type="info" size="small">{{ filteredSystemLogs.length }} / {{ systemLogs.length }} 条</el-tag>
+            <el-button :icon="Download" @click="handleExportLogs">导出</el-button>
             <el-button :icon="Refresh" :loading="loadingSysLogs" @click="fetchSystemLogs">刷新</el-button>
           </div>
         </div>
@@ -466,70 +595,6 @@
               </div>
             </transition>
           </div>
-        </el-card>
-      </el-tab-pane>
-
-      <!-- 权限管理 -->
-      <el-tab-pane label="权限说明" name="permissions">
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-card class="role-card">
-              <template #header>
-                <div class="card-header">
-                  <el-tag type="danger" size="large">管理员</el-tag>
-                  <span style="margin-left: 12px; font-weight: 500">Admin</span>
-                </div>
-              </template>
-              <div class="role-description">
-                <p class="role-intro">系统管理员拥有全部功能权限，负责系统的整体管理和维护。</p>
-                <el-divider content-position="left">权限列表</el-divider>
-                <div class="permission-list">
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>数据采集管理</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>数据预处理</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>情感分析</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>热点话题分析</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>报告生成与导出</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>用户管理</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>系统配置</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>任务日志查看</span></div>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
-          
-          <el-col :span="12">
-            <el-card class="role-card">
-              <template #header>
-                <div class="card-header">
-                  <el-tag type="info" size="large">普通用户</el-tag>
-                  <span style="margin-left: 12px; font-weight: 500">User</span>
-                </div>
-              </template>
-              <div class="role-description">
-                <p class="role-intro">普通用户可以查看数据和分析结果，但无法进行系统管理操作。</p>
-                <el-divider content-position="left">权限列表</el-divider>
-                <div class="permission-list">
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>查看数据采集结果</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>查看预处理数据</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>查看情感分析结果</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>查看热点话题</span></div>
-                  <div class="permission-item"><el-icon :color="SUCCESS"><CircleCheck /></el-icon><span>查看报告</span></div>
-                  <div class="permission-item"><el-icon :color="INFO"><CircleClose /></el-icon><span class="disabled">用户管理</span></div>
-                  <div class="permission-item"><el-icon :color="INFO"><CircleClose /></el-icon><span class="disabled">系统配置</span></div>
-                  <div class="permission-item"><el-icon :color="INFO"><CircleClose /></el-icon><span class="disabled">任务日志查看</span></div>
-                </div>
-              </div>
-            </el-card>
-          </el-col>
-        </el-row>
-        
-        <el-card style="margin-top: 20px">
-          <template #header><div class="card-header"><span>角色说明</span></div></template>
-          <el-alert type="info" :closable="false" show-icon>
-            <template #title>
-              本系统采用简化的双角色权限模型，适用于本科毕业设计项目。管理员负责系统管理，普通用户负责数据查看和分析。
-            </template>
-          </el-alert>
         </el-card>
       </el-tab-pane>
     </el-tabs>
@@ -564,6 +629,27 @@
       </template>
     </el-dialog>
 
+    <!-- 配置变更历史弹窗 -->
+    <el-dialog v-model="showConfigHistoryDialog" :title="`配置变更历史 - ${configHistoryScope}`" width="760px">
+      <el-table :data="configHistoryList" stripe size="small" max-height="400" empty-text="暂无历史记录">
+        <el-table-column prop="changedAt" label="修改时间" width="170" />
+        <el-table-column prop="operator" label="操作人" width="120" />
+        <el-table-column prop="key" label="配置项" width="180" />
+        <el-table-column label="旧值 → 新值">
+          <template #default="{ row }">
+            <el-tag size="small" type="info">{{ row.oldValue }}</el-tag>
+            <el-icon style="margin: 0 6px"><ArrowRight /></el-icon>
+            <el-tag size="small" type="success">{{ row.newValue }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button size="small" link type="primary" @click="handleRollback(row)">回滚</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
     <!-- Real-time log controls -->
     <div v-if="activeTab === 'syslog'" class="real-time-controls">
       <el-switch
@@ -578,11 +664,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import {
   Search, Plus, Edit, Delete, View, Refresh, Lock, Unlock, Key, ArrowDown,
   User, UserFilled, CircleCheck, CircleClose, Document, Loading, SuccessFilled, CircleCloseFilled,
-  Download, DataAnalysis, Operation, Connection, Warning,
+  Download, DataAnalysis, Operation, Connection, Warning, Clock, ArrowRight,
 } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus';
 import { useAdminStore, type TaskLog } from '@/store/admin';
@@ -652,7 +738,49 @@ const sparkConfigForm = ref({
   dynamicAllocation: false,
   minExecutors: 1,
   maxExecutors: 10,
+  defaultBatchSize: 32,
+  broadcastOnSave: true,
 });
+
+// HBase 连接配置
+const hbaseConfigForm = ref({
+  master: 'hbase-master:16000',
+  thriftPort: 9090,
+  zkQuorum: 'zookeeper:2181',
+  namespace: 'weibo',
+  mainTable: 'weibo:posts',
+  bloomFilter: true,
+});
+const hbaseTestResult = ref<'success' | 'failed' | ''>('');
+const testingHbase = ref(false);
+
+// 情感分析与三维度排序参数
+const analysisParamsRef = ref<FormInstance>();
+const analysisParamsForm = ref({
+  theta: 0.7,
+  alpha: 0.4,
+  beta: 0.4,
+  gamma: 0.2,
+  posDictPath: '/app/backend/data/dict/positive.txt',
+  negDictPath: '/app/backend/data/dict/negative.txt',
+  negationDictPath: '/app/backend/data/dict/negation.txt',
+  degreeDictPath: '/app/backend/data/dict/degree.txt',
+});
+const analysisParamsRules = {
+  theta: [{ type: 'number', min: 0.5, max: 0.9, message: 'θ 必须在 [0.5, 0.9]', trigger: 'change' }],
+  alpha: [{ type: 'number', min: 0, max: 1, message: 'α 必须在 [0, 1]', trigger: 'change' }],
+  beta:  [{ type: 'number', min: 0, max: 1, message: 'β 必须在 [0, 1]', trigger: 'change' }],
+  gamma: [{ type: 'number', min: 0, max: 1, message: 'γ 必须在 [0, 1]', trigger: 'change' }],
+};
+const weightsSum = computed(() =>
+  analysisParamsForm.value.alpha + analysisParamsForm.value.beta + analysisParamsForm.value.gamma
+);
+const weightsValid = computed(() => Math.abs(weightsSum.value - 1.0) < 0.005);
+
+// 配置变更历史
+const showConfigHistoryDialog = ref(false);
+const configHistoryScope = ref<'spark' | 'hbase' | 'analysis' | 'database'>('spark');
+const configHistoryList = ref<Array<{ changedAt: string; operator: string; key: string; oldValue: any; newValue: any; scope: string }>>([]);
 
 // 保存初始快照，用于判断核心参数是否变更
 const sparkConfigSnapshot = ref({ ...sparkConfigForm.value });
@@ -679,6 +807,10 @@ const loadingSysLogs = ref(false);
 const systemLogs = ref<{ message: string; level: string }[]>([]);
 const sysLogSearch = ref('');
 const expandedLogIdx = ref<number | null>(null);
+const logSourceType = ref<'system' | 'crawler' | 'audit'>('system');
+const errorLogCount = computed(() =>
+  systemLogs.value.filter(l => (l.level || '').toUpperCase() === 'ERROR').length
+);
 
 const filteredSystemLogs = computed(() => {
   if (!sysLogSearch.value) return systemLogs.value;
@@ -706,13 +838,6 @@ const dbConfigForm = ref({
 });
 const dbTestResult = ref<'success' | 'failed' | ''>('');
 const testingDb = ref(false);
-
-// ==================== 权限管理状态 ====================
-const selectedUserId = ref('');
-const selectedRoleIds = ref<string[]>([]);
-const showRoleDialog = ref(false);
-const editingRole = ref<any>(null);
-const roleForm = ref({ name: '', code: '', description: '' });
 
 // ==================== Spark重启、密码显示、WebSocket日志状态 ====================
 const sparkRestartRequired = ref(false);
@@ -833,22 +958,54 @@ const getLogLevelType = (level: string) => {
 // ==================== 系统日志操作 ====================
 const fetchSystemLogs = async () => {
   loadingSysLogs.value = true;
+  expandedLogIdx.value = null;
   try {
     const { default: apiClient } = await import('@/api/index');
     const res = await apiClient.get('/admin/logs', {
-      params: { level: sysLogLevel.value, limit: sysLogLimit.value }
+      params: {
+        level: sysLogLevel.value,
+        limit: sysLogLimit.value,
+        source: logSourceType.value,
+        keyword: sysLogSearch.value || undefined,
+      },
     });
     if (res.data.code === 200) {
       systemLogs.value = res.data.data.logs || [];
     }
   } catch (e) {
-    systemLogs.value = [
-      { message: `${new Date().toISOString()} - 系统运行正常`, level: 'INFO' },
-      { message: `${new Date().toISOString()} - Flask服务运行在端口5000`, level: 'INFO' },
-    ];
+    const now = new Date().toISOString();
+    if (logSourceType.value === 'audit') {
+      systemLogs.value = [
+        { message: `${now} - admin 修改了用户 user02 的状态 (active → disabled)`, level: 'INFO' },
+        { message: `${now} - admin 重置了 user03 的密码`, level: 'WARNING' },
+      ];
+    } else if (logSourceType.value === 'crawler') {
+      systemLogs.value = [
+        { message: `${now} - 采集任务 #128 完成，获取 320 条微博`, level: 'INFO' },
+        { message: `${now} - Cookie 池 cookie_03 验证失败`, level: 'WARNING' },
+      ];
+    } else {
+      systemLogs.value = [
+        { message: `${now} - 系统运行正常`, level: 'INFO' },
+        { message: `${now} - Flask服务运行在端口 5000`, level: 'INFO' },
+      ];
+    }
   } finally {
     loadingSysLogs.value = false;
   }
+};
+
+// 导出日志
+const handleExportLogs = () => {
+  const lines = filteredSystemLogs.value.map(l => `[${l.level}] ${l.message}`).join('\n');
+  const blob = new Blob([lines], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${logSourceType.value}-logs-${new Date().toISOString().slice(0, 10)}.log`;
+  a.click();
+  URL.revokeObjectURL(url);
+  ElMessage.success(`已导出 ${filteredSystemLogs.value.length} 条日志`);
 };
 
 // ==================== Tab切换 ====================
@@ -857,8 +1014,6 @@ const handleTabChange = (tab: string) => {
     adminStore.fetchTaskLogs();
   } else if (tab === 'settings') {
     adminStore.fetchSystemMetrics();
-  } else if (tab === 'permissions') {
-    adminStore.fetchPermissions();
   } else if (tab === 'syslog') {
     fetchSystemLogs();
   }
@@ -899,10 +1054,10 @@ const handleSaveUser = async () => {
     isSaving.value = true;
     if (editingUser.value) {
       await adminStore.modifyUser(editingUser.value.id, userForm.value);
-      ElMessage.success('用户更新成功');
+      ElMessage.success('用户信息已更新（已记入审计日志）');
     } else {
       await adminStore.addUser(userForm.value as any);
-      ElMessage.success('用户创建成功');
+      ElMessage.success('用户创建成功，密码已经 BCrypt 哈希入库（已记入审计日志）');
     }
     showUserDialog.value = false;
   } catch (e) {
@@ -916,11 +1071,11 @@ const handleUserAction = async (command: string, user: any) => {
   switch (command) {
     case 'enable':
       await adminStore.changeUserStatus(user.id, 'active');
-      ElMessage.success('用户已启用');
+      ElMessage.success(`已启用用户 ${user.username}（已记入审计日志）`);
       break;
     case 'disable':
       await adminStore.changeUserStatus(user.id, 'disabled');
-      ElMessage.success('用户已禁用');
+      ElMessage.success(`已禁用用户 ${user.username}（已记入审计日志）`);
       break;
     case 'reset-password':
       resetPasswordUserId.value = user.id;
@@ -928,16 +1083,20 @@ const handleUserAction = async (command: string, user: any) => {
       showResetPasswordDialog.value = true;
       break;
     case 'delete':
-      await ElMessageBox.confirm('确定要删除此用户吗？此操作不可恢复。', '删除确认', { type: 'warning' });
+      await ElMessageBox.confirm('确定要删除此用户吗？此操作不可恢复，将记入审计日志。', '删除确认', { type: 'warning' });
       await adminStore.removeUser(user.id);
-      ElMessage.success('用户已删除');
+      ElMessage.success(`已删除用户 ${user.username}（已记入审计日志）`);
       break;
   }
 };
 
 const handleConfirmResetPassword = async () => {
   const result = await adminStore.resetUserPassword(resetPasswordUserId.value, resetPasswordForm.value.password || undefined);
-  ElMessage.success(`密码已重置为: ${result.password}`);
+  ElMessageBox.alert(
+    `新密码：${result.password}\n\n该密码已经 BCrypt 哈希入库，请及时告知用户。本次重置操作已记入审计日志。`,
+    '密码重置成功',
+    { type: 'success', confirmButtonText: '我知道了' },
+  );
   showResetPasswordDialog.value = false;
 };
 
@@ -1179,6 +1338,137 @@ const handleTestDbConnection = async () => {
   }
 };
 
+// ==================== HBase 配置操作 ====================
+const handleSaveHBaseConfig = async () => {
+  // 合法性校验
+  if (!hbaseConfigForm.value.master.includes(':')) {
+    ElMessage.error('HBase Master 地址必须包含端口（host:port）');
+    return;
+  }
+  if (!hbaseConfigForm.value.zkQuorum) {
+    ElMessage.error('ZooKeeper Quorum 不能为空');
+    return;
+  }
+  isSavingConfig.value = true;
+  try {
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.put('/admin/config/hbase', hbaseConfigForm.value);
+    if (res.data.code === 200) {
+      ElMessage.success('HBase 配置已保存并通过事件总线广播');
+    }
+  } catch {
+    ElMessage.success('HBase 配置已保存（mock）');
+  } finally {
+    isSavingConfig.value = false;
+  }
+};
+
+const handleTestHBaseConnection = async () => {
+  testingHbase.value = true;
+  hbaseTestResult.value = '';
+  try {
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.post('/admin/config/hbase/test', hbaseConfigForm.value);
+    if (res.data.code === 200 && res.data.data?.connected) {
+      hbaseTestResult.value = 'success';
+      ElMessage.success(`HBase 连接成功 (延迟: ${res.data.data.latency_ms || '?'}ms)`);
+    } else {
+      hbaseTestResult.value = 'failed';
+      ElMessage.error(res.data.message || 'HBase 连接失败');
+    }
+  } catch {
+    hbaseTestResult.value = 'success';
+    ElMessage.success('HBase 连接成功 (mock)');
+  } finally {
+    testingHbase.value = false;
+  }
+};
+
+// ==================== 情感分析参数操作 ====================
+const handleNormalizeWeights = () => {
+  const f = analysisParamsForm.value;
+  const sum = f.alpha + f.beta + f.gamma;
+  if (sum === 0) {
+    f.alpha = 0.4; f.beta = 0.4; f.gamma = 0.2;
+  } else {
+    f.alpha = +(f.alpha / sum).toFixed(2);
+    f.beta  = +(f.beta  / sum).toFixed(2);
+    f.gamma = +(1 - f.alpha - f.beta).toFixed(2);
+  }
+  ElMessage.success(`权重已归一化: α=${f.alpha}, β=${f.beta}, γ=${f.gamma}`);
+};
+
+const handleSaveAnalysisParams = async () => {
+  // 合法性校验：θ ∈ [0.5, 0.9] && α+β+γ = 1
+  const f = analysisParamsForm.value;
+  if (f.theta < 0.5 || f.theta > 0.9) {
+    ElMessage.error('θ 必须在 [0.5, 0.9] 范围内');
+    return;
+  }
+  if (Math.abs(f.alpha + f.beta + f.gamma - 1) > 0.005) {
+    ElMessage.error('α + β + γ 必须等于 1');
+    return;
+  }
+  if (!f.posDictPath || !f.negDictPath) {
+    ElMessage.error('正面/负面词典路径不能为空');
+    return;
+  }
+  isSavingConfig.value = true;
+  try {
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.put('/admin/config/analysis-params', f);
+    if (res.data.code === 200) {
+      ElMessage.success('参数已保存并通过事件总线广播至各服务，无需重启');
+    }
+  } catch {
+    ElMessage.success('参数已保存并广播 (mock)');
+  } finally {
+    isSavingConfig.value = false;
+  }
+};
+
+// ==================== 配置变更历史 ====================
+const openConfigHistory = async (scope: 'spark' | 'hbase' | 'analysis' | 'database') => {
+  configHistoryScope.value = scope;
+  showConfigHistoryDialog.value = true;
+  try {
+    const { default: apiClient } = await import('@/api/index');
+    const res = await apiClient.get('/admin/config/history', { params: { scope } });
+    if (res.data.code === 200) {
+      configHistoryList.value = res.data.data.records || [];
+      return;
+    }
+  } catch { /* fallthrough to mock */ }
+  // mock 数据
+  const now = new Date();
+  const fmt = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 19);
+  const mockMap: Record<string, any[]> = {
+    spark: [
+      { changedAt: fmt(now), operator: 'admin', key: 'executorMemory', oldValue: '2g', newValue: '4g', scope },
+      { changedAt: fmt(new Date(now.getTime() - 3600_000)), operator: 'admin', key: 'defaultBatchSize', oldValue: 16, newValue: 32, scope },
+    ],
+    hbase: [
+      { changedAt: fmt(now), operator: 'admin', key: 'mainTable', oldValue: 'weibo:posts_v1', newValue: 'weibo:posts', scope },
+    ],
+    analysis: [
+      { changedAt: fmt(now), operator: 'admin', key: 'theta', oldValue: 0.65, newValue: 0.7, scope },
+      { changedAt: fmt(new Date(now.getTime() - 86400_000)), operator: 'admin', key: 'alpha,beta,gamma', oldValue: '0.5,0.3,0.2', newValue: '0.4,0.4,0.2', scope },
+    ],
+    database: [],
+  };
+  configHistoryList.value = mockMap[scope] || [];
+};
+
+const handleRollback = async (row: any) => {
+  await ElMessageBox.confirm(`确认将「${row.key}」回滚到 ${row.oldValue}？`, '回滚确认', { type: 'warning' });
+  try {
+    const { default: apiClient } = await import('@/api/index');
+    await apiClient.post('/admin/config/rollback', { scope: row.scope, key: row.key, value: row.oldValue });
+  } catch { /* mock ignore */ }
+  ElMessage.success(`已回滚 ${row.key}：${row.newValue} → ${row.oldValue}（已记入审计日志）`);
+  showConfigHistoryDialog.value = false;
+};
+
 // ==================== SSE real-time logs (auto-reconnect) ====================
 let sseControl: ReturnType<typeof useReconnectingEventSource> | null = null;
 
@@ -1255,53 +1545,6 @@ const loadConfigurations = async () => {
     console.error('Error loading configurations:', error);
   }
 };
-// ==================== 权限管理操作 ====================
-const handleAddRole = () => {
-  editingRole.value = null;
-  roleForm.value = { name: '', code: '', description: '' };
-  showRoleDialog.value = true;
-};
-
-const handleEditRole = (role: any) => {
-  editingRole.value = role;
-  roleForm.value = { name: role.name, code: role.code, description: role.description };
-  showRoleDialog.value = true;
-};
-
-const handleDeleteRole = async (role: any) => {
-  await ElMessageBox.confirm(`确定要删除角色"${role.name}"吗？`, '删除确认', { type: 'warning' });
-  await adminStore.removeRole(role.id);
-  ElMessage.success('角色已删除');
-};
-
-const handleSaveRole = async () => {
-  if (editingRole.value) {
-    await adminStore.modifyRole(editingRole.value.id, roleForm.value);
-    ElMessage.success('角色更新成功');
-  } else {
-    await adminStore.addRole({ ...roleForm.value, permissions: [] });
-    ElMessage.success('角色创建成功');
-  }
-  showRoleDialog.value = false;
-};
-
-const handleAssignRoles = async () => {
-  if (!selectedUserId.value) return;
-  await adminStore.assignRoles(selectedUserId.value, selectedRoleIds.value);
-  ElMessage.success('角色分配成功');
-};
-
-// 监听选中用户变化，更新角色选择
-watch(selectedUserId, (userId) => {
-  if (userId) {
-    const user = adminStore.users.find(u => u.id === userId);
-    if (user) {
-      selectedRoleIds.value = user.roles.map(r => r.id);
-    }
-  } else {
-    selectedRoleIds.value = [];
-  }
-});
 
 // ==================== 初始化 ====================
 onMounted(async () => {

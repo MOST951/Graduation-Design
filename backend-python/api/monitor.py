@@ -377,7 +377,7 @@ def _send_alert_notifications(alert: Dict, notification_methods: List[str]):
         
         # 
         if success_count == 0:
-            logger.error(f"All notification methods failed for alert {alert['id']}")
+            logger.warning(f"Alert {alert['id']} notification methods are not configured or failed")
         
     except Exception as e:
         logger.error(f"Failed to send notifications for alert {alert['id']}: {e}")
@@ -843,6 +843,121 @@ def get_metrics():
         'alertCount': len(_alert_history),
     }
     return jsonify({'code': 200, 'message': 'success', 'data': metrics})
+
+@monitor_bp.route('/statistics', methods=['GET'])
+def get_statistics():
+    """实时舆情监控聚合统计接口（前端 5 秒轮询）
+
+    返回：
+    - sentiment_distribution: 最近一小时情感分布（环形图数据源）
+    - alert: 当前预警等级（normal/warning/high/critical，对应绿/黄/橙/红）
+    - keyword_ranking: 热门关键词 Top 10（按缓存数据中关键词出现次数排序）
+    - system_status: 系统状态（采集任务、Spark 作业、未处理数据量、SSE 客户端数）
+    - alert_history: 最近 20 条预警历史（用于预警表格）
+    """
+    cache_data = _realtime_cache.get('data') or []
+
+    # 1. 情感分布
+    pos = sum(1 for d in cache_data if d.get('sentiment') == 'positive')
+    neg = sum(1 for d in cache_data if d.get('sentiment') == 'negative')
+    neu = sum(1 for d in cache_data if d.get('sentiment') == 'neutral')
+    total = pos + neg + neu
+    neg_ratio = (neg / total) if total > 0 else 0.0
+
+    # 2. 预警等级：负面比例 >30% 黄色, >45% 橙色, >60% 红色
+    if neg_ratio > 0.60:
+        alert_level = 'critical'
+        alert_color = '#f56c6c'
+        alert_message = f'严重预警：负面情感占比 {neg_ratio:.1%}，已超过 60% 阈值'
+    elif neg_ratio > 0.45:
+        alert_level = 'high'
+        alert_color = '#e6a23c'
+        alert_message = f'高级预警：负面情感占比 {neg_ratio:.1%}，已超过 45% 阈值'
+    elif neg_ratio > 0.30:
+        alert_level = 'warning'
+        alert_color = '#f7ba2a'
+        alert_message = f'黄色预警：负面情感占比 {neg_ratio:.1%}，已超过 30% 阈值'
+    else:
+        alert_level = 'normal'
+        alert_color = '#67c23a'
+        alert_message = f'系统运行正常，负面占比 {neg_ratio:.1%}'
+
+    # 3. 热门关键词排行
+    keyword_counts: Dict[str, int] = {}
+    for d in cache_data:
+        kw = (d.get('keyword') or '').strip()
+        if kw:
+            keyword_counts[kw] = keyword_counts.get(kw, 0) + 1
+    keyword_ranking = sorted(
+        [{'keyword': k, 'count': v} for k, v in keyword_counts.items()],
+        key=lambda x: x['count'], reverse=True
+    )[:10]
+
+    # 4. 系统状态：Spark 作业
+    spark_jobs = {'pending': 0, 'running': 0, 'completed': 0, 'failed': 0}
+    try:
+        from services.spark_service import SparkService
+        svc = SparkService()
+        for job in svc.store.get_all():
+            status = (job.status or '').lower()
+            if status in spark_jobs:
+                spark_jobs[status] += 1
+            elif status in ('retrying',):
+                spark_jobs['running'] += 1
+    except Exception as e:
+        logger.debug(f'读取 Spark 作业状态失败: {e}')
+
+    # 4.1 采集任务
+    crawler_status = {'active': 0, 'completed': 0, 'failed': 0}
+    try:
+        from services.task_service import get_all_tasks  # type: ignore
+        tasks = get_all_tasks()
+        for t in tasks:
+            s = (t.get('status') or '').lower()
+            if s in ('running', 'collecting', 'active'):
+                crawler_status['active'] += 1
+            elif s in ('completed', 'success', 'done'):
+                crawler_status['completed'] += 1
+            elif s in ('failed', 'error'):
+                crawler_status['failed'] += 1
+    except Exception:
+        # 退化：从缓存推断（无任务服务时）
+        crawler_status['active'] = 1 if cache_data else 0
+        crawler_status['completed'] = len(cache_data)
+
+    system_status = {
+        'spark_jobs': spark_jobs,
+        'crawler_tasks': crawler_status,
+        'unprocessed_count': max(0, total - pos - neg - neu),  # 无情感标签的条数
+        'sse_clients': len(_sse_clients),
+        'subscribed_keywords': len(_subscribed_keywords),
+    }
+
+    # 5. 预警历史
+    with _alert_lock:
+        history = [dict(a) for a in reversed(_alert_history)][:20]
+
+    return jsonify({
+        'code': 200,
+        'message': 'success',
+        'data': {
+            'sentiment_distribution': {
+                'positive': pos, 'negative': neg, 'neutral': neu, 'total': total,
+            },
+            'alert': {
+                'level': alert_level,
+                'color': alert_color,
+                'message': alert_message,
+                'negative_ratio': round(neg_ratio, 4),
+                'thresholds': {'yellow': 0.30, 'orange': 0.45, 'red': 0.60},
+            },
+            'keyword_ranking': keyword_ranking,
+            'system_status': system_status,
+            'alert_history': history,
+            'timestamp': datetime.now().isoformat(),
+        }
+    })
+
 
 @monitor_bp.route('/health', methods=['GET'])
 def health_check():

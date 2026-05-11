@@ -67,7 +67,7 @@
               :min="0" :max="1" :step="0.05"
               :format-tooltip="(v:number) => (v*100).toFixed(0)+'%'"
               class="weight-slider"
-              @input="onWeightChange"
+              @input="() => onWeightChange('sentiment')"
             />
             <span class="weight-val">{{ (weights.sentiment*100).toFixed(0) }}%</span>
           </div>
@@ -80,12 +80,12 @@
               :min="0" :max="1" :step="0.05"
               :format-tooltip="(v:number) => (v*100).toFixed(0)+'%'"
               class="weight-slider"
-              @input="onWeightChange"
+              @input="() => onWeightChange('heat')"
             />
             <span class="weight-val">{{ (weights.heat*100).toFixed(0) }}%</span>
           </div>
 
-          <!-- 时效性权重 -->
+          <!-- 时效性权重（默认随 α+β 自动补齐，也可手动拖动） -->
           <div class="weight-row">
             <span class="weight-label">γ 时效性</span>
             <el-slider
@@ -93,7 +93,7 @@
               :min="0" :max="1" :step="0.05"
               :format-tooltip="(v:number) => (v*100).toFixed(0)+'%'"
               class="weight-slider"
-              @input="onWeightChange"
+              @input="() => onWeightChange('timeliness')"
             />
             <span class="weight-val">{{ (weights.timeliness*100).toFixed(0) }}%</span>
           </div>
@@ -298,7 +298,34 @@ const resetWeights = () => {
   recomputeScores();
 };
 
-const onWeightChange = () => {
+// 防止补齐递归触发自身
+let _normalizing = false;
+
+const onWeightChange = (changedKey?: 'sentiment' | 'heat' | 'timeliness') => {
+  if (_normalizing) return;
+  _normalizing = true;
+  try {
+    // 需求：用户调整情感(α) 或 热度(β) 后，时效(γ) 自动补齐 = 1 - α - β
+    // 反之调整 γ 时，按当前 α/β 比例分摊剩余权重，保证 α+β+γ=1
+    const round = (v: number) => Math.max(0, Math.min(1, Math.round(v * 20) / 20));
+    if (changedKey === 'timeliness') {
+      const remain = round(1 - weights.timeliness);
+      const sumAB = weights.sentiment + weights.heat;
+      if (sumAB > 0) {
+        weights.sentiment = round(remain * (weights.sentiment / sumAB));
+        weights.heat = round(remain - weights.sentiment);
+      } else {
+        weights.sentiment = round(remain / 2);
+        weights.heat = round(remain - weights.sentiment);
+      }
+    } else {
+      // 默认：调整 α 或 β（或未指定来源时），γ 自动补齐
+      const remain = round(1 - weights.sentiment - weights.heat);
+      weights.timeliness = remain;
+    }
+  } finally {
+    _normalizing = false;
+  }
   recomputeScores();
 };
 

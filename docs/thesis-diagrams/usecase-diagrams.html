@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>系统功能用例图（图3-1 / 图3-2）</title>
+<style>
+  body { font-family: "Microsoft YaHei", "SimSun", sans-serif; background:#f5f6f8; margin:0; padding:24px; color:#222; }
+  h2 { text-align:center; margin:8px 0 0; font-size:18px; font-weight:600; }
+  .desc { max-width: 880px; margin: 8px auto 16px; font-size: 13px; line-height: 1.7; color:#333; }
+  .desc b { color:#1f3a8a; }
+  .figure {
+    background:#fff; border:1px solid #d9dde3; border-radius:8px;
+    padding:24px; margin: 0 auto 28px; max-width: 940px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .caption { text-align:center; font-size:14px; margin-top:10px; color:#333; }
+  svg { display:block; margin:0 auto; }
+  .actor-label { font-size:14px; font-weight:600; fill:#222; text-anchor:middle; }
+  .uc-text { font-size:13px; fill:#1f3a8a; text-anchor:middle; dominant-baseline:central; }
+  .uc-ellipse { fill:#eaf2ff; stroke:#3b5bdb; stroke-width:1.4; }
+  .uc-ellipse-admin { fill:#fff2e6; stroke:#d9480f; stroke-width:1.4; }
+  .system-boundary { fill:none; stroke:#888; stroke-width:1.2; stroke-dasharray:6 4; }
+  .system-title { font-size:13px; fill:#555; text-anchor:middle; font-weight:600; }
+  .assoc { stroke:#555; stroke-width:1.1; fill:none; }
+  .inherit { stroke:#d9480f; stroke-width:1.6; fill:none; marker-end:url(#triangle); }
+  .inherit-label { font-size:11px; fill:#d9480f; font-style:italic; }
+  .print-btn {
+    position:fixed; top:16px; right:24px; padding:8px 16px;
+    background:#3b5bdb; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px;
+  }
+  @media print {
+    body { background:#fff; padding:0; }
+    .figure { border:none; box-shadow:none; page-break-inside:avoid; }
+    .print-btn { display:none; }
+  }
+</style>
+</head>
+<body>
+
+<button class="print-btn" onclick="window.print()">打印 / 导出 PDF</button>
+
+<!-- ========== 文字补全 ========== -->
+<div class="figure" style="background:#fff8e1; border-color:#f6c244;">
+<h2>对应论文 3.2.1 节文字（XXX 补全）</h2>
+<div class="desc">
+<p><b>1. 普通用户用例分析</b><br>
+普通用户作为系统的核心使用主体，主要用于完成微博舆情分析相关的各项核心业务操作，无需参与系统后台管理，功能设计贴合日常舆情查询、分析及监控需求，操作便捷、重点突出，具体有
+<b>数据采集、数据预处理、情感分析、热点话题分析、实时舆情监控、数据流水线管理和可视化展示</b>七大核心业务功能，
+普通用户用例图如图 3-1 所示。</p>
+
+<p><b>2. 管理员用例分析</b><br>
+管理员作为系统的最高权限主体，核心职责是保障系统稳定、安全、高效运行，负责系统后台管理，除可正常使用普通用户的所有核心业务功能外，额外拥有
+<b>用户管理、Spark 参数配置、数据库与系统参数配置和系统日志查看</b>四项后台管理权限，
+管理员用例图如图 3-2 所示。</p>
+</div>
+</div>
+
+<!-- ========== 图 3-1 普通用户用例图 ========== -->
+<div class="figure">
+<svg width="900" height="560" viewBox="0 0 900 560">
+  <defs>
+    <marker id="triangle" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#d9480f"/>
+    </marker>
+  </defs>
+
+  <!-- 系统边界 -->
+  <rect class="system-boundary" x="240" y="30" width="540" height="500" rx="10"/>
+  <text class="system-title" x="510" y="50">微博舆情情感分析系统</text>
+
+  <!-- 普通用户 actor -->
+  <g transform="translate(110, 280)">
+    <circle cx="0" cy="-50" r="16" fill="#fff" stroke="#222" stroke-width="1.6"/>
+    <line x1="0" y1="-34" x2="0" y2="10" stroke="#222" stroke-width="1.6"/>
+    <line x1="-22" y1="-18" x2="22" y2="-18" stroke="#222" stroke-width="1.6"/>
+    <line x1="0" y1="10" x2="-20" y2="46" stroke="#222" stroke-width="1.6"/>
+    <line x1="0" y1="10" x2="20" y2="46" stroke="#222" stroke-width="1.6"/>
+    <text class="actor-label" x="0" y="72">普通用户</text>
+  </g>
+
+  <!-- 7 个用例椭圆 -->
+  <g>
+    <ellipse class="uc-ellipse" cx="510" cy="90"  rx="105" ry="26"/><text class="uc-text" x="510" y="90">数据采集</text>
+    <ellipse class="uc-ellipse" cx="510" cy="155" rx="105" ry="26"/><text class="uc-text" x="510" y="155">数据预处理</text>
+    <ellipse class="uc-ellipse" cx="510" cy="220" rx="105" ry="26"/><text class="uc-text" x="510" y="220">情感分析</text>
+    <ellipse class="uc-ellipse" cx="510" cy="285" rx="105" ry="26"/><text class="uc-text" x="510" y="285">热点话题分析</text>
+    <ellipse class="uc-ellipse" cx="510" cy="350" rx="105" ry="26"/><text class="uc-text" x="510" y="350">实时舆情监控</text>
+    <ellipse class="uc-ellipse" cx="510" cy="415" rx="105" ry="26"/><text class="uc-text" x="510" y="415">数据流水线管理</text>
+    <ellipse class="uc-ellipse" cx="510" cy="480" rx="105" ry="26"/><text class="uc-text" x="510" y="480">可视化展示</text>
+  </g>
+
+  <!-- 关联线：普通用户 → 7 用例 -->
+  <g>
+    <line class="assoc" x1="135" y1="260" x2="405" y2="90"/>
+    <line class="assoc" x1="135" y1="270" x2="405" y2="155"/>
+    <line class="assoc" x1="135" y1="275" x2="405" y2="220"/>
+    <line class="assoc" x1="135" y1="280" x2="405" y2="285"/>
+    <line class="assoc" x1="135" y1="285" x2="405" y2="350"/>
+    <line class="assoc" x1="135" y1="290" x2="405" y2="415"/>
+    <line class="assoc" x1="135" y1="300" x2="405" y2="480"/>
+  </g>
+</svg>
+<div class="caption">图 3-1 普通用户用例图</div>
+</div>
+
+<!-- ========== 图 3-2 管理员用例图 ========== -->
+<div class="figure">
+<svg width="900" height="620" viewBox="0 0 900 620">
+  <defs>
+    <marker id="triangle2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#d9480f"/>
+    </marker>
+  </defs>
+
+  <!-- 系统边界 -->
+  <rect class="system-boundary" x="260" y="30" width="520" height="560" rx="10"/>
+  <text class="system-title" x="520" y="50">微博舆情情感分析系统</text>
+
+  <!-- 普通用户（左侧） -->
+  <g transform="translate(110, 200)">
+    <circle cx="0" cy="-50" r="16" fill="#fff" stroke="#222" stroke-width="1.6"/>
+    <line x1="0" y1="-34" x2="0" y2="10" stroke="#222" stroke-width="1.6"/>
+    <line x1="-22" y1="-18" x2="22" y2="-18" stroke="#222" stroke-width="1.6"/>
+    <line x1="0" y1="10" x2="-20" y2="46" stroke="#222" stroke-width="1.6"/>
+    <line x1="0" y1="10" x2="20" y2="46" stroke="#222" stroke-width="1.6"/>
+    <text class="actor-label" x="0" y="72">普通用户</text>
+  </g>
+
+  <!-- 管理员（左下） -->
+  <g transform="translate(110, 470)">
+    <circle cx="0" cy="-50" r="16" fill="#fff" stroke="#d9480f" stroke-width="2"/>
+    <line x1="0" y1="-34" x2="0" y2="10" stroke="#d9480f" stroke-width="2"/>
+    <line x1="-22" y1="-18" x2="22" y2="-18" stroke="#d9480f" stroke-width="2"/>
+    <line x1="0" y1="10" x2="-20" y2="46" stroke="#d9480f" stroke-width="2"/>
+    <line x1="0" y1="10" x2="20" y2="46" stroke="#d9480f" stroke-width="2"/>
+    <text class="actor-label" x="0" y="72" fill="#d9480f">管理员</text>
+  </g>
+
+  <!-- 继承（泛化）关系：管理员 → 普通用户 -->
+  <line class="inherit" x1="110" y1="410" x2="110" y2="260"/>
+  <text class="inherit-label" x="120" y="340">«继承»</text>
+
+  <!-- 普通用户 7 个核心用例（蓝） -->
+  <g>
+    <ellipse class="uc-ellipse" cx="520" cy="90"  rx="100" ry="22"/><text class="uc-text" x="520" y="90">数据采集</text>
+    <ellipse class="uc-ellipse" cx="520" cy="140" rx="100" ry="22"/><text class="uc-text" x="520" y="140">数据预处理</text>
+    <ellipse class="uc-ellipse" cx="520" cy="190" rx="100" ry="22"/><text class="uc-text" x="520" y="190">情感分析</text>
+    <ellipse class="uc-ellipse" cx="520" cy="240" rx="100" ry="22"/><text class="uc-text" x="520" y="240">热点话题分析</text>
+    <ellipse class="uc-ellipse" cx="520" cy="290" rx="100" ry="22"/><text class="uc-text" x="520" y="290">实时舆情监控</text>
+    <ellipse class="uc-ellipse" cx="520" cy="340" rx="100" ry="22"/><text class="uc-text" x="520" y="340">数据流水线管理</text>
+    <ellipse class="uc-ellipse" cx="520" cy="390" rx="100" ry="22"/><text class="uc-text" x="520" y="390">可视化展示</text>
+  </g>
+
+  <!-- 管理员独有 4 个用例（橙） -->
+  <g>
+    <ellipse class="uc-ellipse-admin" cx="520" cy="455" rx="115" ry="22"/><text class="uc-text" x="520" y="455" style="fill:#a02000;">用户管理</text>
+    <ellipse class="uc-ellipse-admin" cx="520" cy="500" rx="115" ry="22"/><text class="uc-text" x="520" y="500" style="fill:#a02000;">Spark 参数配置</text>
+    <ellipse class="uc-ellipse-admin" cx="520" cy="545" rx="135" ry="22"/><text class="uc-text" x="520" y="545" style="fill:#a02000;">数据库与系统参数配置</text>
+    <ellipse class="uc-ellipse-admin" cx="520" cy="590" rx="115" ry="22"/><text class="uc-text" x="520" y="590" style="fill:#a02000;">系统日志查看</text>
+  </g>
+
+  <!-- 关联线：普通用户 → 7 个蓝用例 -->
+  <g>
+    <line class="assoc" x1="135" y1="180" x2="420" y2="90"/>
+    <line class="assoc" x1="135" y1="185" x2="420" y2="140"/>
+    <line class="assoc" x1="135" y1="190" x2="420" y2="190"/>
+    <line class="assoc" x1="135" y1="195" x2="420" y2="240"/>
+    <line class="assoc" x1="135" y1="200" x2="420" y2="290"/>
+    <line class="assoc" x1="135" y1="210" x2="420" y2="340"/>
+    <line class="assoc" x1="135" y1="220" x2="420" y2="390"/>
+  </g>
+
+  <!-- 关联线：管理员 → 4 个橙用例（管理员独有） -->
+  <g>
+    <line class="assoc" stroke="#d9480f" x1="135" y1="450" x2="405" y2="455"/>
+    <line class="assoc" stroke="#d9480f" x1="135" y1="455" x2="405" y2="500"/>
+    <line class="assoc" stroke="#d9480f" x1="135" y1="460" x2="385" y2="545"/>
+    <line class="assoc" stroke="#d9480f" x1="135" y1="465" x2="405" y2="590"/>
+  </g>
+</svg>
+<div class="caption">图 3-2 管理员用例图</div>
+</div>
+
+<!-- ========== 说明 ========== -->
+<div class="figure" style="background:#f8fafc;">
+<h2>图例与设计说明</h2>
+<div class="desc">
+<ul>
+  <li><b>蓝色椭圆</b>：普通用户与管理员均可访问的核心业务用例（共 7 个）。</li>
+  <li><b>橙色椭圆</b>：管理员独有的后台管理用例（共 4 个）。</li>
+  <li><b>橙色三角箭头</b>：管理员对普通用户的<b>泛化（继承）</b>关系，表示管理员自动获得普通用户的全部权限，UML 规范写法。</li>
+  <li><b>虚线矩形</b>：系统边界，所有用例属于"微博舆情情感分析系统"。</li>
+  <li><b>导出建议</b>：点击右上角"打印 / 导出 PDF"按钮，或在浏览器中按 Ctrl+P → 选择"另存为 PDF"。也可直接对 SVG 区域右键 → "图像另存为"导出 PNG 后插入 Word（图宽控制在 14cm 以内即可不超过页边距）。</li>
+</ul>
+</div>
+</div>
+
+</body>
+</html>

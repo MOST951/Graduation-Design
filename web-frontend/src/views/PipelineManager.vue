@@ -177,22 +177,22 @@
             </el-table-column>
             <el-table-column label="综合得分" width="100" align="center">
               <template #default="{ row }">
-                <el-tag type="primary">{{ (row.composite_score ?? row.final_score ?? 0).toFixed(3) }}</el-tag>
+                <el-tag type="primary">{{ Number(row.composite_score ?? row.final_score ?? 0).toFixed(3) }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="情感强度" width="90" align="center">
               <template #default="{ row }">
-                {{ (row.sentiment_intensity ?? 0).toFixed(3) }}
+                {{ Number(row.sentiment_score ?? row.sentiment_intensity ?? 0).toFixed(3) }}
               </template>
             </el-table-column>
             <el-table-column label="热度" width="90" align="center">
               <template #default="{ row }">
-                {{ (row.heat_normalized ?? row.popularity_normalized ?? 0).toFixed(3) }}
+                {{ Number(row.popularity_score ?? row.heat_normalized ?? 0).toFixed(3) }}
               </template>
             </el-table-column>
             <el-table-column label="时效性" width="90" align="center">
               <template #default="{ row }">
-                {{ (row.timeliness_score ?? 0).toFixed(3) }}
+                {{ Number(row.time_decay ?? row.timeliness_score ?? 0).toFixed(3) }}
               </template>
             </el-table-column>
           </el-table>
@@ -499,16 +499,21 @@ let wsReconnectTimer: number | null = null;
 let pollTimer: number | null = null;
 
 // 执行流水线
-const runPipeline = async (mode: 'sync' | 'async') => {
+// resumeOpts 由 retryFromStage 传入，可含 resume_from / batch_id 表示从指定阶段重跑
+const runPipeline = async (mode: 'sync' | 'async', resumeOpts?: { resume_from?: string; batch_id?: string }) => {
   running.value = true;
   terminated.value = false;
-  resetStages();
+  if (!resumeOpts?.resume_from) {
+    resetStages();
+  }
 
   try {
     const url = mode === 'sync' ? '/pipeline/run' : '/pipeline/run-async';
     const response = await apiClient.post(url, {
       limit: pipelineConfig.limit,
       preset: pipelineConfig.preset,
+      resume_from: resumeOpts?.resume_from,
+      batch_id: resumeOpts?.batch_id,
     });
 
     if (response.data.code === 200) {
@@ -582,6 +587,13 @@ const loadDatabaseStats = async () => {
             item.count = data.table_stats[item.table];
           }
         });
+      } else {
+        // 直接从扁平字段映射（API返回 weibo_core_data: 150 等）
+        dbStats.value.forEach(item => {
+          if (data[item.table] !== undefined) {
+            item.count = data[item.table];
+          }
+        });
       }
       savePipelineCache();
     }
@@ -590,6 +602,34 @@ const loadDatabaseStats = async () => {
   } finally {
     loadingStats.value = false;
   }
+};
+
+// 加载历史运行记录（从crawl_batch_log）
+const loadHistory = async () => {
+  try {
+    const response = await apiClient.get('/pipeline/stats');
+    if (response.data.code === 200) {
+      const data = response.data.data;
+      // 如果有batch记录数且当前无历史，从后端构建
+      if (data.crawl_batch_log > 0 && historyRecords.value.length === 0) {
+        try {
+          const batchResp = await apiClient.get('/pipeline/history');
+          if (batchResp.data.code === 200 && batchResp.data.data) {
+            historyRecords.value = batchResp.data.data.map((b: any) => ({
+              batch_id: b.batch_id,
+              status: b.status || 'completed',
+              processed: b.total_weibos || b.success_count || 0,
+              duration: 0,
+              time: b.end_time || b.created_at || '',
+            }));
+            savePipelineCache();
+          }
+        } catch {
+          // /pipeline/history 可能不存在，尝试直接从stats构建简要记录
+        }
+      }
+    }
+  } catch { /* ignore */ }
 };
 
 // 加载排序结果
@@ -608,10 +648,16 @@ const loadRanking = async () => {
   }
 };
 
-// 断点续跑
+// 断点续跑——指定从哪个阶段重跑，仅在启用「断点续跑」开关时生效
 const retryFromStage = (record: any) => {
-  ElMessage.info(`从阶段 "${record.failed_stage || '情感分析'}" 重试...`);
-  runPipeline('async');
+  if (!pipelineConfig.resume) {
+    ElMessage.warning('请先启用「断点续跑」开关');
+    return;
+  }
+  const stageKey = record.failed_stage || record.stage || 'sentiment';
+  const batchId = record.batch_id || lastResult.value?.batch_id;
+  ElMessage.info(`从阶段 「${stageKey}」 断点续跑中…`);
+  runPipeline('async', { resume_from: stageKey, batch_id: batchId });
 };
 
 // 暂停流水线
@@ -951,7 +997,7 @@ const loadDefaultConfig = async () => {
 };
 
 onMounted(async () => {
-  await Promise.all([refreshStatus(), loadDatabaseStats(), loadRanking()]);
+  await Promise.all([refreshStatus(), loadDatabaseStats(), loadRanking(), loadHistory()]);
   // 
   connectWebSocket();
 });

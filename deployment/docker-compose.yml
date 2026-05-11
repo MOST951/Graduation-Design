@@ -65,9 +65,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 2048M
         reservations:
-          memory: 512M
+          memory: 768M
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:5000/api/v2/health || curl -sf http://localhost:5000/"]
       interval: 30s
@@ -184,7 +184,7 @@ services:
         reservations:
           memory: 256M
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8081/health >/dev/null || curl -sf http://localhost:8081/api/actuator/health >/dev/null"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/api/auth/health >/dev/null || curl -sf http://localhost:8081/api/actuator/health >/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -273,6 +273,12 @@ services:
       resources:
         limits:
           memory: 128M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:80/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # ==================================================================
   #                   大数据服务 (with-bigdata profile)

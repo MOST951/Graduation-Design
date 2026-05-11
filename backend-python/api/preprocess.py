@@ -114,6 +114,41 @@ def remove_extra_spaces(text: str) -> str:
     """去除多余空格"""
     return re.sub(r'\s+', ' ', text).strip()
 
+def full_to_half(text: str) -> str:
+    """全角转半角：ASCII 标点 + 数字字母统一"""
+    result = []
+    for ch in text:
+        code = ord(ch)
+        if code == 0x3000:  # 全角空格
+            code = 0x0020
+        elif 0xFF01 <= code <= 0xFF5E:  # 全角 ASCII
+            code -= 0xFEE0
+        result.append(chr(code))
+    return ''.join(result)
+
+
+# OpenCC 单例（繁简转换）
+_opencc_converter = None
+
+
+def traditional_to_simplified(text: str) -> str:
+    """繁体转简体，基于 OpenCC；若依赖缺失则原样返回"""
+    global _opencc_converter
+    if _opencc_converter is None:
+        try:
+            from opencc import OpenCC
+            _opencc_converter = OpenCC('t2s')
+        except Exception as e:
+            logger.warning(f'OpenCC 未安装，跳过繁简转换: {e}')
+            _opencc_converter = False
+    if not _opencc_converter:
+        return text
+    try:
+        return _opencc_converter.convert(text)
+    except Exception:
+        return text
+
+
 def clean_text(text: str, rules: List[str]) -> str:
     """根据规则清洗文本"""
     if 'removeUrl' in rules:
@@ -122,6 +157,10 @@ def clean_text(text: str, rules: List[str]) -> str:
         text = remove_emoji(text)
     if 'removeSpecial' in rules:
         text = remove_special_chars(text)
+    if 'traditional2simplified' in rules:
+        text = traditional_to_simplified(text)
+    if 'fullwidth2halfwidth' in rules:
+        text = full_to_half(text)
     text = remove_extra_spaces(text)
     return text
 
@@ -442,7 +481,11 @@ def health_check():
 
 @preprocess_bp.route('/start', methods=['POST'])
 def start_preprocessing():
-    """"开始预处理任务"""
+    """开始预处理任务。
+
+    小批量（≤500 条）或 mode='sync' 时直接在当前线程处理并返回结果，
+    便于调试；大批量自动走异步线程（生产环境可切换至 Spark 集群）。
+    """
     try:
         data = request.get_json()
         raw_data = data.get('data', [])
@@ -451,9 +494,57 @@ def start_preprocessing():
         segment_tool = data.get('segment_tool', 'jieba')
         custom_dict = data.get('custom_dict', '')
         stopwords = data.get('stopwords', [])
-        
+        mode = data.get('mode', 'auto')  # auto / sync / async
+        sync_threshold = int(data.get('sync_threshold', 500))
+
+        # —— 路由决策 ——
+        if mode == 'auto':
+            use_sync = len(raw_data) <= sync_threshold
+        else:
+            use_sync = (mode == 'sync')
+
         # 生成任务ID
         job_id = f"preprocess_{int(time.time())}_{random.randint(1000, 9999)}"
+
+        if use_sync:
+            # 小批量同步处理分支：直接在请求线程完成，便于调试
+            try:
+                processed = []
+                for item in raw_data:
+                    txt = item.get('text', item.get('content', ''))
+                    if 'removeNoise' in rules:
+                        txt = remove_urls(txt)
+                        txt = remove_emoji(txt)
+                        txt = re.sub(r'@[^\s]+', '', txt)
+                        txt = re.sub(r'#[^#]+#', '', txt)
+                    if 'traditional2simplified' in rules or config.get('traditional2simplified'):
+                        txt = traditional_to_simplified(txt)
+                    if 'fullwidth2halfwidth' in rules or config.get('fullwidth2halfwidth'):
+                        txt = full_to_half(txt)
+                    words = segment_text(txt, tool=segment_tool) if 'segmentation' in rules else [txt]
+                    if 'removeStopwords' in rules:
+                        words = [w for w in words if w not in stopwords and len(w) > 1]
+                    processed.append({
+                        'id': item.get('id', ''),
+                        'original_text': item.get('text', item.get('content', '')),
+                        'processed_text': ''.join(words),
+                        'words': words,
+                        'word_count': len(words),
+                        'rules_applied': rules,
+                    })
+                return jsonify({
+                    'code': 200,
+                    'message': f'同步处理完成 ({len(processed)} 条)',
+                    'data': {
+                        'job_id': job_id,
+                        'mode': 'sync',
+                        'processed_count': len(processed),
+                        'items': processed,
+                    }
+                })
+            except Exception as e:
+                logger.error(f'同步预处理失败: {e}', exc_info=True)
+                return jsonify({'code': 500, 'message': str(e)}), 500
         
         # 创建任务
         with task_lock:
@@ -505,18 +596,15 @@ def start_preprocessing():
                     
                     # 繁体转简体
                     if 'traditional2simplified' in rules or config.get('traditional2simplified'):
-                        # TODO: 实现繁体转简体逻辑
-                        pass
+                        text = traditional_to_simplified(text)
                     
                     # 全角转半角
                     if 'fullwidth2halfwidth' in rules or config.get('fullwidth2halfwidth'):
-                        # TODO: 实现全角转半角逻辑
-                        pass
+                        text = full_to_half(text)
                     
-                    # 分词
+                    # 分词（优先 Jieba）
                     if 'segmentation' in rules:
-                        # TODO: 实现分词逻辑
-                        words = list(text)  # 暂时使用单字分词
+                        words = segment_text(text, tool=segment_tool)
                     else:
                         words = [text]
                     

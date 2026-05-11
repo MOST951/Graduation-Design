@@ -542,7 +542,7 @@
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue';
 import * as echarts from 'echarts';
 import { SUCCESS, PRIMARY, WARNING, DANGER, INFO } from '@/styles/colors';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   Upload, Operation, Refresh, Search, ChatDotRound, Star, Setting, Download,
 } from '@element-plus/icons-vue';
@@ -747,6 +747,8 @@ const qualityScore = ref(85);
 const completeness = ref(92);
 const accuracy = ref(88);
 const consistency = ref(85);
+// 避免弹窗重复触发的标志：每次从高分（≥90）跌到低分（<80）时只提示一次
+const qualityWarned = ref(false);
 
 const qualityIssues = ref([
   { type: '重复数据', count: 0, severity: 'medium', description: '发现重复记录' },
@@ -848,6 +850,25 @@ const updateQualityMetrics = () => {
 
   // 综合质量分
   qualityScore.value = Math.round((completeness.value + accuracy.value + consistency.value) / 3);
+
+  // 质量低于 80% 阈值时弹窗告警，引导用户调整预处理规则
+  if (qualityScore.value < 80 && !qualityWarned.value) {
+    qualityWarned.value = true;
+    ElMessageBox.alert(
+      `当前数据质量评分 ${qualityScore.value} 分（低于 80 分阈值）。\n\n` +
+      `主要问题：\n` +
+      `  · 重复数据 ${qualityIssues.value[0].count} 条\n` +
+      `  · 空值 ${qualityIssues.value[1].count} 条\n` +
+      `  · 格式异常 ${qualityIssues.value[2].count} 条\n\n` +
+      `建议启用「去重 + 去噪 + 补全」规则后重新处理。`,
+      '数据质量告警',
+      { type: 'warning', confirmButtonText: '前往调整规则' }
+    ).catch(() => {});
+  }
+  // 恢复高质量时重置标志
+  if (qualityScore.value >= 90) {
+    qualityWarned.value = false;
+  }
 };
 
 const getQualityColor = (score: number) => {

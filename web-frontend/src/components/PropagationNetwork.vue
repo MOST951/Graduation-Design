@@ -77,7 +77,7 @@ let chartInstance: echarts.ECharts | null = null;
 const loadNetwork = async () => {
   loading.value = true;
   try {
-    const response = await apiClient.get('/api/propagation/network', {
+    const response = await apiClient.get('/propagation/network', {
       params: { max_nodes: maxNodes.value }
     });
     

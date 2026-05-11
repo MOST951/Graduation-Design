@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>4.3.4 数据表 ER 图（图 4-10 ~ 图 4-19）</title>
+<style>
+  body {
+    font-family: "SimSun", "宋体", "Times New Roman", serif;
+    background: #fff; margin: 0; padding: 24px; color: #000;
+  }
+  h1 { font-size: 18pt; text-align: center; margin: 0 0 16px 0; }
+  .er-figure {
+    page-break-inside: avoid;
+    margin: 24px auto;
+    text-align: center;
+  }
+  .er-figure svg { display: block; margin: 0 auto; background: #fff; }
+  .caption { font-size: 11pt; margin-top: 8px; }
+  .toolbar { text-align: center; margin-bottom: 16px; }
+  .toolbar button { padding: 6px 14px; margin: 0 4px; cursor: pointer; font-size: 10pt; }
+  @media print {
+    .toolbar { display: none; }
+    .er-figure { page-break-after: always; }
+  }
+  .entity-rect { fill: #fff; stroke: #000; stroke-width: 1.4; }
+  .attr-ellipse { fill: #fff; stroke: #000; stroke-width: 1.0; }
+  .conn-line { stroke: #000; stroke-width: 0.8; fill: none; }
+  .entity-text {
+    font-family: "SimSun", "宋体", serif;
+    font-size: 14px; text-anchor: middle; dominant-baseline: middle;
+    font-weight: bold;
+  }
+  .attr-text {
+    font-family: "SimSun", "宋体", serif;
+    font-size: 11px; text-anchor: middle; dominant-baseline: middle;
+  }
+  .pk { text-decoration: underline; }
+  /* HBase 表样式 */
+  .cf-rect { fill: #f5f5f5; stroke: #000; stroke-width: 1.2; }
+  .col-rect { fill: #fff; stroke: #000; stroke-width: 0.8; }
+  .rk-rect { fill: #ffe8b3; stroke: #000; stroke-width: 1.4; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button onclick="window.print()">🖨️ 打印 / 导出 PDF</button>
+  <span style="color:#666;font-size:10pt">每图一页（已设 page-break-after），可右键单图截图。</span>
+</div>
+
+<h1>4.3.4 数据库逻辑结构 ER 图（图 4-10 至 图 4-19）</h1>
+
+<div id="diagrams"></div>
+
+<script>
+// ============================================
+// 实体定义（来自 4.3.4 节表 4-3 至 表 4-12）
+// ============================================
+const entities = [
+  {
+    figNum: '4-10', name: '用户',
+    pk: '用户ID',
+    attrs: ['用户名', '密码哈希', '密码盐值', '邮箱', '角色', '账号状态', '创建时间', '更新时间']
+  },
+  {
+    figNum: '4-11', name: '采集任务',
+    pk: '记录ID',
+    attrs: ['任务ID', '系统用户标识', '关键词', '采集页数', '是否爬热搜', '任务状态', '进度', '已采集数', '开始时间', '结束时间', '错误信息', '创建时间', '更新时间']
+  },
+  {
+    figNum: '4-12', name: '微博核心数据',
+    pk: '记录ID',
+    attrs: ['微博ID', '文本内容', '发布时间', '采集时间', '作者ID', '作者昵称', '转发数', '评论数', '点赞数', '采集关键词', '批次ID', '是否已分析', '是否已排序', '最后更新']
+  },
+  {
+    figNum: '4-13', name: '情感分析结果',
+    pk: '结果ID',
+    attrs: ['关联微博ID', '词典得分', 'BERT得分', '混合得分', '情感分类', '情感强度', '置信度', '分析方法', '分析时间', '处理耗时']
+  },
+  {
+    figNum: '4-14', name: '三维度排序结果',
+    pk: '排序ID',
+    attrs: ['关联微博ID', '情感得分', '情感分类标签', '转发数(快照)', '评论数(快照)', '点赞数(快照)', '原始热度', '归一化热度', '热度等级', '时间衰减', 'α权重', 'β权重', 'γ权重', '综合得分', '排名位次', '批次ID', '计算时间', '算法版本']
+  },
+  {
+    figNum: '4-15', name: '爬虫批次日志',
+    pk: '日志ID',
+    attrs: ['批次ID', '任务名称', '采集关键词', '批次状态', '采集总数', '成功数', '失败数', '开始时间', '结束时间', '错误信息', '创建时间']
+  },
+  {
+    figNum: '4-16', name: '爬虫请求日志',
+    pk: '日志ID',
+    attrs: ['关联批次ID', '请求URL', 'HTTP状态码', '响应时间', '是否成功', '错误信息', '请求时间']
+  },
+  {
+    figNum: '4-17', name: '数据质量日志',
+    pk: '日志ID',
+    attrs: ['关联批次ID', '检查类型', '总记录数', '有效记录数', '无效记录数', '质量得分', '问题详情', '检查时间']
+  },
+  {
+    figNum: '4-18', name: '系统配置',
+    pk: '配置ID',
+    attrs: ['配置键', '配置值', '配置类型', '配置分组', '配置说明', '是否启用', '创建时间', '更新时间']
+  }
+];
+
+// ============================================
+// 渲染辐射式 ER 图（自适应单环/双环）
+// ============================================
+function renderEntity(ent) {
+  const totalAttrs = ent.attrs.length + 1; // +1 for PK
+  const useTwoRings = totalAttrs > 11;
+
+  // SVG 尺寸
+  const W = useTwoRings ? 900 : 760;
+  const H = useTwoRings ? 600 : 460;
+  const cx = W / 2, cy = H / 2;
+
+  // 中心矩形
+  const rectW = Math.max(120, ent.name.length * 16 + 30);
+  const rectH = 40;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">`;
+
+  // 椭圆参数
+  const ellipseRX = 50;
+  const ellipseRY = 18;
+
+  // 所有属性（PK 在第一个）
+  const allAttrs = [{ name: ent.pk, isPK: true }, ...ent.attrs.map(a => ({ name: a, isPK: false }))];
+
+  if (useTwoRings) {
+    // 双环：奇数索引外环，偶数索引内环
+    const innerR = 130, outerR = 245;
+    const half = Math.ceil(allAttrs.length / 2);
+    allAttrs.forEach((a, i) => {
+      const isOuter = i % 2 === 1;
+      const r = isOuter ? outerR : innerR;
+      // 角度均匀分布在整个圆周（避开下方矩形）
+      const angle = -Math.PI / 2 + (2 * Math.PI * i / allAttrs.length);
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      // 连线起点：椭圆边缘指向中心（简化为直接到矩形）
+      const tx = cx, ty = cy + (y > cy ? rectH / 2 : -rectH / 2);
+      svg += `<line class="conn-line" x1="${x}" y1="${y}" x2="${tx}" y2="${ty}"/>`;
+      svg += `<ellipse class="attr-ellipse" cx="${x}" cy="${y}" rx="${ellipseRX}" ry="${ellipseRY}"/>`;
+      const cls = a.isPK ? 'attr-text pk' : 'attr-text';
+      svg += `<text class="${cls}" x="${x}" y="${y + 1}">${a.name}</text>`;
+    });
+  } else {
+    // 单环
+    const r = 165;
+    allAttrs.forEach((a, i) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * i / allAttrs.length);
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+      const tx = cx, ty = cy + (y > cy ? rectH / 2 : -rectH / 2);
+      svg += `<line class="conn-line" x1="${x}" y1="${y}" x2="${tx}" y2="${ty}"/>`;
+      svg += `<ellipse class="attr-ellipse" cx="${x}" cy="${y}" rx="${ellipseRX}" ry="${ellipseRY}"/>`;
+      const cls = a.isPK ? 'attr-text pk' : 'attr-text';
+      svg += `<text class="${cls}" x="${x}" y="${y + 1}">${a.name}</text>`;
+    });
+  }
+
+  // 中心矩形（最后绘制以覆盖连线末端）
+  svg += `<rect class="entity-rect" x="${cx - rectW / 2}" y="${cy - rectH / 2}" width="${rectW}" height="${rectH}"/>`;
+  svg += `<text class="entity-text" x="${cx}" y="${cy + 1}">${ent.name}</text>`;
+  svg += `</svg>`;
+
+  return `
+    <div class="er-figure">
+      ${svg}
+      <div class="caption">图 ${ent.figNum} ${ent.name}实体属性图</div>
+    </div>
+  `;
+}
+
+// 渲染所有 ER 图
+let html = '';
+entities.forEach(ent => { html += renderEntity(ent); });
+
+// ============================================
+// HBase 宽表（图 4-19）— 单独的层级结构
+// ============================================
+html += `
+<div class="er-figure">
+<svg viewBox="0 0 900 480" width="900" height="480">
+  <!-- RowKey -->
+  <rect class="rk-rect" x="280" y="30" width="340" height="44" rx="4"/>
+  <text class="entity-text" x="450" y="52">RowKey</text>
+  <text class="attr-text" x="450" y="70">keyword_timestamp_weibo_id</text>
+
+  <!-- 中心实体 -->
+  <rect class="entity-rect" x="350" y="200" width="200" height="44"/>
+  <text class="entity-text" x="450" y="222">HBase 宽表</text>
+  <text class="attr-text" x="450" y="240">sentiment_result</text>
+  <line class="conn-line" x1="450" y1="74" x2="450" y2="200"/>
+
+  <!-- info 列族 -->
+  <rect class="cf-rect" x="60" y="320" width="160" height="44" rx="4"/>
+  <text class="entity-text" x="140" y="346">info（基础信息）</text>
+  <line class="conn-line" x1="140" y1="320" x2="370" y2="244"/>
+  <rect class="col-rect" x="40" y="390" width="60" height="28"/>
+  <text class="attr-text" x="70" y="406">text</text>
+  <rect class="col-rect" x="110" y="390" width="80" height="28"/>
+  <text class="attr-text" x="150" y="406">user_name</text>
+  <rect class="col-rect" x="200" y="390" width="80" height="28"/>
+  <text class="attr-text" x="240" y="406">publish_time</text>
+  <line class="conn-line" x1="70" y1="390" x2="100" y2="364"/>
+  <line class="conn-line" x1="150" y1="390" x2="140" y2="364"/>
+  <line class="conn-line" x1="240" y1="390" x2="180" y2="364"/>
+
+  <!-- sentiment 列族 -->
+  <rect class="cf-rect" x="290" y="320" width="180" height="44" rx="4"/>
+  <text class="entity-text" x="380" y="346">sentiment（情感）</text>
+  <line class="conn-line" x1="380" y1="320" x2="420" y2="244"/>
+  <rect class="col-rect" x="290" y="390" width="56" height="28"/>
+  <text class="attr-text" x="318" y="406">label</text>
+  <rect class="col-rect" x="356" y="390" width="56" height="28"/>
+  <text class="attr-text" x="384" y="406">score</text>
+  <rect class="col-rect" x="422" y="390" width="80" height="28"/>
+  <text class="attr-text" x="462" y="406">confidence</text>
+  <line class="conn-line" x1="318" y1="390" x2="340" y2="364"/>
+  <line class="conn-line" x1="384" y1="390" x2="380" y2="364"/>
+  <line class="conn-line" x1="462" y1="390" x2="420" y2="364"/>
+
+  <!-- metrics 列族 -->
+  <rect class="cf-rect" x="540" y="320" width="160" height="44" rx="4"/>
+  <text class="entity-text" x="620" y="346">metrics（指标）</text>
+  <line class="conn-line" x1="620" y1="320" x2="500" y2="244"/>
+  <rect class="col-rect" x="530" y="390" width="100" height="28"/>
+  <text class="attr-text" x="580" y="406">comment_count</text>
+  <rect class="col-rect" x="640" y="390" width="80" height="28"/>
+  <text class="attr-text" x="680" y="406">like_count</text>
+  <line class="conn-line" x1="580" y1="390" x2="600" y2="364"/>
+  <line class="conn-line" x1="680" y1="390" x2="640" y2="364"/>
+
+  <!-- ranking 列族 -->
+  <rect class="cf-rect" x="730" y="320" width="150" height="44" rx="4"/>
+  <text class="entity-text" x="805" y="346">ranking（排序）</text>
+  <line class="conn-line" x1="805" y1="320" x2="540" y2="244"/>
+  <rect class="col-rect" x="720" y="390" width="160" height="28"/>
+  <text class="attr-text" x="800" y="406">comprehensive_score</text>
+  <line class="conn-line" x1="800" y1="390" x2="805" y2="364"/>
+
+  <!-- 图例 -->
+  <rect class="rk-rect" x="40" y="450" width="20" height="14"/>
+  <text class="attr-text" x="100" y="460" style="text-anchor:start">RowKey</text>
+  <rect class="cf-rect" x="180" y="450" width="20" height="14"/>
+  <text class="attr-text" x="240" y="460" style="text-anchor:start">列族（Column Family）</text>
+  <rect class="col-rect" x="380" y="450" width="20" height="14"/>
+  <text class="attr-text" x="440" y="460" style="text-anchor:start">列（Column / Qualifier）</text>
+</svg>
+<div class="caption">图 4-19 HBase 情感分析结果宽表（sentiment_result）结构图</div>
+</div>
+`;
+
+document.getElementById('diagrams').innerHTML = html;
+</script>
+
+<div style="text-align:center;margin:32px 0;color:#666;font-size:10pt;">
+  共 10 张数据库逻辑结构 ER 图（图 4-10 至 图 4-19）<br>
+  9 张关系型表（MySQL）+ 1 张宽表（HBase） · 主键属性带下划线
+</div>
+
+</body>
+</html>

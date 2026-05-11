@@ -53,13 +53,15 @@ def run_pipeline():
 
 @pipeline_bp.route('/run-async', methods=['POST'])
 def run_pipeline_async():
-    """异步执行流水线（后台运行）"""
+    """异步执行流水线（后台运行），支持从指定阶段断点续跑"""
     try:
         data = request.get_json(silent=True) or {}
         limit = data.get('limit', 500)
+        resume_from = data.get('resume_from')  # 如 'sentiment' / 'ranking'
+        batch_id = data.get('batch_id')
 
         pipeline = get_pipeline_service()
-        result = pipeline.run_pipeline_async(limit=limit)
+        result = pipeline.run_pipeline_async(limit=limit, resume_from=resume_from, batch_id=batch_id)
 
         return jsonify({
             'code': 200,
@@ -202,3 +204,41 @@ def pipeline_health():
             'message': str(e),
             'data': {'healthy': False},
         }), 500
+
+
+@pipeline_bp.route('/history', methods=['GET'])
+def get_pipeline_history():
+    """查询历史运行记录（从crawl_batch_log）"""
+    try:
+        db = get_db_service()
+        limit = request.args.get('limit', 50, type=int)
+        
+        sql = """
+            SELECT batch_id, status, total_weibos, success_count, failure_count,
+                   start_time, end_time, created_at, student_id
+            FROM crawl_batch_log
+            ORDER BY created_at DESC
+            LIMIT %s
+        """
+        with db.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(sql, (limit,))
+                rows = cursor.fetchall()
+        
+        for row in rows:
+            for key, val in row.items():
+                if hasattr(val, 'isoformat'):
+                    row[key] = val.isoformat()
+        
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': rows,
+        })
+    except Exception as e:
+        logger.error(f'History query failed: {e}', exc_info=True)
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': [],
+        })

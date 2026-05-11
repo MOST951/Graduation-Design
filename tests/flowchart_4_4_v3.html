@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>图4-4 三维度排序模型结构图</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 0;
+    font-family: "SimSun", "宋体", serif;
+  }
+  text {
+    font-family: "SimSun", "宋体", serif;
+    font-size: 13px;
+    fill: #000;
+  }
+  .shape   { fill: #fff; stroke: #000; stroke-width: 1.3; }
+  .sub     { fill: #fff; stroke: #000; stroke-width: 1.3; }
+  .arr     { stroke: #000; stroke-width: 1.2; fill: none; marker-end: url(#a); }
+  .line    { stroke: #000; stroke-width: 1.2; fill: none; }
+  .formula { font-size: 12px; fill: #333; font-style: italic; }
+  .small   { font-size: 11px; fill: #555; }
+  .dim-lbl { font-size: 12px; fill: #000; font-weight: bold; }
+  .caption { font-size: 14px; text-anchor: middle; font-family: "SimSun", serif; }
+</style>
+</head>
+<body>
+
+<svg width="660" height="960" viewBox="0 0 660 960">
+<defs>
+  <marker id="a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#000"/>
+  </marker>
+</defs>
+
+<!-- ============ 输入数据（平行四边形） ============ -->
+<polygon points="220,15 440,15 460,48 200,48" class="shape"/>
+<text x="330" y="36" text-anchor="middle">输入数据</text>
+
+<!-- 数据项小框 -->
+<rect x="30" y="62" width="72" height="30" class="shape"/>
+<text x="66" y="82" text-anchor="middle" font-size="11.5">情感得分S</text>
+
+<rect x="118" y="62" width="60" height="30" class="shape"/>
+<text x="148" y="82" text-anchor="middle" font-size="11.5">转发数R</text>
+
+<rect x="194" y="62" width="60" height="30" class="shape"/>
+<text x="224" y="82" text-anchor="middle" font-size="11.5">评论数C</text>
+
+<rect x="270" y="62" width="60" height="30" class="shape"/>
+<text x="300" y="82" text-anchor="middle" font-size="11.5">点赞数L</text>
+
+<rect x="346" y="62" width="72" height="30" class="shape"/>
+<text x="382" y="82" text-anchor="middle" font-size="11.5">发布时间t</text>
+
+<rect x="434" y="62" width="72" height="30" class="shape"/>
+<text x="470" y="82" text-anchor="middle" font-size="11.5">粉丝数F</text>
+
+<rect x="522" y="62" width="82" height="30" class="shape"/>
+<text x="563" y="82" text-anchor="middle" font-size="11.5">认证状态V</text>
+
+<!-- 下箭头 -->
+<line x1="330" y1="48" x2="330" y2="108" class="arr"/>
+
+
+<!-- ============ 维度计算（大框标题） ============ -->
+<text x="330" y="125" text-anchor="middle" font-size="14" font-weight="bold">维度计算</text>
+
+<!-- 三列分隔虚线（可选，表意用） -->
+
+
+<!-- ============ 左列：情感强度 ============ -->
+<text x="110" y="152" text-anchor="middle" class="dim-lbl">情感强度维度</text>
+
+<!-- 框 -->
+<rect x="22" y="165" width="176" height="70" class="shape"/>
+<text x="110" y="185" text-anchor="middle" font-size="12.5">情感强度归一化</text>
+<!-- 公式用更清晰的写法 -->
+<text x="110" y="210" text-anchor="middle" class="formula">Intensity(w) =</text>
+<text x="110" y="226" text-anchor="middle" class="formula">( |S_final(w)| + 1 ) / 2</text>
+
+<line x1="110" y1="235" x2="110" y2="260" class="arr"/>
+
+<!-- 输出 -->
+<polygon points="50,260 170,260 182,288 38,288" class="shape"/>
+<text x="110" y="278" text-anchor="middle" font-size="12">Intensity ∈ [0.5, 1]</text>
+
+
+<!-- ============ 中列：互动热度 ============ -->
+<text x="330" y="152" text-anchor="middle" class="dim-lbl">互动热度维度</text>
+
+<!-- 互动加权 -->
+<rect x="222" y="165" width="216" height="50" class="shape"/>
+<text x="330" y="185" text-anchor="middle" font-size="12.5">互动加权计算</text>
+<text x="330" y="205" text-anchor="middle" class="formula">H_raw = ln(1 + λ_r·R + λ_c·C + λ_l·L)</text>
+
+<line x1="330" y1="215" x2="330" y2="240" class="arr"/>
+
+<!-- 用户影响力 -->
+<rect x="222" y="240" width="216" height="65" class="shape"/>
+<text x="330" y="258" text-anchor="middle" font-size="12.5">用户影响力因子</text>
+<text x="330" y="276" text-anchor="middle" class="formula">I(u) = log(1+F) / 5 × V_bonus × V_type</text>
+<text x="330" y="296" text-anchor="middle" class="small">（政府1.8 / 媒体1.6 / 企业1.5 / 个人1.2）</text>
+
+<line x1="330" y1="305" x2="330" y2="330" class="arr"/>
+
+<!-- 热度融合 -->
+<rect x="237" y="330" width="186" height="42" class="shape"/>
+<text x="330" y="348" text-anchor="middle" font-size="12.5">综合热度</text>
+<text x="330" y="365" text-anchor="middle" class="formula">H(w) = H_raw × I(u)</text>
+
+<line x1="330" y1="372" x2="330" y2="398" class="arr"/>
+
+<!-- 热度归一化 -->
+<rect x="225" y="398" width="210" height="42" class="shape"/>
+<text x="330" y="416" text-anchor="middle" font-size="12.5">热度归一化</text>
+<text x="330" y="432" text-anchor="middle" class="formula">H_norm = H(w) / ln(1 + H_max)</text>
+
+<line x1="330" y1="440" x2="330" y2="466" class="arr"/>
+
+<!-- 输出 -->
+<polygon points="268,466 392,466 405,494 255,494" class="shape"/>
+<text x="330" y="484" text-anchor="middle" font-size="12">H_norm ∈ [0, 1]</text>
+
+
+<!-- ============ 右列：时效性 ============ -->
+<text x="556" y="152" text-anchor="middle" class="dim-lbl">时效性维度</text>
+
+<!-- 时间衰减 -->
+<rect x="466" y="165" width="180" height="70" class="shape"/>
+<text x="556" y="185" text-anchor="middle" font-size="12.5">指数时间衰减</text>
+<text x="556" y="210" text-anchor="middle" class="formula">γ(Δt) = 2^( −Δt / H )</text>
+<text x="556" y="228" text-anchor="middle" class="small">H = 12小时（半衰期）</text>
+
+<line x1="556" y1="235" x2="556" y2="260" class="arr"/>
+
+<!-- 输出 -->
+<polygon points="496,260 616,260 628,288 484,288" class="shape"/>
+<text x="556" y="278" text-anchor="middle" font-size="12">γ(Δt) ∈ [0, 1]</text>
+
+
+<!-- ============ 汇合 ============ -->
+<!-- 左列下拉 -->
+<line x1="110" y1="288" x2="110" y2="530" class="line"/>
+<line x1="110" y1="530" x2="330" y2="530" class="line"/>
+<!-- 中列下拉 -->
+<line x1="330" y1="494" x2="330" y2="530" class="line"/>
+<!-- 右列下拉 -->
+<line x1="556" y1="288" x2="556" y2="530" class="line"/>
+<line x1="556" y1="530" x2="330" y2="530" class="line"/>
+
+<circle cx="330" cy="530" r="3" fill="#000"/>
+<line x1="330" y1="533" x2="330" y2="560" class="arr"/>
+
+
+<!-- ============ 加权融合 ============ -->
+<rect x="170" y="560" width="320" height="55" class="shape"/>
+<text x="330" y="580" text-anchor="middle" font-size="13" font-weight="bold">加权融合</text>
+<text x="330" y="600" text-anchor="middle" class="formula">Score(w) = ω₁·Intensity + ω₂·H_norm + ω₃·γ(Δt)</text>
+
+<!-- 权重标注 -->
+<text x="330" y="630" text-anchor="middle" class="small">ω₁ = 0.4　ω₂ = 0.4　ω₃ = 0.2　(ω₁ + ω₂ + ω₃ = 1)</text>
+
+<line x1="330" y1="615" x2="330" y2="660" class="arr"/>
+
+
+<!-- ============ 四象限分类（菱形） ============ -->
+<polygon points="330,660 470,720 330,780 190,720" class="shape"/>
+<text x="330" y="716" text-anchor="middle">四象限</text>
+<text x="330" y="733" text-anchor="middle">分类</text>
+
+<!-- 左 -->
+<line x1="190" y1="720" x2="95" y2="720" class="arr"/>
+<rect x="10" y="703" width="85" height="34" class="shape"/>
+<text x="52" y="717" text-anchor="middle" font-size="10.5">高情感</text>
+<text x="52" y="731" text-anchor="middle" font-size="10.5">低热度</text>
+
+<!-- 右 -->
+<line x1="470" y1="720" x2="565" y2="720" class="arr"/>
+<rect x="565" y="703" width="85" height="34" class="shape"/>
+<text x="607" y="717" text-anchor="middle" font-size="10.5">高情感</text>
+<text x="607" y="731" text-anchor="middle" font-size="10.5">高热度</text>
+
+<!-- 下 -->
+<line x1="330" y1="780" x2="330" y2="810" class="arr"/>
+
+
+<!-- ============ 排序 ============ -->
+<rect x="240" y="810" width="180" height="36" class="shape"/>
+<text x="330" y="833" text-anchor="middle">按 Score 降序排序</text>
+
+<line x1="330" y1="846" x2="330" y2="876" class="arr"/>
+
+
+<!-- ============ 输出（平行四边形） ============ -->
+<polygon points="240,876 420,876 440,908 220,908" class="shape"/>
+<text x="330" y="897" text-anchor="middle">输出：综合影响力排序列表</text>
+
+
+</svg>
+
+<div style="text-align:center; margin-top:12px; font-size:14px; font-family:'SimSun',serif;">
+  图4-4　情感-热度三维度排序模型结构图
+</div>
+
+</body>
+</html>

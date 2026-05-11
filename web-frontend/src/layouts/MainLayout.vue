@@ -44,7 +44,7 @@
         
         <el-menu-item index="/tri-dimension">
           <el-icon><Histogram /></el-icon>
-          <template #title>三维度排序</template>
+          <template #title>热点话题分析</template>
         </el-menu-item>
 
         <template v-if="!isCollapse">
@@ -389,7 +389,7 @@ const currentTitle = computed(() => {
     '/collection': '数据采集',
     '/preprocess': '数据预处理',
     '/sentiment': '情感分析',
-    '/tri-dimension': '三维度分析',
+    '/tri-dimension': '热点话题分析',
     '/topics': '热点话题分析',
     '/behavior': '用户行为分析',
     '/realtime': '实时舆情监控',

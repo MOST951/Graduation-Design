@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>图4-4 三维度排序模型结构图</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #fff;
+    display: flex;
+    justify-content: center;
+    padding: 40px 0;
+    font-family: "SimSun", "宋体", serif;
+  }
+  text {
+    font-family: "SimSun", "宋体", serif;
+    font-size: 13.5px;
+    fill: #000;
+  }
+  .shape    { fill: #fff; stroke: #000; stroke-width: 1.4; }
+  .sub      { fill: #fff; stroke: #000; stroke-width: 1.4; }   /* 子流程：双边矩形 */
+  .arr      { stroke: #000; stroke-width: 1.3; fill: none; marker-end: url(#a); }
+  .line     { stroke: #000; stroke-width: 1.3; fill: none; }
+  .dash     { stroke: #888; stroke-width: 1; stroke-dasharray: 5,3; fill: none; }
+  .formula  { font-size: 12px; fill: #444; font-style: italic; }
+  .small    { font-size: 11.5px; fill: #666; }
+  .caption  { font-size: 14px; text-anchor: middle; }
+  .dim-label{ font-size: 12.5px; fill: #333; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<svg width="620" height="820" viewBox="0 0 620 820">
+<defs>
+  <marker id="a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#000"/>
+  </marker>
+</defs>
+
+<!-- ==================== 1. 开始 ==================== -->
+<ellipse cx="310" cy="32" rx="50" ry="20" class="shape"/>
+<text x="310" y="37" text-anchor="middle">开始</text>
+
+<line x1="310" y1="52" x2="310" y2="78" class="arr"/>
+
+<!-- ==================== 2. 输入（平行四边形） ==================== -->
+<polygon points="230,78 390,78 410,110 210,110" class="shape"/>
+<text x="310" y="99" text-anchor="middle">输入微博数据集</text>
+
+<line x1="310" y1="110" x2="310" y2="140" class="arr" style="marker-end:none"/>
+
+<!-- 分支点 -->
+<circle cx="310" cy="140" r="3" fill="#000"/>
+
+<!-- 三条分支 -->
+<line x1="310" y1="140" x2="105" y2="140" class="line"/>
+<line x1="105" y1="140" x2="105" y2="175" class="arr"/>
+<line x1="310" y1="140" x2="310" y2="175" class="arr"/>
+<line x1="310" y1="140" x2="515" y2="140" class="line"/>
+<line x1="515" y1="140" x2="515" y2="175" class="arr"/>
+
+<!-- ==================== 3. 三个子流程（双边矩形） ==================== -->
+
+<!-- --- 左：情感强度 --- -->
+<!-- 双边矩形 = 外矩形 + 两条竖线 -->
+<rect x="15" y="175" width="180" height="50" class="sub"/>
+<line x1="25" y1="175" x2="25" y2="225" class="line"/>
+<line x1="185" y1="175" x2="185" y2="225" class="line"/>
+<text x="105" y="196" text-anchor="middle" font-weight="bold">情感分析子流程</text>
+<text x="105" y="214" text-anchor="middle" class="small">（见图4-3）</text>
+
+<line x1="105" y1="225" x2="105" y2="260" class="arr"/>
+
+<!-- 归一化 -->
+<rect x="25" y="260" width="160" height="38" class="shape"/>
+<text x="105" y="276" text-anchor="middle">强度归一化</text>
+<text x="105" y="292" text-anchor="middle" class="formula">N(S)=(|S|+1)/2</text>
+
+<line x1="105" y1="298" x2="105" y2="340" class="arr"/>
+
+<!-- 输出 -->
+<polygon points="45,340 165,340 178,368 32,368" class="shape"/>
+<text x="105" y="358" text-anchor="middle" font-size="12.5">N(S)</text>
+
+<!-- 标注维度名 -->
+<text x="105" y="168" text-anchor="middle" class="dim-label">情感维度 (ω₁=0.4)</text>
+
+<!-- --- 中：互动热度 --- -->
+<rect x="220" y="175" width="180" height="50" class="sub"/>
+<line x1="230" y1="175" x2="230" y2="225" class="line"/>
+<line x1="390" y1="175" x2="390" y2="225" class="line"/>
+<text x="310" y="196" text-anchor="middle" font-weight="bold">热度计算子流程</text>
+<text x="310" y="214" text-anchor="middle" class="small">（互动加权+影响力）</text>
+
+<line x1="310" y1="225" x2="310" y2="260" class="arr"/>
+
+<!-- 归一化 -->
+<rect x="230" y="260" width="160" height="38" class="shape"/>
+<text x="310" y="276" text-anchor="middle">热度归一化</text>
+<text x="310" y="292" text-anchor="middle" class="formula">H/ln(1+H_max)</text>
+
+<line x1="310" y1="298" x2="310" y2="340" class="arr"/>
+
+<!-- 输出 -->
+<polygon points="247,340 373,340 386,368 234,368" class="shape"/>
+<text x="310" y="358" text-anchor="middle" font-size="12.5">H_norm</text>
+
+<text x="310" y="168" text-anchor="middle" class="dim-label">热度维度 (ω₂=0.4)</text>
+
+<!-- --- 右：时效性 --- -->
+<rect x="425" y="175" width="180" height="50" class="sub"/>
+<line x1="435" y1="175" x2="435" y2="225" class="line"/>
+<line x1="595" y1="175" x2="595" y2="225" class="line"/>
+<text x="515" y="196" text-anchor="middle" font-weight="bold">时间衰减子流程</text>
+<text x="515" y="214" text-anchor="middle" class="small">（指数半衰期）</text>
+
+<line x1="515" y1="225" x2="515" y2="260" class="arr"/>
+
+<!-- 衰减计算 -->
+<rect x="435" y="260" width="160" height="38" class="shape"/>
+<text x="515" y="276" text-anchor="middle">指数衰减</text>
+<text x="515" y="292" text-anchor="middle" class="formula">γ=2^(−Δt/12h)</text>
+
+<line x1="515" y1="298" x2="515" y2="340" class="arr"/>
+
+<!-- 输出 -->
+<polygon points="455,340 575,340 588,368 442,368" class="shape"/>
+<text x="515" y="358" text-anchor="middle" font-size="12.5">γ(Δt)</text>
+
+<text x="515" y="168" text-anchor="middle" class="dim-label">时效维度 (ω₃=0.2)</text>
+
+
+<!-- ==================== 4. 汇合 ==================== -->
+<line x1="105" y1="368" x2="105" y2="410" class="line"/>
+<line x1="105" y1="410" x2="310" y2="410" class="line"/>
+<line x1="310" y1="368" x2="310" y2="410" class="line"/>
+<line x1="515" y1="368" x2="515" y2="410" class="line"/>
+<line x1="515" y1="410" x2="310" y2="410" class="line"/>
+<circle cx="310" cy="410" r="3" fill="#000"/>
+<line x1="310" y1="413" x2="310" y2="445" class="arr"/>
+
+<!-- ==================== 5. 加权融合 ==================== -->
+<rect x="195" y="445" width="230" height="42" class="shape"/>
+<text x="310" y="463" text-anchor="middle" font-weight="bold">三维度加权融合</text>
+<text x="310" y="479" text-anchor="middle" class="formula">Score = ω₁·N(S) + ω₂·H + ω₃·γ</text>
+
+<line x1="310" y1="487" x2="310" y2="525" class="arr"/>
+
+<!-- ==================== 6. 四象限（菱形） ==================== -->
+<polygon points="310,525 440,580 310,635 180,580" class="shape"/>
+<text x="310" y="576" text-anchor="middle">四象限</text>
+<text x="310" y="593" text-anchor="middle">分类</text>
+
+<!-- 左：高情感低热度 -->
+<line x1="180" y1="580" x2="72" y2="580" class="arr"/>
+<rect x="2" y="562" width="70" height="36" class="shape"/>
+<text x="37" y="577" text-anchor="middle" font-size="10.5">高情感</text>
+<text x="37" y="591" text-anchor="middle" font-size="10.5">低热度</text>
+
+<!-- 右：高情感高热度 -->
+<line x1="440" y1="580" x2="548" y2="580" class="arr"/>
+<rect x="548" y="562" width="70" height="36" class="shape"/>
+<text x="583" y="577" text-anchor="middle" font-size="10.5">高情感</text>
+<text x="583" y="591" text-anchor="middle" font-size="10.5">高热度</text>
+
+<!-- 下方继续主流程 -->
+<line x1="310" y1="635" x2="310" y2="665" class="arr"/>
+
+<!-- ==================== 7. 排序 ==================== -->
+<rect x="220" y="665" width="180" height="38" class="shape"/>
+<text x="310" y="689" text-anchor="middle">按 Score 降序排序</text>
+
+<line x1="310" y1="703" x2="310" y2="733" class="arr"/>
+
+<!-- ==================== 8. 输出（平行四边形） ==================== -->
+<polygon points="235,733 385,733 405,765 215,765" class="shape"/>
+<text x="310" y="754" text-anchor="middle">输出 Top-K 排序结果</text>
+
+<line x1="310" y1="765" x2="310" y2="790" class="arr"/>
+
+<!-- ==================== 9. 结束 ==================== -->
+<ellipse cx="310" cy="810" rx="50" ry="20" class="shape"/>
+<text x="310" y="815" text-anchor="middle">结束</text>
+
+<!-- ==================== 图注 ==================== -->
+<!-- 子流程图例说明 -->
+<rect x="12" y="720" width="55" height="25" class="sub"/>
+<line x1="18" y1="720" x2="18" y2="745" class="line"/>
+<line x1="61" y1="720" x2="61" y2="745" class="line"/>
+<text x="78" y="737" font-size="11.5" fill="#555">= 子流程</text>
+
+</svg>
+
+<div style="text-align:center; margin-top:8px; font-family:'SimSun',serif; font-size:14px;">
+  图4-4&nbsp;&nbsp;情感-热度三维度排序模型结构图
+</div>
+
+</body>
+</html>

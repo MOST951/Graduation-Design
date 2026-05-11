@@ -68,12 +68,12 @@
         <el-input-number
           v-model="form.dataLimit"
           :min="100"
-          :max="100000"
+          :max="50000"
           :step="100"
           controls-position="right"
           style="width: 100%;"
         />
-        <div class="form-tip">最大采集数据条数，0表示不限制</div>
+        <div class="form-tip">单次采集最多 50 000 条，超出建议拆分为多个任务</div>
       </el-form-item>
 
       <!-- 2. 平台选择 -->
