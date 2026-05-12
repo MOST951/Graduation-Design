@@ -35,6 +35,14 @@ try:
 except ImportError:
     LEXICON_AVAILABLE = False
 
+# 三分类 BERT 模型 (与离线 evaluate_cascade_3class.py 同源)
+try:
+    from models.chinese_bert_sentiment import ChineseBertSentimentModel
+    BERT3_AVAILABLE = True
+except ImportError as e:
+    BERT3_AVAILABLE = False
+    get_logger(__name__).warning(f"3-class BERT model import failed: {e}")
+
 # 
 try:
     from services.database_service import get_db_service
@@ -76,6 +84,104 @@ def get_hybrid_analyzer():
         _hybrid_analyzer = HybridSentimentAnalyzer()
         _hybrid_analyzer.initialize()
     return _hybrid_analyzer
+
+# 三分类 BERT 模型单例 (与离线评测同源, 用于 /analyze 端点保证数据一致)
+_bert3_model = None
+
+def get_bert3_model():
+    """获取三分类 BERT 模型 (单例)。与 evaluate_cascade_3class.py 一致。"""
+    global _bert3_model
+    if _bert3_model is None and BERT3_AVAILABLE:
+        try:
+            _bert3_model = ChineseBertSentimentModel()
+            _bert3_model._init_model()
+            logger.info('3-class BERT model initialized for /analyze endpoint')
+        except Exception as e:
+            logger.error(f'3-class BERT init failed: {e}', exc_info=True)
+            _bert3_model = None
+    return _bert3_model
+
+# 三分类 label_id → sentiment 字符串映射 (与离线评测一致)
+_LABEL_ID_TO_SENTIMENT = {0: 'negative', 1: 'positive', 2: 'neutral'}
+
+def _lexicon_3class_result(text: str) -> Dict:
+    """调用 SentimentLexicon.analyze_3class 并返回规范化字典。"""
+    label_id, conf, high_conf = SentimentLexicon.analyze_3class(text)
+    return {
+        'label_id': label_id,
+        'sentiment': _LABEL_ID_TO_SENTIMENT.get(label_id, 'neutral'),
+        'confidence': round(float(conf), 4),
+        'high_confidence': bool(high_conf),
+    }
+
+def _bert3_predict(text: str) -> Dict:
+    """调用三分类 BERT, 返回 {label_id, sentiment, confidence, score, probabilities}."""
+    model = get_bert3_model()
+    if model is None:
+        return None
+    pred = model.predict(text, return_probs=True)[0]
+    return {
+        'label_id': int(pred['label_id']),
+        'sentiment': _LABEL_ID_TO_SENTIMENT.get(int(pred['label_id']), 'neutral'),
+        'confidence': round(float(pred['confidence']), 4),
+        'score': round(float(pred.get('score', 0.0)), 4),
+        'probabilities': {k: round(float(v), 4) for k, v in pred.get('probabilities', {}).items()},
+    }
+
+# 级联融合参数 (与 evaluate_cascade_3class.CascadeAnalyzer 完全一致)
+CASCADE_LEXICON_THRESHOLD = 0.7
+CASCADE_BERT_FALLBACK_THRESHOLD = 0.55
+
+def _cascade_3class(text: str, theta: float = CASCADE_LEXICON_THRESHOLD) -> Dict:
+    """
+    三分类级联融合。与 evaluate_cascade_3class.CascadeAnalyzer.analyze 同源:
+      1) lex.high_confidence 且 lex.confidence>=θ  → 词典直出
+      2) 否则调 BERT
+      3) 若 BERT 置信度<0.55 且 词典倾向中性(label=2) 且 BERT 非中性 → 回退中性
+    """
+    lex = _lexicon_3class_result(text)
+    if lex['high_confidence'] and lex['confidence'] >= theta:
+        return {
+            'sentiment': lex['sentiment'],
+            'confidence': lex['confidence'],
+            'lexicon_label': lex['sentiment'],
+            'lexicon_confidence': lex['confidence'],
+            'path': 'lexicon',
+            'threshold': theta,
+            'escalated': False,
+        }
+    # 调 BERT
+    bert = _bert3_predict(text)
+    if bert is None:
+        # BERT 不可用 → 回退词典 (即使低置信)
+        return {
+            'sentiment': lex['sentiment'],
+            'confidence': lex['confidence'],
+            'lexicon_label': lex['sentiment'],
+            'lexicon_confidence': lex['confidence'],
+            'path': 'lexicon_fallback',
+            'threshold': theta,
+            'escalated': False,
+        }
+    final_sent = bert['sentiment']
+    path = 'bert'
+    # BERT 低置信回退
+    if bert['confidence'] < CASCADE_BERT_FALLBACK_THRESHOLD \
+            and lex['label_id'] == 2 and bert['label_id'] != 2:
+        final_sent = 'neutral'
+        path = 'bert+fallback_neutral'
+    return {
+        'sentiment': final_sent,
+        'confidence': bert['confidence'],
+        'score': bert.get('score'),
+        'probabilities': bert.get('probabilities'),
+        'bert_label': bert['sentiment'],
+        'lexicon_label': lex['sentiment'],
+        'lexicon_confidence': lex['confidence'],
+        'path': path,
+        'threshold': theta,
+        'escalated': True,
+    }
 
 # 数据存储
 analysis_results: Dict[str, Dict] = {}
@@ -402,89 +508,60 @@ def analyze_text():
         
         result = None
         
-        # 根据方法选择分析器
+        # 根据方法选择分析器 (与 evaluate_cascade_3class.py 同源, 保证 API 与论文实验数字一致)
         if method == 'cascade':
-            # 级联模式：先词典，置信度不足θ时升级到BERT
-            theta = data.get('threshold', 0.7)
-            escalated = False
-            if LEXICON_AVAILABLE:
-                sentiment, score = SentimentLexicon.analyze(text)
-                confidence = round(min(1.0, abs(score) + 0.3), 4)
-                if confidence >= theta:
-                    result = {
-                        'text': text,
-                        'sentiment': sentiment,
-                        'score': round(score, 4),
-                        'confidence': confidence,
-                        'method': 'cascade_lexicon',
-                        'escalated': False,
-                        'threshold': theta,
-                    }
-                else:
-                    escalated = True
-            else:
-                escalated = True
-
-            if escalated and BERT_AVAILABLE:
-                analyzer = get_bert_analyzer()
-                if analyzer:
-                    bert_result = analyzer.analyze(text)
-                    result = {
-                        'text': text,
-                        'sentiment': bert_result.label,
-                        'score': round(bert_result.score, 4),
-                        'confidence': round(bert_result.confidence, 4),
-                        'probabilities': {k: round(v, 4) for k, v in bert_result.probabilities.items()},
-                        'method': 'cascade_bert',
-                        'escalated': True,
-                        'threshold': theta,
-                        'processing_time_ms': round(bert_result.processing_time, 2),
-                    }
-            elif escalated:
-                # BERT不可用，仍用词典结果
-                if LEXICON_AVAILABLE:
-                    sentiment, score = SentimentLexicon.analyze(text)
-                    result = {
-                        'text': text,
-                        'sentiment': sentiment,
-                        'score': round(score, 4),
-                        'confidence': round(min(1.0, abs(score) + 0.3), 4),
-                        'method': 'cascade_lexicon_fallback',
-                        'escalated': False,
-                        'threshold': theta,
-                    }
-
-        elif method == 'bert' and BERT_AVAILABLE:
-            # 使用BERT分析
-            analyzer = get_bert_analyzer()
-            if analyzer:
-                bert_result = analyzer.analyze(text)
+            # 级联模式: 词典三分类 + 阈值 θ + BERT 低置信回退
+            theta = float(data.get('threshold', CASCADE_LEXICON_THRESHOLD))
+            if LEXICON_AVAILABLE and BERT3_AVAILABLE:
+                cas = _cascade_3class(text, theta=theta)
                 result = {
                     'text': text,
-                    'sentiment': bert_result.label,
-                    'score': round(bert_result.score, 4),
-                    'confidence': round(bert_result.confidence, 4),
-                    'probabilities': {k: round(v, 4) for k, v in bert_result.probabilities.items()},
-                    'method': 'bert',
-                    'processing_time_ms': round(bert_result.processing_time, 2),
+                    **cas,
+                    'method': 'cascade',
                 }
-        
+            elif LEXICON_AVAILABLE:
+                # BERT 不可用: 仅用词典 3 类
+                lex = _lexicon_3class_result(text)
+                result = {
+                    'text': text,
+                    'sentiment': lex['sentiment'],
+                    'confidence': lex['confidence'],
+                    'path': 'lexicon_only',
+                    'method': 'cascade',
+                    'escalated': False,
+                    'threshold': theta,
+                }
+
+        elif method == 'bert':
+            # 使用三分类 BERT (与离线评测同源)
+            if BERT3_AVAILABLE:
+                bert = _bert3_predict(text)
+                if bert is not None:
+                    result = {
+                        'text': text,
+                        'sentiment': bert['sentiment'],
+                        'score': bert.get('score'),
+                        'confidence': bert['confidence'],
+                        'probabilities': bert.get('probabilities'),
+                        'method': 'bert',
+                    }
+
         elif method == 'hybrid' and BERT_AVAILABLE:
-            # 使用混合分析
+            # 兼容旧 hybrid (使用 spark.HybridSentimentAnalyzer)
             analyzer = get_hybrid_analyzer()
             if analyzer:
                 result = analyzer.analyze(text)
                 result['method'] = 'hybrid'
-        
-        elif method == 'lexicon' or not BERT_AVAILABLE:
-            # 使用词典方法
+
+        elif method == 'lexicon' or not BERT3_AVAILABLE:
+            # 词典方法: 使用 3 分类接口 analyze_3class
             if LEXICON_AVAILABLE:
-                sentiment, score = SentimentLexicon.analyze(text)
+                lex = _lexicon_3class_result(text)
                 result = {
                     'text': text,
-                    'sentiment': sentiment,
-                    'score': round(score, 4),
-                    'confidence': round(min(1.0, abs(score) + 0.3), 4),
+                    'sentiment': lex['sentiment'],
+                    'confidence': lex['confidence'],
+                    'high_confidence': lex['high_confidence'],
                     'method': 'lexicon',
                 }
         

@@ -16,12 +16,32 @@
     <name>Data Collector</name>
     <description>用于通过API和网络爬虫收集微博数据的模块。</description>
 
+    <properties>
+        <!-- Spark 集群运行 3.5.6 (Scala 2.12, Java 17), 这里覆盖父 pom 中的 3.0.0
+             以保证 driver/executor 之间序列化协议匹配 -->
+        <spark.runtime.version>3.5.6</spark.runtime.version>
+    </properties>
+
     <dependencies>
         <!-- 内部模块 -->
         <dependency>
             <groupId>com.weibo</groupId>
             <artifactId>common</artifactId>
             <version>${project.version}</version>
+        </dependency>
+
+        <!-- Spark (provided: 集群已有, 不打入 fat jar 避免冲突) -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_2.12</artifactId>
+            <version>${spark.runtime.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_2.12</artifactId>
+            <version>${spark.runtime.version}</version>
+            <scope>provided</scope>
         </dependency>
 
         <!-- Spring Boot -->
@@ -96,6 +116,12 @@
             <artifactId>commons-pool2</artifactId>
         </dependency>
 
+        <!-- MySQL JDBC (DataCollectorJob 直连 MySQL 写入 weibo_core_data) -->
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+        </dependency>
+
         <!-- Kafka & Hadoop -->
         <dependency>
             <groupId>org.apache.kafka</groupId>
@@ -138,7 +164,7 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.weibo.collector.DataCollectorApplication</mainClass>
+                                    <mainClass>com.weibo.collector.DataCollectorJob</mainClass>
                                 </transformer>
                             </transformers>
                         </configuration>

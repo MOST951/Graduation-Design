@@ -51,6 +51,17 @@ public class AuthController {
     @GetMapping("/info")
     public ResponseResult<Map<String, Object>> getUserInfo(
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return resolveCurrentUser(authHeader);
+    }
+
+    /** /auth/me: 与 /auth/info 等价, 适配前端常见 RESTful 命名. */
+    @GetMapping("/me")
+    public ResponseResult<Map<String, Object>> me(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return resolveCurrentUser(authHeader);
+    }
+
+    private ResponseResult<Map<String, Object>> resolveCurrentUser(String authHeader) {
         Map<String, Object> info = new LinkedHashMap<>();
         if (StringUtils.hasText(authHeader) && authHeader.startsWith("Bearer ")) {
             String jwt = authHeader.substring(7);
@@ -61,9 +72,15 @@ public class AuthController {
                     User user = userOpt.get();
                     info.put("id", user.getId());
                     info.put("username", user.getUsername());
+                    // 显示名: 当前 entity 没有 nickname 列, 退回 username
+                    info.put("name", user.getUsername());
                     info.put("email", user.getEmail());
+                    String simpleRole = (user.getRoles() != null
+                            && user.getRoles().toUpperCase().contains("ADMIN")) ? "admin" : "user";
+                    info.put("role", simpleRole);
                     info.put("roles", user.getRoles());
                     info.put("status", user.getStatus());
+                    info.put("avatar", "");
                     info.put("created_at", user.getCreatedAt());
                     return ResponseResult.success(info);
                 }

@@ -1,0 +1,1920 @@
+{
+  "results": [
+    {
+      "idx": 1,
+      "text": "这个产品太棒了,质量非常好,用着很满意",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "positive",
+        "confidence": 0.97,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.97,
+          "high_confidence": true,
+          "method": "lexicon",
+          "sentiment": "positive",
+          "text": "这个产品太棒了,质量非常好,用着很满意",
+          "timestamp": "2026-05-12T14:23:43.834322"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.9903,
+        "score": 0.9897,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9903,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0006,
+            "neutral": 0.0091,
+            "positive": 0.9903
+          },
+          "score": 0.9897,
+          "sentiment": "positive",
+          "text": "这个产品太棒了,质量非常好,用着很满意",
+          "timestamp": "2026-05-12T14:23:44.981228"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.97,
+        "score": null,
+        "method_used": "cascade",
+        "raw": {
+          "confidence": 0.97,
+          "escalated": false,
+          "lexicon_confidence": 0.97,
+          "lexicon_label": "positive",
+          "method": "cascade",
+          "path": "lexicon",
+          "sentiment": "positive",
+          "text": "这个产品太棒了,质量非常好,用着很满意",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:44.985804"
+        }
+      }
+    },
+    {
+      "idx": 2,
+      "text": "客服小姐姐态度超级好,问题秒解决,五星好评",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "客服小姐姐态度超级好,问题秒解决,五星好评",
+          "timestamp": "2026-05-12T14:23:44.992170"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.9731,
+        "score": 0.9725,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9731,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0006,
+            "neutral": 0.0262,
+            "positive": 0.9731
+          },
+          "score": 0.9725,
+          "sentiment": "positive",
+          "text": "客服小姐姐态度超级好,问题秒解决,五星好评",
+          "timestamp": "2026-05-12T14:23:45.688147"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.9731,
+        "score": 0.9725,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "positive",
+          "confidence": 0.9731,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0006,
+            "neutral": 0.0262,
+            "positive": 0.9731
+          },
+          "score": 0.9725,
+          "sentiment": "positive",
+          "text": "客服小姐姐态度超级好,问题秒解决,五星好评",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:45.862320"
+        }
+      }
+    },
+    {
+      "idx": 3,
+      "text": "演唱会现场氛围炸裂,期待已久终于圆梦了,泪目",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "positive",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "positive",
+          "text": "演唱会现场氛围炸裂,期待已久终于圆梦了,泪目",
+          "timestamp": "2026-05-12T14:23:45.869033"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.7448,
+        "score": 0.7004,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.7448,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0443,
+            "neutral": 0.2109,
+            "positive": 0.7448
+          },
+          "score": 0.7004,
+          "sentiment": "positive",
+          "text": "演唱会现场氛围炸裂,期待已久终于圆梦了,泪目",
+          "timestamp": "2026-05-12T14:23:46.313951"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.7448,
+        "score": 0.7004,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "positive",
+          "confidence": 0.7448,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "positive",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0443,
+            "neutral": 0.2109,
+            "positive": 0.7448
+          },
+          "score": 0.7004,
+          "sentiment": "positive",
+          "text": "演唱会现场氛围炸裂,期待已久终于圆梦了,泪目",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:46.548637"
+        }
+      }
+    },
+    {
+      "idx": 4,
+      "text": "新出的相机拍人像太顶了,色彩通透,买它不亏",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "negative",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "negative",
+          "text": "新出的相机拍人像太顶了,色彩通透,买它不亏",
+          "timestamp": "2026-05-12T14:23:46.554562"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.6477,
+        "score": 0.6201,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.6477,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0275,
+            "neutral": 0.3248,
+            "positive": 0.6477
+          },
+          "score": 0.6201,
+          "sentiment": "positive",
+          "text": "新出的相机拍人像太顶了,色彩通透,买它不亏",
+          "timestamp": "2026-05-12T14:23:46.727903"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.6477,
+        "score": 0.6201,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "positive",
+          "confidence": 0.6477,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "negative",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0275,
+            "neutral": 0.3248,
+            "positive": 0.6477
+          },
+          "score": 0.6201,
+          "sentiment": "positive",
+          "text": "新出的相机拍人像太顶了,色彩通透,买它不亏",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:46.904352"
+        }
+      }
+    },
+    {
+      "idx": 5,
+      "text": "国产新能源车真争气,续航和智能驾驶都越来越强",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "positive",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "positive",
+          "text": "国产新能源车真争气,续航和智能驾驶都越来越强",
+          "timestamp": "2026-05-12T14:23:46.908805"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.9149,
+        "score": 0.9123,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9149,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0026,
+            "neutral": 0.0825,
+            "positive": 0.9149
+          },
+          "score": 0.9123,
+          "sentiment": "positive",
+          "text": "国产新能源车真争气,续航和智能驾驶都越来越强",
+          "timestamp": "2026-05-12T14:23:47.144017"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.9149,
+        "score": 0.9123,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "positive",
+          "confidence": 0.9149,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "positive",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0026,
+            "neutral": 0.0825,
+            "positive": 0.9149
+          },
+          "score": 0.9123,
+          "sentiment": "positive",
+          "text": "国产新能源车真争气,续航和智能驾驶都越来越强",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:47.311284"
+        }
+      }
+    },
+    {
+      "idx": 6,
+      "text": "今天面试通过啦,薪资比预期还高,开心到飞起",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "positive",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "positive",
+          "text": "今天面试通过啦,薪资比预期还高,开心到飞起",
+          "timestamp": "2026-05-12T14:23:47.315118"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.9949,
+        "score": 0.9944,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9949,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0005,
+            "neutral": 0.0046,
+            "positive": 0.9949
+          },
+          "score": 0.9944,
+          "sentiment": "positive",
+          "text": "今天面试通过啦,薪资比预期还高,开心到飞起",
+          "timestamp": "2026-05-12T14:23:47.515635"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.9949,
+        "score": 0.9944,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "positive",
+          "confidence": 0.9949,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "positive",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0005,
+            "neutral": 0.0046,
+            "positive": 0.9949
+          },
+          "score": 0.9944,
+          "sentiment": "positive",
+          "text": "今天面试通过啦,薪资比预期还高,开心到飞起",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:47.737127"
+        }
+      }
+    },
+    {
+      "idx": 7,
+      "text": "这家小店的牛肉面太香了,汤底浓郁,以后常来",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "positive",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "positive",
+          "text": "这家小店的牛肉面太香了,汤底浓郁,以后常来",
+          "timestamp": "2026-05-12T14:23:47.744245"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.8285,
+        "score": 0.8171,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.8285,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0115,
+            "neutral": 0.16,
+            "positive": 0.8285
+          },
+          "score": 0.8171,
+          "sentiment": "positive",
+          "text": "这家小店的牛肉面太香了,汤底浓郁,以后常来",
+          "timestamp": "2026-05-12T14:23:48.060345"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.8285,
+        "score": 0.8171,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "positive",
+          "confidence": 0.8285,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "positive",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0115,
+            "neutral": 0.16,
+            "positive": 0.8285
+          },
+          "score": 0.8171,
+          "sentiment": "positive",
+          "text": "这家小店的牛肉面太香了,汤底浓郁,以后常来",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:48.259713"
+        }
+      }
+    },
+    {
+      "idx": 8,
+      "text": "团队加班三个月终于上线了,看着用户数据涨好有成就感",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "positive",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "positive",
+          "text": "团队加班三个月终于上线了,看着用户数据涨好有成就感",
+          "timestamp": "2026-05-12T14:23:48.264748"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.9319,
+        "score": 0.9292,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9319,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0027,
+            "neutral": 0.0654,
+            "positive": 0.9319
+          },
+          "score": 0.9292,
+          "sentiment": "positive",
+          "text": "团队加班三个月终于上线了,看着用户数据涨好有成就感",
+          "timestamp": "2026-05-12T14:23:48.656399"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.9319,
+        "score": 0.9292,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "positive",
+          "confidence": 0.9319,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "positive",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0027,
+            "neutral": 0.0654,
+            "positive": 0.9319
+          },
+          "score": 0.9292,
+          "sentiment": "positive",
+          "text": "团队加班三个月终于上线了,看着用户数据涨好有成就感",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:48.894726"
+        }
+      }
+    },
+    {
+      "idx": 9,
+      "text": "孩子拿了钢琴比赛一等奖,练琴的辛苦都值了",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "孩子拿了钢琴比赛一等奖,练琴的辛苦都值了",
+          "timestamp": "2026-05-12T14:23:48.900162"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.934,
+        "score": 0.9283,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.934,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0057,
+            "neutral": 0.0603,
+            "positive": 0.934
+          },
+          "score": 0.9283,
+          "sentiment": "positive",
+          "text": "孩子拿了钢琴比赛一等奖,练琴的辛苦都值了",
+          "timestamp": "2026-05-12T14:23:49.071034"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.934,
+        "score": 0.9283,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "positive",
+          "confidence": 0.934,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0057,
+            "neutral": 0.0603,
+            "positive": 0.934
+          },
+          "score": 0.9283,
+          "sentiment": "positive",
+          "text": "孩子拿了钢琴比赛一等奖,练琴的辛苦都值了",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:49.246830"
+        }
+      }
+    },
+    {
+      "idx": 10,
+      "text": "周末爬山看日出真是治愈,身心舒畅,推荐",
+      "label": "positive",
+      "lexicon": {
+        "sentiment": "positive",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "positive",
+          "text": "周末爬山看日出真是治愈,身心舒畅,推荐",
+          "timestamp": "2026-05-12T14:23:49.250760"
+        }
+      },
+      "bert": {
+        "sentiment": "positive",
+        "confidence": 0.9636,
+        "score": 0.9619,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9636,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0016,
+            "neutral": 0.0348,
+            "positive": 0.9636
+          },
+          "score": 0.9619,
+          "sentiment": "positive",
+          "text": "周末爬山看日出真是治愈,身心舒畅,推荐",
+          "timestamp": "2026-05-12T14:23:49.418109"
+        }
+      },
+      "cascade": {
+        "sentiment": "positive",
+        "confidence": 0.9636,
+        "score": 0.9619,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "positive",
+          "confidence": 0.9636,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "positive",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0016,
+            "neutral": 0.0348,
+            "positive": 0.9636
+          },
+          "score": 0.9619,
+          "sentiment": "positive",
+          "text": "周末爬山看日出真是治愈,身心舒畅,推荐",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:49.909779"
+        }
+      }
+    },
+    {
+      "idx": 11,
+      "text": "服务态度极差,再也不来了",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "negative",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "negative",
+          "text": "服务态度极差,再也不来了",
+          "timestamp": "2026-05-12T14:23:49.925505"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.9168,
+        "score": -0.9004,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9168,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.9168,
+            "neutral": 0.0668,
+            "positive": 0.0164
+          },
+          "score": -0.9004,
+          "sentiment": "negative",
+          "text": "服务态度极差,再也不来了",
+          "timestamp": "2026-05-12T14:23:50.105182"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.9168,
+        "score": -0.9004,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.9168,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "negative",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.9168,
+            "neutral": 0.0668,
+            "positive": 0.0164
+          },
+          "score": -0.9004,
+          "sentiment": "negative",
+          "text": "服务态度极差,再也不来了",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:50.503317"
+        }
+      }
+    },
+    {
+      "idx": 12,
+      "text": "物流太慢了,而且包装破损严重,非常失望",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "negative",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "negative",
+          "text": "物流太慢了,而且包装破损严重,非常失望",
+          "timestamp": "2026-05-12T14:23:50.506979"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.9876,
+        "score": -0.9858,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9876,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.9876,
+            "neutral": 0.0106,
+            "positive": 0.0018
+          },
+          "score": -0.9858,
+          "sentiment": "negative",
+          "text": "物流太慢了,而且包装破损严重,非常失望",
+          "timestamp": "2026-05-12T14:23:51.004734"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.9876,
+        "score": -0.9858,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.9876,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "negative",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.9876,
+            "neutral": 0.0106,
+            "positive": 0.0018
+          },
+          "score": -0.9858,
+          "sentiment": "negative",
+          "text": "物流太慢了,而且包装破损严重,非常失望",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:51.228288"
+        }
+      }
+    },
+    {
+      "idx": 13,
+      "text": "客服推诿扯皮,问题拖了一周还没解决,差评",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "negative",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "negative",
+          "text": "客服推诿扯皮,问题拖了一周还没解决,差评",
+          "timestamp": "2026-05-12T14:23:51.231177"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.9044,
+        "score": -0.8972,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9044,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.9044,
+            "neutral": 0.0884,
+            "positive": 0.0072
+          },
+          "score": -0.8972,
+          "sentiment": "negative",
+          "text": "客服推诿扯皮,问题拖了一周还没解决,差评",
+          "timestamp": "2026-05-12T14:23:51.402098"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.9044,
+        "score": -0.8972,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.9044,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "negative",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.9044,
+            "neutral": 0.0884,
+            "positive": 0.0072
+          },
+          "score": -0.8972,
+          "sentiment": "negative",
+          "text": "客服推诿扯皮,问题拖了一周还没解决,差评",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:51.578287"
+        }
+      }
+    },
+    {
+      "idx": 14,
+      "text": "新买的手机用了三天就死机,这质量真烂",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "negative",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "negative",
+          "text": "新买的手机用了三天就死机,这质量真烂",
+          "timestamp": "2026-05-12T14:23:51.581941"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.9633,
+        "score": -0.9594,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9633,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.9633,
+            "neutral": 0.0328,
+            "positive": 0.0039
+          },
+          "score": -0.9594,
+          "sentiment": "negative",
+          "text": "新买的手机用了三天就死机,这质量真烂",
+          "timestamp": "2026-05-12T14:23:52.050494"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.9633,
+        "score": -0.9594,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.9633,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "negative",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.9633,
+            "neutral": 0.0328,
+            "positive": 0.0039
+          },
+          "score": -0.9594,
+          "sentiment": "negative",
+          "text": "新买的手机用了三天就死机,这质量真烂",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:52.255186"
+        }
+      }
+    },
+    {
+      "idx": 15,
+      "text": "演员演技尴尬剧情拖沓,简直是浪费时间",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "演员演技尴尬剧情拖沓,简直是浪费时间",
+          "timestamp": "2026-05-12T14:23:52.258986"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.951,
+        "score": -0.9462,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.951,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.951,
+            "neutral": 0.0442,
+            "positive": 0.0048
+          },
+          "score": -0.9462,
+          "sentiment": "negative",
+          "text": "演员演技尴尬剧情拖沓,简直是浪费时间",
+          "timestamp": "2026-05-12T14:23:52.428128"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.951,
+        "score": -0.9462,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.951,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.951,
+            "neutral": 0.0442,
+            "positive": 0.0048
+          },
+          "score": -0.9462,
+          "sentiment": "negative",
+          "text": "演员演技尴尬剧情拖沓,简直是浪费时间",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:52.723760"
+        }
+      }
+    },
+    {
+      "idx": 16,
+      "text": "高速堵了四个小时,服务区还又脏又乱,糟糕透顶",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "negative",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "negative",
+          "text": "高速堵了四个小时,服务区还又脏又乱,糟糕透顶",
+          "timestamp": "2026-05-12T14:23:52.727883"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.9805,
+        "score": -0.9777,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9805,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.9805,
+            "neutral": 0.0166,
+            "positive": 0.0028
+          },
+          "score": -0.9777,
+          "sentiment": "negative",
+          "text": "高速堵了四个小时,服务区还又脏又乱,糟糕透顶",
+          "timestamp": "2026-05-12T14:23:53.020093"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.9805,
+        "score": -0.9777,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.9805,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "negative",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.9805,
+            "neutral": 0.0166,
+            "positive": 0.0028
+          },
+          "score": -0.9777,
+          "sentiment": "negative",
+          "text": "高速堵了四个小时,服务区还又脏又乱,糟糕透顶",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:53.411118"
+        }
+      }
+    },
+    {
+      "idx": 17,
+      "text": "这家餐厅菜里居然吃出虫子,卫生太差恶心想吐",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "negative",
+        "confidence": 0.45,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.45,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "negative",
+          "text": "这家餐厅菜里居然吃出虫子,卫生太差恶心想吐",
+          "timestamp": "2026-05-12T14:23:53.415171"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.9556,
+        "score": -0.9511,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9556,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.9556,
+            "neutral": 0.0399,
+            "positive": 0.0045
+          },
+          "score": -0.9511,
+          "sentiment": "negative",
+          "text": "这家餐厅菜里居然吃出虫子,卫生太差恶心想吐",
+          "timestamp": "2026-05-12T14:23:53.822189"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.9556,
+        "score": -0.9511,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.9556,
+          "escalated": true,
+          "lexicon_confidence": 0.45,
+          "lexicon_label": "negative",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.9556,
+            "neutral": 0.0399,
+            "positive": 0.0045
+          },
+          "score": -0.9511,
+          "sentiment": "negative",
+          "text": "这家餐厅菜里居然吃出虫子,卫生太差恶心想吐",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:54.006375"
+        }
+      }
+    },
+    {
+      "idx": 18,
+      "text": "公司年终奖缩水一半,管理层还在画饼,心寒",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "公司年终奖缩水一半,管理层还在画饼,心寒",
+          "timestamp": "2026-05-12T14:23:54.011307"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.9647,
+        "score": -0.9605,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9647,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.9647,
+            "neutral": 0.031,
+            "positive": 0.0043
+          },
+          "score": -0.9605,
+          "sentiment": "negative",
+          "text": "公司年终奖缩水一半,管理层还在画饼,心寒",
+          "timestamp": "2026-05-12T14:23:54.412118"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.9647,
+        "score": -0.9605,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.9647,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.9647,
+            "neutral": 0.031,
+            "positive": 0.0043
+          },
+          "score": -0.9605,
+          "sentiment": "negative",
+          "text": "公司年终奖缩水一半,管理层还在画饼,心寒",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:54.861294"
+        }
+      }
+    },
+    {
+      "idx": 19,
+      "text": "孩子在学校被霸凌老师不作为,真让人气愤",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "孩子在学校被霸凌老师不作为,真让人气愤",
+          "timestamp": "2026-05-12T14:23:54.865159"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.9597,
+        "score": -0.9557,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9597,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.9597,
+            "neutral": 0.0363,
+            "positive": 0.004
+          },
+          "score": -0.9557,
+          "sentiment": "negative",
+          "text": "孩子在学校被霸凌老师不作为,真让人气愤",
+          "timestamp": "2026-05-12T14:23:55.044351"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.9597,
+        "score": -0.9557,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.9597,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.9597,
+            "neutral": 0.0363,
+            "positive": 0.004
+          },
+          "score": -0.9557,
+          "sentiment": "negative",
+          "text": "孩子在学校被霸凌老师不作为,真让人气愤",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:55.223766"
+        }
+      }
+    },
+    {
+      "idx": 20,
+      "text": "暴雨导致小区停电停水两天,物业完全失联,太离谱",
+      "label": "negative",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "暴雨导致小区停电停水两天,物业完全失联,太离谱",
+          "timestamp": "2026-05-12T14:23:55.230560"
+        }
+      },
+      "bert": {
+        "sentiment": "negative",
+        "confidence": 0.9695,
+        "score": -0.9662,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9695,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.9695,
+            "neutral": 0.0272,
+            "positive": 0.0033
+          },
+          "score": -0.9662,
+          "sentiment": "negative",
+          "text": "暴雨导致小区停电停水两天,物业完全失联,太离谱",
+          "timestamp": "2026-05-12T14:23:55.409128"
+        }
+      },
+      "cascade": {
+        "sentiment": "negative",
+        "confidence": 0.9695,
+        "score": -0.9662,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "negative",
+          "confidence": 0.9695,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.9695,
+            "neutral": 0.0272,
+            "positive": 0.0033
+          },
+          "score": -0.9662,
+          "sentiment": "negative",
+          "text": "暴雨导致小区停电停水两天,物业完全失联,太离谱",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:55.576152"
+        }
+      }
+    },
+    {
+      "idx": 21,
+      "text": "今天天气多云转晴,气温18到26度",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "今天天气多云转晴,气温18到26度",
+          "timestamp": "2026-05-12T14:23:55.580293"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.538,
+        "score": -0.4337,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.538,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.4479,
+            "neutral": 0.538,
+            "positive": 0.0141
+          },
+          "score": -0.4337,
+          "sentiment": "neutral",
+          "text": "今天天气多云转晴,气温18到26度",
+          "timestamp": "2026-05-12T14:23:55.754459"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.538,
+        "score": -0.4337,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.538,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.4479,
+            "neutral": 0.538,
+            "positive": 0.0141
+          },
+          "score": -0.4337,
+          "sentiment": "neutral",
+          "text": "今天天气多云转晴,气温18到26度",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:56.133832"
+        }
+      }
+    },
+    {
+      "idx": 22,
+      "text": "官方发布了新版本更新公告,涉及若干功能调整",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "官方发布了新版本更新公告,涉及若干功能调整",
+          "timestamp": "2026-05-12T14:23:56.138265"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.978,
+        "score": 0.015,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.978,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0035,
+            "neutral": 0.978,
+            "positive": 0.0185
+          },
+          "score": 0.015,
+          "sentiment": "neutral",
+          "text": "官方发布了新版本更新公告,涉及若干功能调整",
+          "timestamp": "2026-05-12T14:23:56.332663"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.978,
+        "score": 0.015,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.978,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0035,
+            "neutral": 0.978,
+            "positive": 0.0185
+          },
+          "score": 0.015,
+          "sentiment": "neutral",
+          "text": "官方发布了新版本更新公告,涉及若干功能调整",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:56.501893"
+        }
+      }
+    },
+    {
+      "idx": 23,
+      "text": "国家统计局公布上月CPI同比上涨0.3%",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "国家统计局公布上月CPI同比上涨0.3%",
+          "timestamp": "2026-05-12T14:23:56.505987"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.9529,
+        "score": -0.0328,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9529,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0399,
+            "neutral": 0.9529,
+            "positive": 0.0071
+          },
+          "score": -0.0328,
+          "sentiment": "neutral",
+          "text": "国家统计局公布上月CPI同比上涨0.3%",
+          "timestamp": "2026-05-12T14:23:56.699506"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.9529,
+        "score": -0.0328,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.9529,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0399,
+            "neutral": 0.9529,
+            "positive": 0.0071
+          },
+          "score": -0.0328,
+          "sentiment": "neutral",
+          "text": "国家统计局公布上月CPI同比上涨0.3%",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:56.876366"
+        }
+      }
+    },
+    {
+      "idx": 24,
+      "text": "据报道,该公司将在下周召开股东大会",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "据报道,该公司将在下周召开股东大会",
+          "timestamp": "2026-05-12T14:23:56.881980"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.9816,
+        "score": 0.0026,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9816,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0079,
+            "neutral": 0.9816,
+            "positive": 0.0105
+          },
+          "score": 0.0026,
+          "sentiment": "neutral",
+          "text": "据报道,该公司将在下周召开股东大会",
+          "timestamp": "2026-05-12T14:23:57.161627"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.9816,
+        "score": 0.0026,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.9816,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0079,
+            "neutral": 0.9816,
+            "positive": 0.0105
+          },
+          "score": 0.0026,
+          "sentiment": "neutral",
+          "text": "据报道,该公司将在下周召开股东大会",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:57.558972"
+        }
+      }
+    },
+    {
+      "idx": 25,
+      "text": "教育部表示将进一步推进义务教育阶段课程改革",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "教育部表示将进一步推进义务教育阶段课程改革",
+          "timestamp": "2026-05-12T14:23:57.563725"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.9065,
+        "score": 0.0849,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9065,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0043,
+            "neutral": 0.9065,
+            "positive": 0.0892
+          },
+          "score": 0.0849,
+          "sentiment": "neutral",
+          "text": "教育部表示将进一步推进义务教育阶段课程改革",
+          "timestamp": "2026-05-12T14:23:57.861982"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.9065,
+        "score": 0.0849,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.9065,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0043,
+            "neutral": 0.9065,
+            "positive": 0.0892
+          },
+          "score": 0.0849,
+          "sentiment": "neutral",
+          "text": "教育部表示将进一步推进义务教育阶段课程改革",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:58.248829"
+        }
+      }
+    },
+    {
+      "idx": 26,
+      "text": "上海地铁11号线明日起延长运营时间至23点",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "上海地铁11号线明日起延长运营时间至23点",
+          "timestamp": "2026-05-12T14:23:58.253255"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.9859,
+        "score": 0.0025,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9859,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0058,
+            "neutral": 0.9859,
+            "positive": 0.0083
+          },
+          "score": 0.0025,
+          "sentiment": "neutral",
+          "text": "上海地铁11号线明日起延长运营时间至23点",
+          "timestamp": "2026-05-12T14:23:58.775389"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.9859,
+        "score": 0.0025,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.9859,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0058,
+            "neutral": 0.9859,
+            "positive": 0.0083
+          },
+          "score": 0.0025,
+          "sentiment": "neutral",
+          "text": "上海地铁11号线明日起延长运营时间至23点",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:23:59.254289"
+        }
+      }
+    },
+    {
+      "idx": 27,
+      "text": "今年高考报名人数较去年小幅增加",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "今年高考报名人数较去年小幅增加",
+          "timestamp": "2026-05-12T14:23:59.258403"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.7825,
+        "score": 0.2084,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.7825,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0046,
+            "neutral": 0.7825,
+            "positive": 0.213
+          },
+          "score": 0.2084,
+          "sentiment": "neutral",
+          "text": "今年高考报名人数较去年小幅增加",
+          "timestamp": "2026-05-12T14:23:59.735036"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.7825,
+        "score": 0.2084,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.7825,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0046,
+            "neutral": 0.7825,
+            "positive": 0.213
+          },
+          "score": 0.2084,
+          "sentiment": "neutral",
+          "text": "今年高考报名人数较去年小幅增加",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:24:00.312517"
+        }
+      }
+    },
+    {
+      "idx": 28,
+      "text": "央行公开市场操作开展逆回购1000亿元",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "央行公开市场操作开展逆回购1000亿元",
+          "timestamp": "2026-05-12T14:24:00.321138"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.966,
+        "score": 0.0261,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.966,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.004,
+            "neutral": 0.966,
+            "positive": 0.0301
+          },
+          "score": 0.0261,
+          "sentiment": "neutral",
+          "text": "央行公开市场操作开展逆回购1000亿元",
+          "timestamp": "2026-05-12T14:24:00.704485"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.966,
+        "score": 0.0261,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.966,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.004,
+            "neutral": 0.966,
+            "positive": 0.0301
+          },
+          "score": 0.0261,
+          "sentiment": "neutral",
+          "text": "央行公开市场操作开展逆回购1000亿元",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:24:01.148973"
+        }
+      }
+    },
+    {
+      "idx": 29,
+      "text": "记者从相关部门获悉,该项目目前处于评审阶段",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "记者从相关部门获悉,该项目目前处于评审阶段",
+          "timestamp": "2026-05-12T14:24:01.153146"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.9168,
+        "score": 0.0759,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9168,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0037,
+            "neutral": 0.9168,
+            "positive": 0.0796
+          },
+          "score": 0.0759,
+          "sentiment": "neutral",
+          "text": "记者从相关部门获悉,该项目目前处于评审阶段",
+          "timestamp": "2026-05-12T14:24:01.461186"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.9168,
+        "score": 0.0759,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.9168,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0037,
+            "neutral": 0.9168,
+            "positive": 0.0796
+          },
+          "score": 0.0759,
+          "sentiment": "neutral",
+          "text": "记者从相关部门获悉,该项目目前处于评审阶段",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:24:01.792819"
+        }
+      }
+    },
+    {
+      "idx": 30,
+      "text": "本周末多地有降雨,公众出行请关注天气预报",
+      "label": "neutral",
+      "lexicon": {
+        "sentiment": "neutral",
+        "confidence": 0.5,
+        "score": null,
+        "method_used": "lexicon",
+        "raw": {
+          "confidence": 0.5,
+          "high_confidence": false,
+          "method": "lexicon",
+          "sentiment": "neutral",
+          "text": "本周末多地有降雨,公众出行请关注天气预报",
+          "timestamp": "2026-05-12T14:24:01.797769"
+        }
+      },
+      "bert": {
+        "sentiment": "neutral",
+        "confidence": 0.9805,
+        "score": 0.0042,
+        "method_used": "bert",
+        "raw": {
+          "confidence": 0.9805,
+          "method": "bert",
+          "probabilities": {
+            "negative": 0.0076,
+            "neutral": 0.9805,
+            "positive": 0.0118
+          },
+          "score": 0.0042,
+          "sentiment": "neutral",
+          "text": "本周末多地有降雨,公众出行请关注天气预报",
+          "timestamp": "2026-05-12T14:24:02.083712"
+        }
+      },
+      "cascade": {
+        "sentiment": "neutral",
+        "confidence": 0.9805,
+        "score": 0.0042,
+        "method_used": "cascade",
+        "raw": {
+          "bert_label": "neutral",
+          "confidence": 0.9805,
+          "escalated": true,
+          "lexicon_confidence": 0.5,
+          "lexicon_label": "neutral",
+          "method": "cascade",
+          "path": "bert",
+          "probabilities": {
+            "negative": 0.0076,
+            "neutral": 0.9805,
+            "positive": 0.0118
+          },
+          "score": 0.0042,
+          "sentiment": "neutral",
+          "text": "本周末多地有降雨,公众出行请关注天气预报",
+          "threshold": 0.7,
+          "timestamp": "2026-05-12T14:24:02.383619"
+        }
+      }
+    }
+  ],
+  "summary": {
+    "lexicon": {
+      "accuracy": 0.7666666666666667,
+      "correct": 23,
+      "total": 30,
+      "recall": {
+        "positive": 0.7,
+        "negative": 0.6,
+        "neutral": 1.0
+      }
+    },
+    "bert": {
+      "accuracy": 1.0,
+      "correct": 30,
+      "total": 30,
+      "recall": {
+        "positive": 1.0,
+        "negative": 1.0,
+        "neutral": 1.0
+      }
+    },
+    "cascade": {
+      "accuracy": 1.0,
+      "correct": 30,
+      "total": 30,
+      "recall": {
+        "positive": 1.0,
+        "negative": 1.0,
+        "neutral": 1.0
+      }
+    }
+  },
+  "elapsed_sec": 18.557872772216797
+}

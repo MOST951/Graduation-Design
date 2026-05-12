@@ -162,7 +162,18 @@ public class AuthServiceImpl implements AuthService {
 
             log.info("User '{}' logged in successfully.", username);
 
-            return new LoginResponse(accessToken, "Bearer");
+            // 将用户基本信息附在登录响应中, 减少前端额外的 /auth/me 调用 (并防止前端因 user 字段缺失而 TypeError)
+            LoginResponse.UserBrief brief = userRepository.findByUsername(username)
+                    .map(u -> new LoginResponse.UserBrief(
+                            u.getId(),
+                            u.getUsername(),
+                            u.getUsername(),
+                            u.getEmail(),
+                            simplifyRole(u.getRoles()),
+                            ""
+                    ))
+                    .orElse(null);
+            return new LoginResponse(accessToken, "Bearer", brief);
 
         } catch (Exception e) {
 
@@ -290,6 +301,14 @@ public class AuthServiceImpl implements AuthService {
 
         }
 
+    }
+
+    /** 把 DB 里的 roles 字符串 (如 "ROLE_ADMIN,ROLE_USER") 简化成前端期望的 "admin"/"user". */
+    private static String simplifyRole(String roles) {
+        if (roles == null || roles.isEmpty()) return "user";
+        String upper = roles.toUpperCase();
+        if (upper.contains("ADMIN")) return "admin";
+        return "user";
     }
 
 }
