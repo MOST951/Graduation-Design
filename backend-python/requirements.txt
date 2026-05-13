@@ -9,6 +9,8 @@ Flask==2.3.3
 Flask-CORS==4.0.0
 python-dotenv==1.0.0
 gunicorn==21.2.0
+# Swagger UI (论文 6.2.2 图6-9): 自动 OpenAPI 2.0 + UI
+flasgger>=0.9.7
 
 # ==================== 数据处理 ====================
 numpy>=1.24.0

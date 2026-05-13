@@ -1,9 +1,17 @@
 """
 微博情感分析系统 - 后端主应用
-Flask + CORS支持
+Flask + CORS + Swagger (论文 6.2.2 图6-9)
 """
 from flask import Flask, jsonify
 from flask_cors import CORS
+
+# Swagger UI (论文 6.2.2 图6-9 提到的 Flask 后端 API 文档).
+# 用 flasgger 自动从 docstring / 配置生成 OpenAPI 2.0 + UI.
+try:
+    from flasgger import Swagger
+    SWAGGER_AVAILABLE = True
+except ImportError:
+    SWAGGER_AVAILABLE = False
 
 # 
 from config import config
@@ -80,6 +88,60 @@ app.register_blueprint(analysis_bp)
 if UNIFIED_API_AVAILABLE:
     app.register_blueprint(unified_bp)
     logger.info("统一API (v2) 已注册")
+
+# ====================================================================
+# 论文 6.2.2 图6-9: Swagger UI 自动 API 文档
+# ====================================================================
+if SWAGGER_AVAILABLE:
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "微博舆情情感分析系统 - Flask 后端 API",
+            "description": (
+                "基于 Spark 伪集群的微博舆情情感分析系统 - Python Flask 后端\n\n"
+                "**论文 6.2.2**: 负责爬虫、情感分析、三维度排序、数据流水线、Spark 作业调度.\n\n"
+                "**双后端协同 (论文 6.2.3)**: 登录/任务管理走 Java (8081); 其余走本服务 (5000)."
+            ),
+            "version": "2.0.0",
+            "contact": {"name": "罗森 / 2022407443"},
+        },
+        "basePath": "/",
+        "schemes": ["http", "https"],
+        "tags": [
+            {"name": "auth",       "description": "认证 (login/register/info)"},
+            {"name": "crawler",    "description": "数据采集 (论文 6.1.1)"},
+            {"name": "sentiment",  "description": "情感分析 - 词典+BERT 级联融合 (论文 4.2.1)"},
+            {"name": "tri-dimension", "description": "三维度排序 - 情感/热度/时效 (论文 4.2.2)"},
+            {"name": "pipeline",   "description": "数据流水线 (论文 6.1.6)"},
+            {"name": "monitor",    "description": "实时舆情监控 (论文 6.1.5)"},
+            {"name": "dashboard",  "description": "可视化仪表盘 (论文 6.1.7)"},
+            {"name": "admin",      "description": "系统管理 (论文 6.1.8)"},
+        ],
+        "securityDefinitions": {
+            "Bearer": {
+                "type": "apiKey",
+                "name": "Authorization",
+                "in": "header",
+                "description": "JWT 形如: 'Bearer <token>'",
+            }
+        },
+    }
+    swagger_config = {
+        "headers": [],
+        "specs": [{
+            "endpoint": "apispec",
+            "route": "/apispec.json",
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }],
+        "static_url_path": "/flasgger_static",
+        "swagger_ui": True,
+        "specs_route": "/apidocs/",       # 论文 6.2.2 图6-9 的 Swagger UI 入口
+    }
+    Swagger(app, template=swagger_template, config=swagger_config)
+    logger.info("Swagger UI 已注册: http://<host>:5000/apidocs/")
+else:
+    logger.warning("flasgger 未安装, Swagger UI 不可用 (pip install flasgger)")
 
 # 注册分析流水线API
 if ANALYSIS_PIPELINE_AVAILABLE:

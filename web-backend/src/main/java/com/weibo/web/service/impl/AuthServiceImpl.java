@@ -154,11 +154,11 @@ public class AuthServiceImpl implements AuthService {
 
             loginAttemptCache.invalidate(username); // 登录成功，清除尝试次数
 
-
-
-            String accessToken = tokenProvider.generateToken(authentication);
-
-
+            // 论文 6.2.1: JWT 必须含 role claim, 由前端 store 解出做权限路由
+            String simplifiedRole = userRepository.findByUsername(username)
+                    .map(u -> simplifyRole(u.getRoles()))
+                    .orElse("user");
+            String accessToken = tokenProvider.generateToken(authentication, simplifiedRole);
 
             log.info("User '{}' logged in successfully.", username);
 

@@ -32,15 +32,48 @@ public class JwtTokenProvider {
     }
 
     public String generateToken(Authentication authentication) {
+        return generateToken(authentication, null);
+    }
+
+    /**
+     * 生成 JWT (含 role claim, 对应论文 6.2.1 核心代码片段).
+     * <pre>
+     *   Jwts.builder()
+     *       .setSubject(userId.toString())
+     *       .claim("role", role)
+     *       ...
+     * </pre>
+     * 缺 role claim 会导致前端权限路由 / 网关 RBAC / Python 后端 require_admin 解析时
+     * 拿不到角色, 退化为只看 X-User-Role header. 在此把 role 写进 JWT.
+     */
+    public String generateToken(Authentication authentication, String role) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtExpirationInMs);
 
-        return Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
                 .setSubject(authentication.getName())
                 .setIssuedAt(now)
-                .setExpiration(expiryDate)
-                .signWith(key, SignatureAlgorithm.HS512)
-                .compact();
+                .setExpiration(expiryDate);
+
+        if (role != null && !role.isEmpty()) {
+            builder.claim("role", role);
+        } else {
+            // 兜底: 从 SecurityContext 中的 authorities 推断 role
+            String inferred = authentication.getAuthorities().stream()
+                    .map(a -> a.getAuthority())
+                    .filter(a -> a != null && !a.isEmpty())
+                    .findFirst()
+                    .orElse(null);
+            if (inferred != null) {
+                // 形如 ROLE_ADMIN -> admin
+                String simplified = inferred.startsWith("ROLE_")
+                        ? inferred.substring(5).toLowerCase()
+                        : inferred.toLowerCase();
+                builder.claim("role", simplified);
+            }
+        }
+
+        return builder.signWith(key, SignatureAlgorithm.HS512).compact();
     }
 
     public String getUsernameFromJWT(String token) {
