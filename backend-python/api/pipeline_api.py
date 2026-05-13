@@ -20,6 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from services.pipeline_service import get_pipeline_service
 from services.database_service import get_db_service
+from utils.redis_cache import redis_cache
 
 pipeline_bp = Blueprint('pipeline', __name__, url_prefix='/api/pipeline')
 logger = logging.getLogger(__name__)
@@ -95,6 +96,7 @@ def get_pipeline_status():
 
 
 @pipeline_bp.route('/stats', methods=['GET'])
+@redis_cache('pipeline:stats', ttl=30)
 def get_database_stats():
     """查询数据库统计（各表数据量、情感分布等）"""
     try:
@@ -114,6 +116,8 @@ def get_database_stats():
 
 
 @pipeline_bp.route('/ranking', methods=['GET'])
+@redis_cache('pipeline:ranking', ttl=30,
+             key_fn=lambda req: f"l={req.args.get('limit','20')}|b={req.args.get('batch_id','')}")
 def get_latest_ranking():
     """
     查询最新三维度排序结果
@@ -207,6 +211,8 @@ def pipeline_health():
 
 
 @pipeline_bp.route('/history', methods=['GET'])
+@redis_cache('pipeline:history', ttl=30,
+             key_fn=lambda req: f"l={req.args.get('limit','50')}")
 def get_pipeline_history():
     """查询历史运行记录（从crawl_batch_log）"""
     try:

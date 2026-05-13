@@ -604,32 +604,23 @@ const loadDatabaseStats = async () => {
   }
 };
 
-// 加载历史运行记录（从crawl_batch_log）
+// 加载历史运行记录（从 crawl_batch_log）— 直接调 /pipeline/history，不再多查一次 stats
 const loadHistory = async () => {
   try {
-    const response = await apiClient.get('/pipeline/stats');
-    if (response.data.code === 200) {
-      const data = response.data.data;
-      // 如果有batch记录数且当前无历史，从后端构建
-      if (data.crawl_batch_log > 0 && historyRecords.value.length === 0) {
-        try {
-          const batchResp = await apiClient.get('/pipeline/history');
-          if (batchResp.data.code === 200 && batchResp.data.data) {
-            historyRecords.value = batchResp.data.data.map((b: any) => ({
-              batch_id: b.batch_id,
-              status: b.status || 'completed',
-              processed: b.total_weibos || b.success_count || 0,
-              duration: 0,
-              time: b.end_time || b.created_at || '',
-            }));
-            savePipelineCache();
-          }
-        } catch {
-          // /pipeline/history 可能不存在，尝试直接从stats构建简要记录
-        }
-      }
+    const batchResp = await apiClient.get('/pipeline/history', { params: { limit: 50 } });
+    if (batchResp.data.code === 200 && Array.isArray(batchResp.data.data)) {
+      historyRecords.value = batchResp.data.data.map((b: any) => ({
+        batch_id: b.batch_id,
+        status: b.status || 'completed',
+        processed: b.total_weibos || b.success_count || 0,
+        duration: 0,
+        time: b.end_time || b.created_at || '',
+      }));
+      savePipelineCache();
     }
-  } catch { /* ignore */ }
+  } catch (e: any) {
+    console.debug(`[Pipeline] history 请求失败 (${e.response?.status || 'network'})，使用缓存数据`);
+  }
 };
 
 // 加载排序结果
@@ -996,9 +987,13 @@ const loadDefaultConfig = async () => {
   }
 };
 
-onMounted(async () => {
-  await Promise.all([refreshStatus(), loadDatabaseStats(), loadRanking(), loadHistory()]);
-  // 
+onMounted(() => {
+  // 先用 localStorage 缓存渲染初始 UI (在 setup 阶段已填入 dbStats/rankingData/historyRecords),
+  // 再后台并发刷新 — 避免首屏阻塞 (论文 3.x 性能要求: 前端响应 <3s).
+  refreshStatus();
+  loadDatabaseStats();
+  loadRanking();
+  loadHistory();
   connectWebSocket();
 });
 
