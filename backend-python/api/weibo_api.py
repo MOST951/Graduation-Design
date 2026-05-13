@@ -258,25 +258,118 @@ def get_topic_weibo():
 
 # ==================== 批量采集任务API ====================
 
+# 论文 6.1.1 + 3.3.1 性能要求: 单批最多 50000 条, 关键词每个 ≤64 字符, 关键词条数 ≤20.
+MAX_KEYWORDS = 20
+MAX_KEYWORD_LEN = 64
+MAX_PAGES = 50
+MAX_COUNT = 50000
+
+
+def _validate_crawl_params(data: dict):
+    """启动采集任务的入参校验. 返回 (cleaned_dict, error_msg_or_None).
+
+    论文 6.1.1: 关键词为空 / 采集数量 > 50000 → 阻止提交.
+    后端做硬校验, 不依赖前端 (任何客户端直接 POST 都会被拦截).
+    """
+    if not isinstance(data, dict):
+        return None, '请求体必须是 JSON 对象'
+
+    keywords = data.get('keywords', [])
+    pages = data.get('pages', 3)
+    crawl_hot = bool(data.get('crawl_hot', True))
+    max_count = data.get('max_count', 0)
+    mode = (data.get('mode') or 'auto').lower()
+
+    # keywords
+    if not isinstance(keywords, list):
+        return None, 'keywords 必须是数组'
+    keywords = [str(k).strip() for k in keywords if str(k).strip()]
+    if not keywords and not crawl_hot:
+        return None, 'keywords 不能为空 (除非同时开启 crawl_hot)'
+    if len(keywords) > MAX_KEYWORDS:
+        return None, f'keywords 数量超过上限 {MAX_KEYWORDS}'
+    for kw in keywords:
+        if len(kw) > MAX_KEYWORD_LEN:
+            return None, f'关键词过长 (>{MAX_KEYWORD_LEN}字符): {kw[:30]}...'
+
+    # pages
+    try:
+        pages = int(pages)
+    except (TypeError, ValueError):
+        return None, 'pages 必须是整数'
+    if pages < 1 or pages > MAX_PAGES:
+        return None, f'pages 必须在 1-{MAX_PAGES} 之间'
+
+    # max_count (可选)
+    if max_count:
+        try:
+            max_count = int(max_count)
+        except (TypeError, ValueError):
+            return None, 'max_count 必须是整数'
+        if max_count < 1 or max_count > MAX_COUNT:
+            return None, f'max_count 必须在 1-{MAX_COUNT} 之间'
+    else:
+        max_count = 0
+
+    # mode
+    if mode not in ('auto', 'real', 'synthetic'):
+        return None, "mode 必须是 'auto' | 'real' | 'synthetic'"
+
+    return {
+        'keywords': keywords,
+        'pages': pages,
+        'crawl_hot': crawl_hot,
+        'max_count': max_count,
+        'mode': mode,
+    }, None
+
+
+def _classify_data_source(rows: list) -> dict:
+    """识别数据来源: 真爬 vs 模板合成.
+
+    `_generate_keyword_data` 给合成数据打的 id 形如 `gen_<ts>_<i>`,
+    据此区分; 答辩演示时透明显示数据来源, 论文 2.2.1 称 "API 为主, 爬虫为辅",
+    无 cookies 时回落到合成是允许的, 但要让用户知情.
+    """
+    real = sum(1 for d in rows if not str(d.get('id', '')).startswith('gen_'))
+    syn = len(rows) - real
+    if not rows:
+        source = 'empty'
+    elif syn == 0:
+        source = 'real'
+    elif real == 0:
+        source = 'synthetic'
+    else:
+        source = 'mixed'
+    return {'data_source': source, 'real_count': real, 'synthetic_count': syn}
+
+
 @weibo_bp.route('/crawl/start', methods=['POST'])
 def start_crawl_task():
     """
     启动批量采集任务
-    
-    Body参数:
-        keywords: 关键词列表
-        pages: 每个关键词爬取页数
-        crawl_hot: 是否爬取热搜话题
+
+    Body 参数:
+        keywords:    关键词列表 (最多 20 个, 每个 ≤64 字符)
+        pages:       每个关键词爬取页数 (1-50, 默认 3)
+        crawl_hot:   是否爬取热搜话题 (默认 true)
+        max_count:   单批最大采集条数, 1-50000, 0 表示不限 (论文 6.1.1)
+        mode:        'auto'(默认, 真爬+合成兜底) | 'real'(只真爬) | 'synthetic'(纯合成,演示用)
     """
     try:
-        data = request.json or {}
-        keywords = data.get('keywords', [])
-        pages = data.get('pages', 3)
-        crawl_hot = data.get('crawl_hot', True)
-        
+        cleaned, err = _validate_crawl_params(request.json or {})
+        if err:
+            return jsonify({'code': 400, 'message': err}), 400
+
+        keywords  = cleaned['keywords']
+        pages     = cleaned['pages']
+        crawl_hot = cleaned['crawl_hot']
+        max_count = cleaned['max_count']
+        mode      = cleaned['mode']
+
         # 创建任务ID
         task_id = f"crawl_{int(time.time() * 1000)}"
-        
+
         # 创建任务记录
         task_info = {
             'id': task_id,
@@ -284,12 +377,17 @@ def start_crawl_task():
             'keywords': keywords,
             'pages': pages,
             'crawl_hot': crawl_hot,
+            'max_count': max_count,
+            'mode': mode,
             'progress': 0,
             'collected': 0,
+            'data_source': None,   # real / synthetic / mixed / empty (run_crawl 完成后填充)
+            'real_count': 0,
+            'synthetic_count': 0,
             'start_time': datetime.now().isoformat(),
             'end_time': None,
             'result_file': None,
-            'error': None
+            'error': None,
         }
         
         with task_lock:
@@ -301,44 +399,68 @@ def start_crawl_task():
             try:
                 crawler_task = WeiboCrawlerTask(os.path.join(DATA_DIR, 'weibo_raw'))
                 all_data = []
-                
-                # 爬取热搜
-                if crawl_hot:
-                    task_info['progress'] = 10
-                    try:
-                        hot_list = crawler_task.crawl_hot_search(save=True)
-                        task_info['progress'] = 20
-                        
-                        # 爬取热搜话题的微博
-                        hot_weibo = crawler_task.crawl_hot_topics(
-                            top_n=5, 
-                            pages_per_topic=pages, 
-                            save=True
-                        )
-                        all_data.extend(hot_weibo)
-                        task_info['progress'] = 50
-                    except Exception as e:
-                        logger.warning(f"热搜爬取部分失败: {e}")
-                
-                # 按关键词爬取
-                if keywords:
-                    try:
-                        keyword_weibo = crawler_task.crawl_by_keywords(
-                            keywords, 
-                            pages=pages, 
-                            save=True
-                        )
-                        all_data.extend(keyword_weibo)
-                    except Exception as e:
-                        logger.warning(f"关键词爬取部分失败: {e}")
-                
-                task_info['progress'] = 80
-                
-                # 如果数据为空，记录警告但不再生成模拟数据
+
+                # ---- mode='synthetic': 跳过网络, 直接生成模板数据 (演示场景, 论文 2.2.1) ----
+                if mode == 'synthetic':
+                    task_info['progress'] = 30
+                    target_kws = keywords or ['热门话题']
+                    for kw in target_kws:
+                        all_data.extend(crawler_task._generate_keyword_data(kw, count=pages * 10))
+                    task_info['progress'] = 80
+                else:
+                    # ---- mode='real' / 'auto': 优先真爬虫 ----
+                    if crawl_hot:
+                        task_info['progress'] = 10
+                        try:
+                            crawler_task.crawl_hot_search(save=True)
+                            task_info['progress'] = 20
+                            hot_weibo = crawler_task.crawl_hot_topics(
+                                top_n=5, pages_per_topic=pages, save=True
+                            )
+                            all_data.extend(hot_weibo)
+                            task_info['progress'] = 50
+                        except Exception as e:
+                            logger.warning(f"[{task_id}] 热搜爬取部分失败: {e}")
+
+                    if keywords:
+                        try:
+                            kw_weibo = crawler_task.crawl_by_keywords(
+                                keywords, pages=pages, save=True
+                            )
+                            all_data.extend(kw_weibo)
+                        except Exception as e:
+                            logger.warning(f"[{task_id}] 关键词爬取部分失败: {e}")
+
+                    task_info['progress'] = 80
+
+                    # ---- mode='real' 严格模式: 拒绝合成兜底, 直接报错让用户配 cookies ----
+                    if mode == 'real':
+                        # WeiboCrawlerTask.crawl_by_keywords 内部已有合成兜底,
+                        # 这里通过 id 前缀判断是否被兜底, 若是则视为真爬失败.
+                        info = _classify_data_source(all_data)
+                        if info['real_count'] == 0:
+                            raise RuntimeError(
+                                f"mode=real 要求真爬数据, 但实际获取 0 条真实数据, "
+                                f"{info['synthetic_count']} 条合成数据已丢弃. "
+                                f"请检查 cookies/网络. 演示场景请改用 mode=auto 或 mode=synthetic."
+                            )
+                        # 过滤掉合成数据, 只保留真爬
+                        all_data = [d for d in all_data if not str(d.get('id', '')).startswith('gen_')]
+
+                # ---- max_count 截断 ----
+                if max_count and len(all_data) > max_count:
+                    logger.info(f"[{task_id}] 采集 {len(all_data)} 条 > max_count={max_count}, 截断")
+                    all_data = all_data[:max_count]
+
+                # ---- 数据来源分类 (透明化, 答辩可解释) ----
+                src_info = _classify_data_source(all_data)
+                task_info.update(src_info)
+                logger.info(f"[{task_id}] 数据来源: {src_info}")
+
                 if not all_data:
-                    logger.warning("爬取数据为空，请检查网络连接或Cookie配置")
+                    logger.warning(f"[{task_id}] 爬取数据为空, 请检查网络/Cookie 配置")
                     task_info['note'] = '未获取到数据，请检查爬虫配置'
-                
+
                 task_info['collected'] = len(all_data)
                 
                 # 保存汇总数据
