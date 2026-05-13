@@ -66,14 +66,17 @@
           <template #title>可视化展示</template>
         </el-menu-item>
 
-        <template v-if="!isCollapse">
-          <div class="nav-section">系统</div>
+        <!-- 仅管理员可见: 论文 3.2.1 RBAC -->
+        <template v-if="authStore.isAdmin">
+          <template v-if="!isCollapse">
+            <div class="nav-section">系统</div>
+          </template>
+
+          <el-menu-item index="/admin">
+            <el-icon><Setting /></el-icon>
+            <template #title>系统管理</template>
+          </el-menu-item>
         </template>
-        
-        <el-menu-item index="/admin">
-          <el-icon><Setting /></el-icon>
-          <template #title>系统管理</template>
-        </el-menu-item>
       </el-menu>
 
       <!-- 侧边栏底部折叠按钮 -->

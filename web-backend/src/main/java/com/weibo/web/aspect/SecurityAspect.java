@@ -5,6 +5,7 @@ import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.annotation.Pointcut;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
@@ -23,11 +24,16 @@ public class SecurityAspect {
 
     @Before("adminOnly()")
     public void checkAdminAccess() {
-        boolean isAdmin = SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
-                .anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_ADMIN"));
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getAuthorities() == null) {
+            logger.warn("Anonymous access attempt to an admin-only resource.");
+            throw new SecurityException("Access Denied: authentication required.");
+        }
+        boolean isAdmin = auth.getAuthorities().stream()
+                .anyMatch(grantedAuthority -> "ROLE_ADMIN".equals(grantedAuthority.getAuthority()));
 
         if (!isAdmin) {
-            logger.warn("Unauthorized access attempt to an admin-only resource.");
+            logger.warn("Unauthorized access by user '{}' to admin-only resource.", auth.getName());
             throw new SecurityException("Access Denied: Admin role required.");
         }
     }

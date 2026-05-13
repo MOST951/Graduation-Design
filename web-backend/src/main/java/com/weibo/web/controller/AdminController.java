@@ -1,6 +1,7 @@
 package com.weibo.web.controller;
 
 import com.weibo.common.model.ResponseResult;
+import com.weibo.web.aspect.PreAuthorizeAdmin;
 import com.weibo.web.entity.SystemLog;
 import com.weibo.web.entity.User;
 import com.weibo.web.repository.LogRepository;
@@ -34,6 +35,7 @@ public class AdminController {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @PreAuthorizeAdmin
     @GetMapping("/users")
     public ResponseResult<Map<String, Object>> getUsers(
             @RequestParam(defaultValue = "0") int page,
@@ -48,6 +50,7 @@ public class AdminController {
         return ResponseResult.success(result);
     }
 
+    @PreAuthorizeAdmin
     @PutMapping("/users/{id}/status")
     public ResponseResult<String> toggleUserStatus(@PathVariable Long id) {
         Optional<User> opt = userRepository.findById(id);
