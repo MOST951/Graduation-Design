@@ -32,6 +32,9 @@ psutil>=5.9.0
 # ==================== 安全/加密 (必需) ====================
 # api/admin.py 使用 Fernet 对配置加密, 缺失会导致 Flask 启动失败
 cryptography>=41.0.0
+# BCrypt: 论文 6.2.3 - 双后端共享 `users.password` 列, Java Spring Security
+# 要求 BCrypt 格式 ($2a/$2b/$2y), 故 Python seed 默认用户时也必须写 BCrypt
+bcrypt>=4.0.0
 
 # ==================== BERT 深度学习 ====================
 # 中文情感分析 (ChineseBERT) 必需

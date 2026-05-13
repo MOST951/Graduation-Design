@@ -118,8 +118,27 @@ class AuthService:
         except Exception as e:
             logger.error(f"修复用户表结构失败: {e}")
     
+    def _bcrypt_hash(self, plain: str) -> str:
+        """生成 Java Spring Security 兼容的 BCrypt 哈希.
+
+        论文 6.2.3 双后端协同: DB 中 `password` 列必须是 BCrypt (Spring
+        BCryptPasswordEncoder 能识别的 `$2a$/$2b$` 格式), 否则 Java 登录失败.
+        Python 自身仍使用 `password_hash` + `salt` 两列做 SHA256+salt 校验,
+        `password` 列作为双后端共用字段另存一份 BCrypt.
+        """
+        try:
+            import bcrypt
+            return bcrypt.hashpw(plain.encode('utf-8'), bcrypt.gensalt(rounds=10)).decode()
+        except ImportError:
+            logger.warning("bcrypt 库缺失, password 列将存明文 (Java 后端无法登录). pip install bcrypt")
+            return plain
+
     def _seed_default_users(self):
-        """自动创建默认用户（幂等）"""
+        """自动创建默认用户（幂等）.
+
+        - `password_hash` + `salt`: Python 自己的 SHA256 + salt (旧兼容).
+        - `password`: BCrypt 哈希 (论文 6.2.3 供 Java Spring Security 认证).
+        """
         try:
             conn = self._get_connection()
             with conn.cursor() as cursor:
@@ -129,17 +148,24 @@ class AuthService:
                     cursor.execute("SELECT * FROM users WHERE username = %s", (u['username'],))
                     existing = cursor.fetchone()
                     password_hash, salt = self._hash_password(u['password'])
+                    bcrypt_pwd = self._bcrypt_hash(u['password'])
                     if existing:
+                        # 触发重置的两种情形:
+                        # 1) Python 侧的 password_hash/salt 缺失或不匹配
+                        # 2) password 列不是 BCrypt (可能是明文遗留) —— 否则 Java 登录会失败
+                        existing_pwd = str(existing.get('password') or '')
+                        pwd_is_bcrypt = existing_pwd.startswith(('$2a$', '$2b$', '$2y$'))
                         needs_reset = (
                             not existing.get('password_hash')
                             or not existing.get('salt')
                             or not self._verify_password(u['password'], existing.get('password_hash', ''), existing.get('salt', ''))
+                            or not pwd_is_bcrypt
                         )
                         if needs_reset:
                             fields = ['password_hash', 'salt']
                             values = [password_hash, salt]
                             for field, value in [
-                                ('password', u['password']),
+                                ('password', bcrypt_pwd),      # 论文 6.2.3: Java BCrypt
                                 ('nickname', u['nickname']),
                                 ('email', u['email']),
                                 ('role', u['role']),
@@ -153,12 +179,12 @@ class AuthService:
                                 f"UPDATE users SET {set_clause} WHERE username = %s",
                                 (*values, u['username'])
                             )
-                            logger.info(f"默认用户密码已重置: {u['username']} ({u['role']})")
+                            logger.info(f"默认用户密码已重置 (BCrypt+SHA256): {u['username']} ({u['role']})")
                         continue
                     fields = ['username', 'password_hash', 'salt']
                     values = [u['username'], password_hash, salt]
                     for field, value in [
-                        ('password', u['password']),
+                        ('password', bcrypt_pwd),      # 论文 6.2.3: Java BCrypt
                         ('nickname', u['nickname']),
                         ('email', u['email']),
                         ('role', u['role']),
@@ -173,7 +199,7 @@ class AuthService:
                         f"INSERT INTO users ({', '.join(fields)}) VALUES ({placeholders})",
                         values
                     )
-                    logger.info(f"默认用户已创建: {u['username']} ({u['role']})")
+                    logger.info(f"默认用户已创建 (BCrypt+SHA256): {u['username']} ({u['role']})")
             conn.commit()
             conn.close()
         except Exception as e:
