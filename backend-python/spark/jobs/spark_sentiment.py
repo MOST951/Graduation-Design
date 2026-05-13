@@ -167,7 +167,15 @@ def main():
             spark.stop()
             sys.exit(2)
 
-    working = df.select(args.id_col, args.text_col)
+    # HBase RowKey 与宽表所需的辅助字段一并保留 (论文 4.3.1 / 4.3.4)
+    # RowKey = "{keyword}|{reverse_ts}|{weibo_id}"
+    # 同主题/话题在物理上连续, scan前缀即可拉同关键词全部数据
+    keep_cols = [args.id_col, args.text_col]
+    for c in ("keyword", "user_name", "publish_time", "created_at",
+              "reposts_count", "comments_count", "attitudes_count"):
+        if c in df.columns and c not in keep_cols:
+            keep_cols.append(c)
+    working = df.select(*keep_cols)
 
     # ---- foreachPartition (实际用 mapPartitions 拿回结果) ----
     # 论文核心代码: rdd.mapPartitions(analyze_partition) 等效写法
@@ -215,44 +223,80 @@ def main():
     else:
         print("[spark_sentiment] 未配置 JDBC, 跳过 MySQL 写入")
 
-    # ---- 写 HBase (论文 4.3.3 宽表) ----
-    # 用 foreachPartition + happybase 在 Executor 内直连 Thrift 写入.
-    # 一行对应: rowkey=weibo_id, cf:sent 列族 = {label, score, latency_ms, error, analyzed_at}
+    # ---- 写 HBase 宽表 (论文 4.3.1 / 4.3.4 表 4-8) ----
+    # RowKey = "{keyword}|{reverse_ts}|{weibo_id}"  -> 同关键词数据物理连续, prefix scan O(1) 定位
+    # 列族 (4):
+    #   info      : text, user_name, publish_time
+    #   sentiment : label, score, confidence
+    #   metrics   : comment_count, like_count, repost_count
+    #   ranking   : comprehensive_score (后续 spark_ranking.py 写入, 此处先占位)
     if args.hbase_host:
         hbase_host  = args.hbase_host
         hbase_port  = args.hbase_port
         hbase_table = args.hbase_table
 
-        # HBase 表 sentiment_result 列族: {meta, sentiment}
-        # rowkey=weibo_id, sentiment:{label,score,latency_ms,error}, meta:analyzed_at
-        hbase_cf_meta = 'meta'
-        hbase_cf_sent = 'sentiment'
+        # 把原始字段 join 回结果, 这样写 HBase 时能拿到 text/user/metrics
+        joined = result_df.join(
+            working, result_df.weibo_id == working[args.id_col], how='left'
+        )
+
+        text_col = args.text_col
+        id_col   = args.id_col
 
         def _write_partition_to_hbase(rows):
             try:
                 import happybase
             except ImportError:
                 return
+            import time as _time
             conn = happybase.Connection(hbase_host, port=hbase_port, timeout=10000)
             try:
                 tbl = conn.table(hbase_table)
                 with tbl.batch(batch_size=100) as b:
                     for r in rows:
-                        rk = str(r.weibo_id).encode()
-                        data = {
-                            f'{hbase_cf_sent}:label'.encode():      (r.label or '').encode(),
-                            f'{hbase_cf_sent}:score'.encode():      str(r.score or 0.0).encode(),
-                            f'{hbase_cf_sent}:latency_ms'.encode(): str(r.latency_ms or 0.0).encode(),
-                            f'{hbase_cf_sent}:error'.encode():      (r.error or '').encode(),
-                            f'{hbase_cf_meta}:analyzed_at'.encode(): str(r.analyzed_at).encode(),
-                        }
+                        d = r.asDict()
+                        wid = str(d.get('weibo_id') or d.get(id_col) or '')
+                        kw  = (d.get('keyword') or 'unknown')[:32]
+                        # 论文 4.3.1: 反转时间戳让最新数据排前
+                        rev_ts = 9999999999 - int(_time.time())
+                        rk = f"{kw}|{rev_ts:010d}|{wid}".encode()
+                        # 数值统一 str(...).encode(), 缺值跳过 (符合 HBase 稀疏写入)
+                        data = {}
+                        # info 列族
+                        if d.get(text_col):
+                            data[b'info:text'] = str(d[text_col])[:1024].encode()
+                        if d.get('user_name'):
+                            data[b'info:user_name'] = str(d['user_name']).encode()
+                        if d.get('publish_time') or d.get('created_at'):
+                            pt = d.get('publish_time') or d.get('created_at')
+                            data[b'info:publish_time'] = str(pt).encode()
+                        # sentiment 列族
+                        data[b'sentiment:label']      = (d.get('label') or '').encode()
+                        data[b'sentiment:score']      = str(d.get('score') or 0.0).encode()
+                        # 简单的 confidence: |score| (论文置信度 [0,1])
+                        try:
+                            conf = abs(float(d.get('score') or 0.0))
+                        except Exception:
+                            conf = 0.0
+                        data[b'sentiment:confidence'] = f"{conf:.4f}".encode()
+                        # metrics 列族
+                        if d.get('comments_count') is not None:
+                            data[b'metrics:comment_count'] = str(d['comments_count']).encode()
+                        if d.get('attitudes_count') is not None:
+                            data[b'metrics:like_count']    = str(d['attitudes_count']).encode()
+                        if d.get('reposts_count') is not None:
+                            data[b'metrics:repost_count']  = str(d['reposts_count']).encode()
+                        # ranking 列族 (此处仅初始化, 三维度排序作业后续 update)
+                        data[b'ranking:comprehensive_score'] = b'0.0'
+
                         b.put(rk, data)
             finally:
                 conn.close()
 
         try:
-            result_df.foreachPartition(_write_partition_to_hbase)
-            print(f"[spark_sentiment] ✅ 已写入 HBase {hbase_host}:{hbase_port}/{hbase_table}")
+            joined.foreachPartition(_write_partition_to_hbase)
+            print(f"[spark_sentiment] ✅ 已写入 HBase {hbase_host}:{hbase_port}/{hbase_table} "
+                  f"(RowKey=keyword|reverse_ts|weibo_id, 4 列族)")
         except Exception as e:
             print(f"[spark_sentiment] ⚠️ HBase 写入失败: {e}")
     else:
