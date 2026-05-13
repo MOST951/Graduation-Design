@@ -711,6 +711,14 @@ class SparkService:
                 '--jdbc-user',     self.config.mysql_user,
                 '--jdbc-password', self.config.mysql_password,
             ]
+        # HBase 可选: 环境变量 HBASE_HOST 触发 (论文 4.3.3 宽表写入)
+        hbase_host = os.environ.get('HBASE_HOST', '')
+        if hbase_host:
+            args += [
+                '--hbase-host',  hbase_host,
+                '--hbase-port',  os.environ.get('HBASE_PORT', '9090'),
+                '--hbase-table', os.environ.get('HBASE_TABLE', 'sentiment_result'),
+            ]
         extra_jars = []
         # 如果有 mysql-connector jar 预置在固定位置则加上
         for candidate in (

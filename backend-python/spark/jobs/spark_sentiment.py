@@ -135,6 +135,11 @@ def main():
     p.add_argument("--jdbc-table",    default="sentiment_results")
     p.add_argument("--output-json",   default="",
                    help="同时保存 JSON 汇总到此路径 (HDFS 或本地); 为空则不写")
+    # HBase 写入 (论文 4.3.3 HBase 宽表存储)
+    p.add_argument("--hbase-host",    default=os.getenv("HBASE_HOST", ""),
+                   help="HBase Thrift host (如 hbase-master); 为空则不写 HBase")
+    p.add_argument("--hbase-port",    type=int, default=int(os.getenv("HBASE_PORT", "9090")))
+    p.add_argument("--hbase-table",   default="sentiment_result")
     args = p.parse_args()
 
     spark = (
@@ -209,6 +214,49 @@ def main():
             print(f"[spark_sentiment] ⚠️ MySQL 写入失败: {e}")
     else:
         print("[spark_sentiment] 未配置 JDBC, 跳过 MySQL 写入")
+
+    # ---- 写 HBase (论文 4.3.3 宽表) ----
+    # 用 foreachPartition + happybase 在 Executor 内直连 Thrift 写入.
+    # 一行对应: rowkey=weibo_id, cf:sent 列族 = {label, score, latency_ms, error, analyzed_at}
+    if args.hbase_host:
+        hbase_host  = args.hbase_host
+        hbase_port  = args.hbase_port
+        hbase_table = args.hbase_table
+
+        # HBase 表 sentiment_result 列族: {meta, sentiment}
+        # rowkey=weibo_id, sentiment:{label,score,latency_ms,error}, meta:analyzed_at
+        hbase_cf_meta = 'meta'
+        hbase_cf_sent = 'sentiment'
+
+        def _write_partition_to_hbase(rows):
+            try:
+                import happybase
+            except ImportError:
+                return
+            conn = happybase.Connection(hbase_host, port=hbase_port, timeout=10000)
+            try:
+                tbl = conn.table(hbase_table)
+                with tbl.batch(batch_size=100) as b:
+                    for r in rows:
+                        rk = str(r.weibo_id).encode()
+                        data = {
+                            f'{hbase_cf_sent}:label'.encode():      (r.label or '').encode(),
+                            f'{hbase_cf_sent}:score'.encode():      str(r.score or 0.0).encode(),
+                            f'{hbase_cf_sent}:latency_ms'.encode(): str(r.latency_ms or 0.0).encode(),
+                            f'{hbase_cf_sent}:error'.encode():      (r.error or '').encode(),
+                            f'{hbase_cf_meta}:analyzed_at'.encode(): str(r.analyzed_at).encode(),
+                        }
+                        b.put(rk, data)
+            finally:
+                conn.close()
+
+        try:
+            result_df.foreachPartition(_write_partition_to_hbase)
+            print(f"[spark_sentiment] ✅ 已写入 HBase {hbase_host}:{hbase_port}/{hbase_table}")
+        except Exception as e:
+            print(f"[spark_sentiment] ⚠️ HBase 写入失败: {e}")
+    else:
+        print("[spark_sentiment] 未配置 HBase, 跳过 HBase 写入")
 
     # ---- 备份 JSON 输出 ----
     if args.output_json:

@@ -93,6 +93,148 @@ if UNIFIED_API_AVAILABLE:
 # 论文 6.2.2 图6-9: Swagger UI 自动 API 文档
 # ====================================================================
 if SWAGGER_AVAILABLE:
+    # 手工声明核心 API (flasgger 默认只扫有 docstring YAML 的 view, 此处直接在
+    # template.paths 里列出, 确保 /apidocs 有实质内容, 对应论文 6.2.2 图6-9).
+    _auth_tag    = ["auth"]
+    _crawl_tag   = ["crawler"]
+    _sent_tag    = ["sentiment"]
+    _tri_tag     = ["tri-dimension"]
+    _pipe_tag    = ["pipeline"]
+    _mon_tag     = ["monitor"]
+    _dash_tag    = ["dashboard"]
+    _adm_tag     = ["admin"]
+    _spark_tag   = ["spark"]
+
+    _ok = {"200": {"description": "成功, code=200, data=<业务数据>"}}
+    _bearer = [{"Bearer": []}]
+
+    _paths = {
+        # -------- auth (大部分已切到 Java, Flask 留 register/send-code) --------
+        "/api/auth/send-code": {
+            "post": {"tags": _auth_tag, "summary": "发送邮箱验证码 (注册/找回)",
+                     "parameters": [{"name": "body", "in": "body", "required": True,
+                        "schema": {"type": "object",
+                                   "properties": {"email": {"type": "string"},
+                                                  "type":  {"type": "string",
+                                                            "enum": ["register", "reset"]}},
+                                   "required": ["email", "type"]}}],
+                     "responses": _ok}
+        },
+        "/api/auth/register": {
+            "post": {"tags": _auth_tag, "summary": "邮箱验证码注册",
+                     "parameters": [{"name": "body", "in": "body", "required": True,
+                        "schema": {"type": "object",
+                                   "properties": {"email": {"type": "string"},
+                                                  "code":  {"type": "string"},
+                                                  "username": {"type": "string"},
+                                                  "password": {"type": "string"}}}}],
+                     "responses": _ok}
+        },
+
+        # -------- 数据采集 (论文 6.1.1) --------
+        "/api/weibo/crawl/start": {
+            "post": {"tags": _crawl_tag, "summary": "启动采集任务 (严格校验+数据源透明)",
+                     "description": "论文 6.1.1: keywords ≤20 × 64char, pages 1-50, max_count 1-50000, mode=auto/real/synthetic",
+                     "parameters": [{"name": "body", "in": "body", "required": True,
+                        "schema": {"type": "object",
+                                   "properties": {
+                                       "keywords":  {"type": "array", "items": {"type": "string"}},
+                                       "pages":     {"type": "integer", "default": 3},
+                                       "crawl_hot": {"type": "boolean", "default": True},
+                                       "max_count": {"type": "integer"},
+                                       "mode":      {"type": "string",
+                                                     "enum": ["auto", "real", "synthetic"]}
+                                   }}}],
+                     "responses": {"200": {"description": "任务已启动"},
+                                   "400": {"description": "入参非法"}}}
+        },
+        "/api/weibo/crawl/status/{task_id}": {
+            "get": {"tags": _crawl_tag, "summary": "查询采集任务进度 + 数据源分类",
+                    "parameters": [{"name": "task_id", "in": "path", "required": True,
+                                    "type": "string"}],
+                    "responses": _ok}
+        },
+        "/api/weibo/crawl/tasks": {
+            "get": {"tags": _crawl_tag, "summary": "采集任务历史列表",
+                    "responses": _ok}
+        },
+
+        # -------- 情感分析 (论文 4.2.1 + 6.3.3) --------
+        "/api/sentiment/analyze": {
+            "post": {"tags": _sent_tag, "summary": "单条文本情感分析 (词典+BERT 级联)",
+                     "parameters": [{"name": "body", "in": "body", "required": True,
+                        "schema": {"type": "object",
+                                   "properties": {"text": {"type": "string"},
+                                                  "method": {"type": "string",
+                                                             "enum": ["lexicon","bert","hybrid"]}}}}],
+                     "responses": _ok}
+        },
+        "/api/sentiment/batch": {
+            "post": {"tags": _sent_tag,
+                     "summary": "批量情感分析 (论文 6.3.3 Spark foreachPartition 入口)",
+                     "description": "Spark Executor 从此接口拉取批量推理结果, 写回 MySQL.",
+                     "parameters": [{"name": "body", "in": "body", "required": True,
+                        "schema": {"type": "object",
+                                   "properties": {"texts":  {"type": "array", "items": {"type": "string"}},
+                                                  "method": {"type": "string", "default": "hybrid"},
+                                                  "batch_size": {"type": "integer", "default": 32}}}}],
+                     "responses": _ok}
+        },
+
+        # -------- 三维度排序 (论文 4.2.2) --------
+        "/api/tri-dimension/rank": {
+            "post": {"tags": _tri_tag,
+                     "summary": "三维度加权排序 (情感α/热度β/时效γ)",
+                     "responses": _ok}
+        },
+
+        # -------- Spark 大数据 (论文 6.3) --------
+        "/api/weibo/spark/jobs": {
+            "get": {"tags": _spark_tag, "summary": "Spark 作业列表 + 统计", "responses": _ok}
+        },
+        "/api/weibo/spark/jobs/{job_id}": {
+            "get": {"tags": _spark_tag, "summary": "Spark 作业状态详情",
+                    "parameters": [{"name": "job_id", "in": "path", "required": True,
+                                    "type": "string"}],
+                    "responses": _ok}
+        },
+        "/api/weibo/spark/submit/clean": {
+            "post": {"tags": _spark_tag,
+                     "summary": "论文 6.3.2: 提交 PySpark 清洗作业到 Standalone 集群",
+                     "description": "HDFS /raw/dt=YYYY-MM-DD/*.json -> regexp_replace + UDF -> Parquet /cleaned/dt=YYYY-MM-DD",
+                     "parameters": [{"name": "body", "in": "body",
+                        "schema": {"type": "object",
+                                   "properties": {"input":  {"type": "string"},
+                                                  "output": {"type": "string"}}}}],
+                     "responses": _ok}
+        },
+        "/api/weibo/spark/submit/sentiment": {
+            "post": {"tags": _spark_tag,
+                     "summary": "论文 6.3.3: 提交 PySpark 分布式情感分析 (foreachPartition -> Flask -> MySQL)",
+                     "parameters": [{"name": "body", "in": "body",
+                        "schema": {"type": "object",
+                                   "properties": {"input": {"type": "string"},
+                                                  "flask_url": {"type": "string"}}}}],
+                     "responses": _ok}
+        },
+
+        # -------- 数据流水线 (论文 6.1.6) --------
+        "/api/pipeline/run": {
+            "post": {"tags": _pipe_tag, "summary": "一键运行数据流水线 (采集→清洗→情感→排序)",
+                     "responses": _ok}
+        },
+
+        # -------- 监控/仪表盘 --------
+        "/api/monitor/overview":  {"get": {"tags": _mon_tag,  "summary": "实时舆情监控概览", "responses": _ok}},
+        "/api/dashboard/overview":{"get": {"tags": _dash_tag, "summary": "仪表盘聚合数据",   "responses": _ok}},
+
+        # -------- 管理员 (需 JWT role=admin) --------
+        "/api/admin/users":           {"get": {"tags": _adm_tag, "summary": "用户列表 (需 admin)",
+                                               "security": _bearer, "responses": _ok}},
+        "/api/admin/system/metrics":  {"get": {"tags": _adm_tag, "summary": "系统指标 CPU/内存/磁盘 (需 admin)",
+                                               "security": _bearer, "responses": _ok}},
+    }
+
     swagger_template = {
         "swagger": "2.0",
         "info": {
@@ -108,14 +250,15 @@ if SWAGGER_AVAILABLE:
         "basePath": "/",
         "schemes": ["http", "https"],
         "tags": [
-            {"name": "auth",       "description": "认证 (login/register/info)"},
-            {"name": "crawler",    "description": "数据采集 (论文 6.1.1)"},
-            {"name": "sentiment",  "description": "情感分析 - 词典+BERT 级联融合 (论文 4.2.1)"},
+            {"name": "auth",          "description": "认证 (login/register/info)"},
+            {"name": "crawler",       "description": "数据采集 (论文 6.1.1)"},
+            {"name": "sentiment",     "description": "情感分析 - 词典+BERT 级联融合 (论文 4.2.1)"},
             {"name": "tri-dimension", "description": "三维度排序 - 情感/热度/时效 (论文 4.2.2)"},
-            {"name": "pipeline",   "description": "数据流水线 (论文 6.1.6)"},
-            {"name": "monitor",    "description": "实时舆情监控 (论文 6.1.5)"},
-            {"name": "dashboard",  "description": "可视化仪表盘 (论文 6.1.7)"},
-            {"name": "admin",      "description": "系统管理 (论文 6.1.8)"},
+            {"name": "spark",         "description": "Spark 大数据作业 (论文 6.3)"},
+            {"name": "pipeline",      "description": "数据流水线 (论文 6.1.6)"},
+            {"name": "monitor",       "description": "实时舆情监控 (论文 6.1.5)"},
+            {"name": "dashboard",     "description": "可视化仪表盘 (论文 6.1.7)"},
+            {"name": "admin",         "description": "系统管理 (论文 6.1.8)"},
         ],
         "securityDefinitions": {
             "Bearer": {
@@ -125,6 +268,7 @@ if SWAGGER_AVAILABLE:
                 "description": "JWT 形如: 'Bearer <token>'",
             }
         },
+        "paths": _paths,
     }
     swagger_config = {
         "headers": [],
