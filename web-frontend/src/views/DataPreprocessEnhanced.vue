@@ -114,29 +114,29 @@
 
         <!-- 清洗规则 -->
         <el-card class="panel-card">
-          <template #header><span>Data Cleaning Rules</span></template>
+          <template #header><span>数据清洗规则</span></template>
           <el-checkbox-group v-model="cleanRules" class="cleaning-rules">
             <div class="rule-category">
-              <h4>Basic Cleaning</h4>
-              <div class="rule-item"><el-checkbox label="removeDuplicates">Deduplication</el-checkbox><el-tag size="small" type="info">{{ duplicateCount }} items</el-tag></div>
-              <div class="rule-item"><el-checkbox label="removeNoise">Remove noise</el-checkbox></div>
-              <div class="rule-item"><el-checkbox label="normalizeWhitespace">Normalize whitespace</el-checkbox></div>
+              <h4>基础清洗</h4>
+              <div class="rule-item"><el-checkbox label="removeDuplicates">去重</el-checkbox><el-tag size="small" type="info">{{ duplicateCount }} 条</el-tag></div>
+              <div class="rule-item"><el-checkbox label="removeNoise">去除噪声</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="normalizeWhitespace">规范空白字符</el-checkbox></div>
             </div>
             
             <div class="rule-category">
-              <h4>Text Processing</h4>
-              <div class="rule-item"><el-checkbox label="traditional2simplified">Traditional to Simplified</el-checkbox></div>
-              <div class="rule-item"><el-checkbox label="fullwidth2halfwidth">Full-width to Half-width</el-checkbox></div>
-              <div class="rule-item"><el-checkbox label="segmentation">Word Segmentation</el-checkbox></div>
+              <h4>文本处理</h4>
+              <div class="rule-item"><el-checkbox label="traditional2simplified">繁体转简体</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="fullwidth2halfwidth">全角转半角</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="segmentation">中文分词</el-checkbox></div>
             </div>
             
             <div class="rule-category">
-              <h4>Content Filtering</h4>
-              <div class="rule-item"><el-checkbox label="removeStopwords">Filter stopwords</el-checkbox></div>
-              <div class="rule-item"><el-checkbox label="removeEmoji">Remove emojis</el-checkbox></div>
-              <div class="rule-item"><el-checkbox label="removeUrl">Remove URLs</el-checkbox></div>
-              <div class="rule-item"><el-checkbox label="removeAt">Remove @mentions</el-checkbox></div>
-              <div class="rule-item"><el-checkbox label="removeHashtag">Remove hashtags</el-checkbox></div>
+              <h4>内容过滤</h4>
+              <div class="rule-item"><el-checkbox label="removeStopwords">过滤停用词</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="removeEmoji">移除表情符号</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="removeUrl">移除 URL 链接</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="removeAt">移除 @用户</el-checkbox></div>
+              <div class="rule-item"><el-checkbox label="removeHashtag">移除 #话题</el-checkbox></div>
             </div>
           </el-checkbox-group>
         </el-card>
@@ -172,10 +172,10 @@
         <el-card class="panel-card">
           <template #header>
             <div class="card-header">
-              <span>Stop Word Statistics</span>
+              <span>停用词统计</span>
               <div class="header-actions">
-                <el-tag size="small">{{ stopwordList.length }} items</el-tag>
-                <el-button size="small" :icon="Setting" @click="showStopWordDialog = true">Manage</el-button>
+                <el-tag size="small">{{ stopwordList.length }} 个</el-tag>
+                <el-button size="small" :icon="Setting" @click="showStopWordDialog = true">管理</el-button>
               </div>
             </div>
           </template>
@@ -192,7 +192,7 @@
             </el-tag>
           </div>
           <div class="stopword-summary">
-            Stop word ratio in text: <strong>{{ stopwordRatio }}%</strong>
+            正文中停用词占比: <strong>{{ stopwordRatio }}%</strong>
           </div>
         </el-card>
 
@@ -260,7 +260,7 @@
               </el-select>
               <span class="data-count">显示 {{ filteredData.length }} / {{ rawData.length }} 条</span>
             </div>
-            <el-table v-loading="isLoading" :data="paginatedData" max-height="500" stripe>
+            <el-table v-loading="isLoading" :data="paginatedData" :max-height="tableMaxHeight" stripe>
               <el-table-column type="index" width="50" />
               <el-table-column label="内容" min-width="300">
                 <template #default="{ row }">
@@ -480,18 +480,18 @@
       </div>
     </div>
 
-    <!-- Stop Word Management Dialog -->
-    <el-dialog v-model="showStopWordDialog" title="Stop Word Management" width="600px">
+    <!-- 停用词管理对话框 -->
+    <el-dialog v-model="showStopWordDialog" title="停用词管理" width="600px">
       <div class="stopword-management">
         <div class="stopword-actions">
           <el-input
             v-model="newStopWord"
-            placeholder="Enter stop word to add"
+            placeholder="输入要添加的停用词"
             style="width: 200px"
             @keyup.enter="addStopWord"
           >
             <template #append>
-              <el-button @click="addStopWord">Add</el-button>
+              <el-button @click="addStopWord">添加</el-button>
             </template>
           </el-input>
           <el-upload
@@ -501,20 +501,20 @@
             :show-file-list="false"
             accept=".txt"
           >
-            <el-button :icon="Upload">Import File</el-button>
+            <el-button :icon="Upload">导入文件</el-button>
           </el-upload>
-          <el-button :icon="Download" @click="exportStopWords">Export</el-button>
+          <el-button :icon="Download" @click="exportStopWords">导出</el-button>
         </div>
         
         <el-divider />
         
         <div class="stopword-list">
           <el-table :data="stopWords" max-height="300" size="small">
-            <el-table-column label="Stop Word" prop="word" />
-            <el-table-column label="Frequency" prop="count" width="100" />
-            <el-table-column label="Actions" width="100">
+            <el-table-column label="停用词" prop="word" />
+            <el-table-column label="出现频次" prop="count" width="100" />
+            <el-table-column label="操作" width="100">
               <template #default="{ $index }">
-                <el-button size="small" type="danger" @click="removeStopWord($index)">Delete</el-button>
+                <el-button size="small" type="danger" @click="removeStopWord($index)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -522,17 +522,17 @@
       </div>
       
       <template #footer>
-        <el-button @click="showStopWordDialog = false">Cancel</el-button>
-        <el-button type="primary" @click="saveStopWords">Save Changes</el-button>
+        <el-button @click="showStopWordDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveStopWords">保存修改</el-button>
       </template>
     </el-dialog>
 
-    <!-- Diff Highlighting Toggle -->
+    <!-- 处理对比页的差异高亮开关 -->
     <div v-if="activePreview === 'compare'" class="diff-controls">
       <el-switch
         v-model="showDiffHighlight"
-        active-text="Highlight Differences"
-        inactive-text="Normal View"
+        active-text="高亮差异"
+        inactive-text="普通视图"
       />
     </div>
   </div>
@@ -630,6 +630,8 @@ const sentimentFilter = ref('');
 const currentPage = ref(1);
 const pageSize = ref(10);
 const compareIndex = ref(0);
+const windowHeight = ref(window.innerHeight);
+const tableMaxHeight = computed(() => Math.max(420, windowHeight.value - 360));
 
 // 
 const showStopWordDialog = ref(false);
@@ -1099,12 +1101,12 @@ const handleDictUpload = async (file: any) => {
     
     if (response.ok) {
       customDictName.value = file.name;
-      ElMessage.success(`Dictionary ${file.name} uploaded and loaded successfully`);
+      ElMessage.success(`词典 ${file.name} 上传并加载成功`);
     } else {
       throw new Error('Upload failed');
     }
   } catch (error) {
-    ElMessage.warning('Failed to upload dictionary');
+    ElMessage.warning('词典上传失败');
     console.error('Dictionary upload error:', error);
   }
 };
@@ -1112,7 +1114,7 @@ const handleDictUpload = async (file: any) => {
 // ==================== 
 const handleProcess = async () => {
   if (rawData.value.length === 0) {
-    ElMessage.warning('Please load data first');
+    ElMessage.warning('请先加载数据');
     return;
   }
   
@@ -1157,11 +1159,11 @@ const handleProcess = async () => {
             processSteps.value = status.steps || processSteps.value;
           }
           
-          ElMessage.success('Data processing completed');
+          ElMessage.success('数据处理完成');
           initCharts();
         } else if (status.status === 'failed') {
           processing.value = false;
-          ElMessage.warning(`Processing failed: ${status.error || 'Unknown error'}`);
+          ElMessage.warning(`处理失败：${status.error || '未知错误'}`);
         } else {
           // 
           setTimeout(pollProgress, 1000);
@@ -1177,7 +1179,7 @@ const handleProcess = async () => {
     
   } catch (error) {
     processing.value = false;
-    ElMessage.warning('Failed to start processing');
+    ElMessage.warning('启动处理失败');
     console.error('Processing error:', error);
   }
 };
@@ -1186,13 +1188,13 @@ const addStopWord = () => {
   if (newStopWord.value.trim() && !stopWords.value.find(sw => sw.word === newStopWord.value.trim())) {
     stopWords.value.push({ word: newStopWord.value.trim(), count: 0 });
     newStopWord.value = '';
-    ElMessage.success('Stop word added');
+    ElMessage.success('已添加停用词');
   }
 };
 
 const removeStopWord = (index: number) => {
   stopWords.value.splice(index, 1);
-  ElMessage.success('Stop word removed');
+  ElMessage.success('已移除停用词');
 };
 
 const handleStopWordFileUpload = (file: any) => {
@@ -1210,9 +1212,9 @@ const handleStopWordFileUpload = (file: any) => {
       const newWords = words.filter(w => !existingWords.includes(w.word));
       stopWords.value.push(...newWords);
       
-      ElMessage.success(`Imported ${newWords.length} stop words`);
+      ElMessage.success(`已导入 ${newWords.length} 个停用词`);
     } catch (err) {
-      ElMessage.warning('File parsing failed');
+      ElMessage.warning('文件解析失败');
     }
   };
   reader.readAsText(file.raw);
@@ -1227,7 +1229,7 @@ const exportStopWords = () => {
   a.download = 'stopwords.txt';
   a.click();
   URL.revokeObjectURL(url);
-  ElMessage.success('Stop words exported');
+  ElMessage.success('停用词已导出');
 };
 
 const saveStopWords = async () => {
@@ -1238,17 +1240,17 @@ const saveStopWords = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stopwords: stopWords.value.map(sw => sw.word) })
     });
-    ElMessage.success('Stop words saved successfully');
+    ElMessage.success('停用词保存成功');
     showStopWordDialog.value = false;
   } catch (error) {
-    ElMessage.warning('Failed to save stop words');
+    ElMessage.warning('停用词保存失败');
   }
 };
 
 const applyRecommendation = (rec: any) => {
   if (rec.action && !cleanRules.value.includes(rec.action)) {
     cleanRules.value.push(rec.action);
-    ElMessage.success(`: ${rec.title}`);
+    ElMessage.success(`已应用建议：${rec.title}`);
   }
 };
 
@@ -1338,6 +1340,7 @@ onMounted(async () => {
 .preprocess-layout {
   display: flex;
   gap: $spacing-base;
+  align-items: flex-start;
 }
 
 .operation-panel {
@@ -1379,6 +1382,8 @@ onMounted(async () => {
 .preview-panel {
   flex: 1;
   min-width: 0;
+  position: sticky;
+  top: $spacing-base;
 }
 
 .data-toolbar {
