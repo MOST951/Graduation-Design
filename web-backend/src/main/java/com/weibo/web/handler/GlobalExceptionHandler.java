@@ -59,6 +59,23 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理 RBAC 鉴权失败 (论文 3.2.1 + 6.2.1):
+     * SecurityAspect 在用户角色不足时抛 SecurityException, 这里映射为 HTTP 403.
+     */
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<ErrorResponse> handleSecurityException(SecurityException ex, WebRequest request) {
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.FORBIDDEN.value(),
+                "Forbidden",
+                ex.getMessage(),
+                request.getDescription(false)
+        );
+        log.warn("RBAC denied: {}", ex.getMessage());
+        return new ResponseEntity<>(errorResponse, HttpStatus.FORBIDDEN);
+    }
+
+    /**
      * 处理所有其他未捕获的异常。
      */
     @ExceptionHandler(Exception.class)
