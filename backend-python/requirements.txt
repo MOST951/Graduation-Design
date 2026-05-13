@@ -22,6 +22,10 @@ opencc-python-reimplemented>=0.1.7  # 繁简转换（纯 Python，无 C 依赖�
 
 # ==================== 大数据处理 ====================
 pyspark==3.5.0
+# WebHDFS 客户端: 论文 5.1 按日期分区上传原始数据到 HDFS /raw/dt=YYYY-MM-DD/
+hdfs>=2.7.0
+# 系统资源监控: /api/admin/system/metrics (无 psutil 时降级到 /proc, 但装上更稳)
+psutil>=5.9.0
 
 # ==================== 安全/加密 (必需) ====================
 # api/admin.py 使用 Fernet 对配置加密, 缺失会导致 Flask 启动失败

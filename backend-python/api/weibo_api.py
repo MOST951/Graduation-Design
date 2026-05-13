@@ -350,6 +350,23 @@ def start_crawl_task():
                     json.dump(all_data, f, ensure_ascii=False, indent=2)
                 
                 task_info['result_file'] = result_file
+                task_info['progress'] = 90
+
+                # 论文 5.1: 按日期分区上传到 HDFS /raw/dt=YYYY-MM-DD/
+                try:
+                    from utils.hdfs_client import upload_raw_to_hdfs_partitioned
+                    hdfs_path = upload_raw_to_hdfs_partitioned(result_file, task_id)
+                    if hdfs_path:
+                        task_info['hdfs_path'] = hdfs_path
+                        logger.info(f"[{task_id}] HDFS 同步成功: {hdfs_path}")
+                    else:
+                        task_info['hdfs_path'] = None
+                        logger.warning(f"[{task_id}] HDFS 同步失败/跳过, 仅本地保存")
+                except Exception as e:
+                    # HDFS 同步失败不影响采集任务整体成功
+                    logger.warning(f"[{task_id}] HDFS 同步异常: {e}")
+                    task_info['hdfs_path'] = None
+
                 task_info['status'] = 'completed'
                 task_info['progress'] = 100
                 task_info['end_time'] = datetime.now().isoformat()

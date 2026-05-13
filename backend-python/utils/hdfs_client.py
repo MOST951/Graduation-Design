@@ -5,14 +5,17 @@ HDFS Client - 微博舆情分析系统
 import os
 import json
 import logging
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
 # HDFS 默认路径
-HDFS_RAW_DIR = "/weibo/raw"
-HDFS_OUTPUT_DIR = "/weibo/output"
-HDFS_CHECKPOINT_DIR = "/weibo/checkpoint"
+# 论文 5.1: 原始 JSON 按天分区存到 HDFS /raw/YYYY-MM-DD/
+HDFS_RAW_DIR = os.getenv("HDFS_RAW_DIR", "/raw")
+HDFS_OUTPUT_DIR = os.getenv("HDFS_OUTPUT_DIR", "/output")
+HDFS_CHECKPOINT_DIR = os.getenv("HDFS_CHECKPOINT_DIR", "/checkpoint")
+HDFS_CLEANED_DIR = os.getenv("HDFS_CLEANED_DIR", "/cleaned")
 
 
 def get_hdfs_url() -> Optional[str]:
@@ -44,17 +47,65 @@ def is_hdfs_available() -> bool:
 
 
 def get_hdfs_client():
-    """获取 HDFS WebHDFS 客户端"""
+    """获取 HDFS WebHDFS 客户端.
+
+    端口优先级: HDFS_WEBHDFS_PORT > 50070 (Hadoop 2 default) > 9870 (Hadoop 3 default).
+    本项目 namenode 容器实际监听 50070 (Hadoop 2), 故默认 50070.
+    """
     try:
         from hdfs import InsecureClient
         host = os.getenv("HDFS_NAMENODE_HOST", "namenode")
-        client = InsecureClient(f"http://{host}:50070", user="root", timeout=30)
+        port = os.getenv("HDFS_WEBHDFS_PORT", "50070")
+        user = os.getenv("HDFS_USER", "root")
+        client = InsecureClient(f"http://{host}:{port}", user=user, timeout=30)
         return client
     except ImportError:
         logger.warning("hdfs package not installed, install with: pip install hdfs")
         return None
     except Exception as e:
         logger.error(f"Failed to create HDFS client: {e}")
+        return None
+
+
+# ==================== 论文 5.1 按日期分区 ====================
+
+def get_raw_partition_path(task_id: str, when: Optional[datetime] = None) -> str:
+    """生成按日期分区的 HDFS 原始数据路径.
+
+    论文 5.1: 获取的数据保存为 JSON 文件并按天存储到 HDFS 上.
+    路径格式: {HDFS_RAW_DIR}/dt=YYYY-MM-DD/crawl_result_<task_id>.json
+
+    使用 dt= 前缀符合 Hive/Spark 风格分区, 后续 Spark 作业能直接按
+    分区裁剪 (PARTITION BY dt) 提高查询性能.
+    """
+    when = when or datetime.now()
+    return f"{HDFS_RAW_DIR}/dt={when.strftime('%Y-%m-%d')}/crawl_result_{task_id}.json"
+
+
+def upload_raw_to_hdfs_partitioned(local_path: str, task_id: str,
+                                    when: Optional[datetime] = None) -> Optional[str]:
+    """采集结果按天分区上传到 HDFS, 返回 HDFS 路径; 失败返回 None.
+
+    与 upload_to_hdfs 的差异: 自动构造 /raw/dt=YYYY-MM-DD/<file>.json 路径,
+    并在父目录不存在时自动建.
+    """
+    if not os.path.exists(local_path):
+        logger.warning(f"Local file not found, skip HDFS upload: {local_path}")
+        return None
+
+    client = get_hdfs_client()
+    if not client:
+        return None
+
+    hdfs_path = get_raw_partition_path(task_id, when)
+    parent_dir = os.path.dirname(hdfs_path)
+    try:
+        client.makedirs(parent_dir, permission=755)
+        client.upload(hdfs_path, local_path, overwrite=True)
+        logger.info(f"采集结果已按日期分区上传 HDFS: {local_path} -> {hdfs_path}")
+        return hdfs_path
+    except Exception as e:
+        logger.error(f"HDFS partitioned upload failed: {e}", exc_info=True)
         return None
 
 
