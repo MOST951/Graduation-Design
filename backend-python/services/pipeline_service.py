@@ -271,9 +271,15 @@ class SentimentStage:
 
         # Step 3: 词典置信度低，调用BERT
         try:
-            bert_result = self._bert.predict(text)
-            bert_score = bert_result.get('score', 0.0)
-            bert_confidence = bert_result.get('confidence', 0.5)
+            # ChineseBertSentimentAnalyzer.analyze(text) 返回 SentimentResult (dataclass)
+            # 兼容也接受 dict 类型 (mock 实现)
+            bert_result = self._bert.analyze(text)
+            if hasattr(bert_result, 'score'):
+                bert_score = float(bert_result.score)
+                bert_confidence = float(bert_result.confidence)
+            else:  # dict 兜底
+                bert_score = float(bert_result.get('score', 0.0))
+                bert_confidence = float(bert_result.get('confidence', 0.5))
             if bert_score > 0.2:
                 bert_label = 'positive'
             elif bert_score < -0.2:
