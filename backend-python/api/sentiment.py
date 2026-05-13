@@ -597,15 +597,20 @@ def analyze_text():
         }), 500
 
 
-@sentiment_bp.route('/batch-analyze', methods=['POST'])
+@sentiment_bp.route('/batch', methods=['POST'])           # 论文 6.3.3 核心代码字面路径
+@sentiment_bp.route('/batch-analyze', methods=['POST'])   # 向后兼容旧前端调用
 def batch_analyze():
     """
-    批量分析
-    
+    批量情感分析 - 论文 6.3.3 Spark foreachPartition 调用的入口.
+
     Body参数:
-        texts: 文本列表
-        method: 分析方法 (lexicon/bert/hybrid)
-        batch_size: 批处理大小（仅BERT有效）
+        texts: 文本列表 (必需, 长度建议 ≤128)
+        method: 分析方法 (lexicon/bert/hybrid, 默认 hybrid)
+        batch_size: 批处理大小（仅BERT有效, 默认 32）
+
+    响应:
+        {"code":200, "data": {"results": [{text, sentiment, score, confidence, ...}], ...}}
+        spark_sentiment.py 会解析 data.results 并以 (id, label, score) 回传.
     """
     try:
         data = request.json

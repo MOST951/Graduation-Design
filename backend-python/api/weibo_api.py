@@ -1775,6 +1775,51 @@ def cancel_spark_job(job_id: str):
         }), 500
 
 
+# ==================== 论文 6.3 PySpark 作业直提交 API ====================
+
+@weibo_bp.route('/spark/submit/clean', methods=['POST'])
+def submit_pyspark_clean_api():
+    """论文 6.3.2: 提交 PySpark 清洗作业到伪集群.
+
+    Body:
+        input:  HDFS glob, 默认 hdfs://namenode:9000/raw/dt=<today>/*.json
+        output: Parquet 输出, 默认 hdfs://namenode:9000/cleaned/dt=<today>
+    """
+    try:
+        body = request.get_json(silent=True) or {}
+        today = datetime.now().strftime('%Y-%m-%d')
+        input_path  = body.get('input')  or f'hdfs://namenode:9000/raw/dt={today}/*.json'
+        output_path = body.get('output') or f'hdfs://namenode:9000/cleaned/dt={today}'
+
+        from services.spark_service import get_spark_service
+        svc = get_spark_service()
+        job = svc.submit_pyspark_clean(input_path, output_path,
+                                       crawl_task_id=body.get('crawl_task_id', ''))
+        return jsonify({'code': 200, 'data': job.to_dict()})
+    except Exception as e:
+        logger.error(f'submit pyspark clean failed: {e}', exc_info=True)
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@weibo_bp.route('/spark/submit/sentiment', methods=['POST'])
+def submit_pyspark_sentiment_api():
+    """论文 6.3.3: 提交 PySpark 分布式情感分析作业."""
+    try:
+        body = request.get_json(silent=True) or {}
+        today = datetime.now().strftime('%Y-%m-%d')
+        input_path = body.get('input') or f'hdfs://namenode:9000/cleaned/dt={today}'
+        flask_url  = body.get('flask_url') or 'http://web:5000/api/sentiment/batch'
+
+        from services.spark_service import get_spark_service
+        svc = get_spark_service()
+        job = svc.submit_pyspark_sentiment(input_path, flask_url=flask_url,
+                                           crawl_task_id=body.get('crawl_task_id', ''))
+        return jsonify({'code': 200, 'data': job.to_dict()})
+    except Exception as e:
+        logger.error(f'submit pyspark sentiment failed: {e}', exc_info=True)
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
 # ==================== 数据质量监控API ====================
 
 @weibo_bp.route('/data-quality', methods=['GET'])

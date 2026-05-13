@@ -55,26 +55,39 @@ class JobType(Enum):
 
 @dataclass
 class SparkJobConfig:
-    """Spark作业配置"""
-    spark_home: str = os.environ.get('SPARK_HOME', 'D:/spark-3.0.0')
-    spark_master: str = 'local[2]'
-    driver_memory: str = '2g'
-    executor_memory: str = '2g'
-    
-    # 作业JAR路径
+    """Spark作业配置 (论文 6.3.1)."""
+    # spark-submit 可执行文件; Docker 环境默认容器自带
+    spark_home: str = os.environ.get('SPARK_HOME', '/opt/bitnami/spark')
+    # 提交到伪集群 Standalone Master; 本地调试可 override 为 local[*]
+    spark_master: str = os.environ.get('SPARK_MASTER_URL', 'spark://spark-master:7077')
+    driver_memory: str = os.environ.get('SPARK_DRIVER_MEM', '1g')
+    executor_memory: str = os.environ.get('SPARK_EXECUTOR_MEM', '1g')
+    # PySpark 作业脚本目录 (backend-python/spark/jobs/)
+    pyjobs_dir: str = ''
+    # 作业JAR路径 (Scala 作业用, 本项目主流程是 PySpark 故可选)
     preprocessing_jar: str = ''
-    
-    # HDFS配置
-    hdfs_url: str = 'hdfs://localhost:9000'
-    
-    # HBase配置
-    hbase_zookeeper: str = 'localhost:2181'
-    
+    # HDFS 配置
+    hdfs_url: str = os.environ.get('HDFS_URL', 'hdfs://namenode:9000')
+    # HBase 配置
+    hbase_zookeeper: str = os.environ.get('HBASE_ZK', 'hbase-master:2181')
+    # MySQL JDBC (Spark 写情感分析结果回 MySQL, 论文 6.3.3)
+    mysql_jdbc_url: str = os.environ.get(
+        'MYSQL_JDBC_URL',
+        'jdbc:mysql://mysql:3306/weibo_sentiment?useSSL=false&characterEncoding=utf8',
+    )
+    mysql_user: str = os.environ.get('DB_USER', 'root')
+    mysql_password: str = os.environ.get('DB_PASSWORD', '')
     # 重试配置
     max_retries: int = 3
     retry_delay_seconds: int = 30
-    
+    # 是否允许模拟执行 (无 spark-submit / JAR / 集群时降级)
+    allow_simulation: bool = os.environ.get('SPARK_ALLOW_SIM', '1') == '1'
+
     def __post_init__(self):
+        if not self.pyjobs_dir:
+            self.pyjobs_dir = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), 'spark', 'jobs'
+            )
         # 自动设置JAR路径
         if not self.preprocessing_jar:
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -586,6 +599,193 @@ class SparkService:
             logger.error(f"HBase写入失败: {e}")
             raise
     
+    # ==================== 论文 6.3: PySpark 脚本直提交 ====================
+
+    def submit_pyspark_clean(self, input_path: str, output_path: str,
+                              crawl_task_id: str = '',
+                              on_complete: Callable = None) -> SparkJob:
+        """论文 6.3.2: 提交 PySpark 清洗作业 (spark_clean.py) 到 Standalone Master.
+
+        Args:
+            input_path:  HDFS 原始 JSON glob, 如 hdfs://namenode:9000/raw/dt=2026-05-14/*.json
+            output_path: HDFS Parquet 输出, 如 hdfs://namenode:9000/cleaned/dt=2026-05-14
+        """
+        job_id = f"pyclean_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
+        job = SparkJob(
+            job_id=job_id,
+            job_type=JobType.DATA_CLEANING.value,
+            input_path=input_path,
+            output_path=output_path,
+            crawl_task_id=crawl_task_id,
+        )
+        self.store.create(job)
+        if on_complete:
+            self._callbacks[job_id] = [on_complete]
+        self.executor.submit(self._run_pyspark_clean, job)
+        logger.info(f"[6.3.2] PySpark 清洗作业已提交: {job_id}")
+        return job
+
+    def submit_pyspark_sentiment(self, input_path: str,
+                                  flask_url: str = 'http://web:5000/api/sentiment/batch',
+                                  crawl_task_id: str = '',
+                                  on_complete: Callable = None) -> SparkJob:
+        """论文 6.3.3: 提交 PySpark 情感分析作业 (spark_sentiment.py).
+
+        Args:
+            input_path: Parquet 输入路径 (spark_clean 的输出)
+            flask_url:  Flask /batch 端点, Executor 在 foreachPartition 里调用它
+        """
+        job_id = f"pysent_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
+        job = SparkJob(
+            job_id=job_id,
+            job_type=JobType.SENTIMENT_ANALYSIS.value,
+            input_path=input_path,
+            output_path='mysql://sentiment_results',
+            crawl_task_id=crawl_task_id,
+        )
+        job.error_message = ''   # 借用字段放 flask_url, to_dict 序列化时带出
+        self.store.create(job)
+        if on_complete:
+            self._callbacks[job_id] = [on_complete]
+        self.executor.submit(self._run_pyspark_sentiment, job, flask_url)
+        logger.info(f"[6.3.3] PySpark 情感分析作业已提交: {job_id} flask={flask_url}")
+        return job
+
+    def _build_pyspark_command(self, script: str, script_args: List[str],
+                                extra_jars: List[str] = None) -> List[str]:
+        """构建 spark-submit PySpark 命令 (Standalone client 模式)."""
+        spark_submit = os.path.join(self.config.spark_home, 'bin', 'spark-submit')
+        if sys.platform == 'win32':
+            spark_submit = os.path.join(self.config.spark_home, 'bin', 'spark-submit.cmd')
+
+        cmd = [
+            spark_submit,
+            '--master', self.config.spark_master,
+            '--deploy-mode', 'client',
+            '--name', f"Weibo-{os.path.basename(script).replace('.py','')}",
+            '--driver-memory', self.config.driver_memory,
+            '--executor-memory', self.config.executor_memory,
+            '--conf', 'spark.sql.shuffle.partitions=4',
+            '--conf', 'spark.ui.showConsoleProgress=false',
+        ]
+        if extra_jars:
+            cmd += ['--jars', ','.join(extra_jars)]
+        cmd.append(script)
+        cmd += script_args
+        return cmd
+
+    def _run_pyspark_clean(self, job: SparkJob):
+        script = os.path.join(self.config.pyjobs_dir, 'spark_clean.py')
+        if not os.path.exists(script):
+            job.status = JobStatus.FAILED.value
+            job.error_message = f'spark_clean.py 不存在: {script}'
+            job.completed_at = datetime.now().isoformat()
+            self.store.update(job)
+            self._trigger_callbacks(job)
+            return
+
+        cmd = self._build_pyspark_command(script, [
+            '--input',  job.input_path,
+            '--output', job.output_path,
+        ])
+        self._run_subprocess_job(job, cmd, stage_name='清洗')
+
+    def _run_pyspark_sentiment(self, job: SparkJob, flask_url: str):
+        script = os.path.join(self.config.pyjobs_dir, 'spark_sentiment.py')
+        if not os.path.exists(script):
+            job.status = JobStatus.FAILED.value
+            job.error_message = f'spark_sentiment.py 不存在: {script}'
+            job.completed_at = datetime.now().isoformat()
+            self.store.update(job)
+            self._trigger_callbacks(job)
+            return
+
+        args = [
+            '--input',    job.input_path,
+            '--flask-url', flask_url,
+        ]
+        # JDBC 可选: 有配置则附加 -> spark_sentiment.py 会写 MySQL
+        if self.config.mysql_jdbc_url and self.config.mysql_password:
+            args += [
+                '--jdbc-url',      self.config.mysql_jdbc_url,
+                '--jdbc-user',     self.config.mysql_user,
+                '--jdbc-password', self.config.mysql_password,
+            ]
+        extra_jars = []
+        # 如果有 mysql-connector jar 预置在固定位置则加上
+        for candidate in (
+            '/opt/bitnami/spark/jars/mysql-connector-j.jar',
+            '/opt/bitnami/spark/jars/mysql-connector-java.jar',
+        ):
+            if os.path.exists(candidate):
+                extra_jars.append(candidate)
+                break
+
+        cmd = self._build_pyspark_command(script, args, extra_jars=extra_jars)
+        self._run_subprocess_job(job, cmd, stage_name='情感分析')
+
+    def _run_subprocess_job(self, job: SparkJob, cmd: List[str], stage_name: str):
+        """通用: 执行 spark-submit, 收集 stdout/stderr, 更新 job 状态."""
+        try:
+            job.status = JobStatus.RUNNING.value
+            job.started_at = datetime.now().isoformat()
+            job.progress = 5
+            self.store.update(job)
+            logger.info(f"[{job.job_id}] [{stage_name}] 执行: {' '.join(cmd)}")
+
+            process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1,
+            )
+            self._running_jobs[job.job_id] = process
+
+            last_log_tick = time.time()
+            tail_lines: List[str] = []
+            for line in process.stdout:  # type: ignore
+                line = line.rstrip()
+                tail_lines.append(line)
+                if len(tail_lines) > 200:
+                    tail_lines = tail_lines[-200:]
+                logger.debug(f"[{job.job_id}] {line}")
+                # 简单进度推断 (保留 5-95 区间, 100 留给完成)
+                if time.time() - last_log_tick > 1.0:
+                    last_log_tick = time.time()
+                    if job.progress < 90:
+                        job.progress = min(90, job.progress + 2)
+                        self.store.update(job)
+
+            rc = process.wait()
+            self._running_jobs.pop(job.job_id, None)
+
+            if rc == 0:
+                job.status = JobStatus.COMPLETED.value
+                job.progress = 100
+                job.completed_at = datetime.now().isoformat()
+                # 从 tail 里尝试提取记录数
+                for ln in tail_lines:
+                    if '记录数:' in ln:
+                        try:
+                            job.records_processed = int(ln.split('记录数:')[1].split()[0])
+                        except Exception:
+                            pass
+                logger.info(f"[{job.job_id}] [{stage_name}] ✅ 成功 rc=0")
+            else:
+                job.status = JobStatus.FAILED.value
+                job.completed_at = datetime.now().isoformat()
+                job.error_message = '\n'.join(tail_lines[-20:])[:2000]
+                logger.error(f"[{job.job_id}] [{stage_name}] ❌ 失败 rc={rc}")
+            self.store.update(job)
+            self._trigger_callbacks(job)
+        except Exception as e:
+            logger.error(f"[{job.job_id}] 执行异常: {e}", exc_info=True)
+            job.status = JobStatus.FAILED.value
+            job.error_message = str(e)
+            job.completed_at = datetime.now().isoformat()
+            self.store.update(job)
+            self._trigger_callbacks(job)
+
+    # ==================== 原 JAR 版命令构建 ====================
+
     def _build_spark_command(self, main_class: str, args: List[str]) -> List[str]:
         """构建spark-submit命令"""
         spark_submit = os.path.join(self.config.spark_home, 'bin', 'spark-submit')
