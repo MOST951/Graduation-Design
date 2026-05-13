@@ -513,19 +513,24 @@ class RuleBasedSentimentAnalyzer:
         logger.info("RuleBasedSentimentAnalyzer初始化完成")
     
     def _load_dictionaries(self, dict_path: str = None):
-        """加载情感词典"""
+        """加载情感词典.
+
+        即使使用 SentimentDictionary, 仍同时构建 self.positive_dict / negative_dict /
+        degree_dict / negation_dict / transition_words 作为兜底, 因为 analyze()
+        路径里有无条件的 `if word in self.positive_dict` 等查询. 不初始化会导致
+        AttributeError, 进而触发 HybridAnalyzer 走 bert_only, 退化为单模型.
+        """
         # 尝试从sentiment_dict模块加载
+        self._use_dict_manager = False
         try:
             from ..resources.sentiment_dict import SentimentDictionary
             self.dict_manager = SentimentDictionary()
             self._use_dict_manager = True
             logger.info("使用SentimentDictionary加载词典")
-            return
+            # 不要 return: 继续把内置兜底词典装好.
         except ImportError:
             pass
-        
-        self._use_dict_manager = False
-        
+
         # 内置基础词典
         self.positive_dict = {
             '好': 0.6, '棒': 0.7, '赞': 0.7, '优秀': 0.8, '喜欢': 0.7,
