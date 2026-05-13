@@ -3,9 +3,8 @@
     <!-- 左侧品牌区域 -->
     <div class="brand-section">
       <div class="brand-content">
-        <div class="logo-wrapper">
-          <img src="/logo.svg" alt="Logo" class="brand-logo" />
-        </div>
+        <!-- 4 个跟随鼠标的卡通吉祥物 (替代原 logo) -->
+        <MascotEyes class="mascot-brand" />
         <h1 class="brand-title">微博舆情分析系统</h1>
         <p class="brand-subtitle">Weibo Sentiment Analysis Platform</p>
         
@@ -40,9 +39,6 @@
     <!-- 右侧注册区域 -->
     <div class="register-section">
       <div class="register-box">
-        <!-- 4 个跟随鼠标的卡通吉祥物 -->
-        <MascotEyes class="mascot-wrapper" />
-
         <div class="register-header">
           <h2>创建账号</h2>
           <p class="register-desc">注册以使用舆情分析系统</p>
@@ -386,6 +382,14 @@ onUnmounted(() => {
     max-width: 500px;
   }
   
+  // 吉祥物置于左侧品牌区顶部，环境光效果更明显
+  .mascot-brand {
+    width: 260px;
+    margin: 0 auto 20px;
+    display: block;
+    filter: drop-shadow(0 6px 24px rgba(0, 0, 0, 0.25));
+  }
+
   .logo-wrapper {
     margin-bottom: 24px;
     
@@ -494,13 +498,6 @@ onUnmounted(() => {
 .register-box {
   width: 100%;
   max-width: 400px;
-}
-
-// 4 个会跟随鼠标的吉祥物 (论文演示彩蛋)
-.mascot-wrapper {
-  width: 220px;
-  margin: 0 auto 8px;
-  display: block;
 }
 
 .register-header {
