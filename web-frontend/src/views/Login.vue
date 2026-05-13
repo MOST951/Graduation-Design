@@ -1,28 +1,58 @@
 <template>
   <div class="login-page">
-    <!-- 背景图 + 暗色遮罩 -->
-    <div class="bg-layer">
-      <div class="bg-img"></div>
-      <div class="bg-overlay"></div>
-    </div>
+    <!-- 左侧品牌区 (与注册页一致) -->
+    <div class="brand-section">
+      <div class="brand-content">
+        <MascotEyes class="mascot-brand" />
+        <h1 class="brand-title">微博舆情分析系统</h1>
+        <p class="brand-subtitle">Weibo Sentiment Analysis Platform</p>
 
-    <!-- 居中玻璃卡片 -->
-    <div class="card-wrap">
-      <div class="glass-card">
-        <!-- 头部 -->
-        <div class="card-header">
-          <div class="brand">
-            <div class="brand-icon">
-              <el-icon :size="18"><TrendCharts /></el-icon>
-            </div>
-            <h1 class="brand-title">舆情分析系统</h1>
+        <div class="features-list">
+          <div class="feature-item">
+            <el-icon><DataAnalysis /></el-icon>
+            <span>情感-热度双维度分析</span>
           </div>
-          <div class="header-badge">
-            <el-icon :size="14"><DataAnalysis /></el-icon>
+          <div class="feature-item">
+            <el-icon><TrendCharts /></el-icon>
+            <span>实时舆情监控预警</span>
+          </div>
+          <div class="feature-item">
+            <el-icon><Histogram /></el-icon>
+            <span>大数据可视化展示</span>
+          </div>
+          <div class="feature-item">
+            <el-icon><Cpu /></el-icon>
+            <span>Spark分布式处理</span>
           </div>
         </div>
 
-        <!-- 全局消息提示 -->
+        <!-- 底部技术标签 -->
+        <div class="tech-tags">
+          <span>Vue 3</span>
+          <span>Flask</span>
+          <span>Spark</span>
+          <span>ChineseBERT</span>
+          <span>ECharts</span>
+        </div>
+      </div>
+
+      <!-- 背景装饰 -->
+      <div class="bg-decoration">
+        <div class="circle circle-1"></div>
+        <div class="circle circle-2"></div>
+        <div class="circle circle-3"></div>
+      </div>
+    </div>
+
+    <!-- 右侧登录表单 -->
+    <div class="login-section">
+      <div class="login-box">
+        <div class="login-header">
+          <h2>欢迎回来</h2>
+          <p class="login-desc">请登录以使用舆情分析系统</p>
+        </div>
+
+        <!-- 消息提示横栏 -->
         <transition name="msg-fade">
           <div
             v-if="msgVisible"
@@ -33,10 +63,6 @@
           </div>
         </transition>
 
-        <!-- 登录标题 -->
-        <div class="login-subtitle">密码登录</div>
-
-        <!-- ======== 密码登录表单 ======== -->
         <el-form
           ref="loginFormRef"
           :model="loginForm"
@@ -45,10 +71,9 @@
           @keyup.enter="handleLogin"
         >
           <el-form-item prop="username">
-            <label class="glass-label">账号 <span class="label-hint">(学号/手机/邮箱)</span></label>
             <el-input
               v-model="loginForm.username"
-              placeholder="例如: admin / 20240001"
+              placeholder="账号　学号 / 手机 / 邮箱　(例: admin)"
               :prefix-icon="User"
               size="large"
               clearable
@@ -56,24 +81,23 @@
           </el-form-item>
 
           <el-form-item prop="password">
-            <label class="glass-label">密码</label>
             <el-input
               v-model="loginForm.password"
               :type="passwordVisible ? 'text' : 'password'"
-              placeholder="6-16位字符"
+              placeholder="密码　(6-16位字符)"
               :prefix-icon="Lock"
               size="large"
               @input="onPasswordInput"
             >
               <template #suffix>
-                <el-icon class="pwd-eye" @click="passwordVisible = !passwordVisible">
+                <el-icon class="password-toggle" @click="passwordVisible = !passwordVisible">
                   <View v-if="passwordVisible" />
                   <Hide v-else />
                 </el-icon>
               </template>
             </el-input>
-            <!-- 密码强度指示器 -->
-            <div class="strength-row">
+            <!-- 密码强度 -->
+            <div class="strength-row" v-if="loginForm.password">
               <div class="strength-bars">
                 <div class="strength-seg" :class="pwdStrength >= 1 ? `str-${pwdStrength}` : ''"></div>
                 <div class="strength-seg" :class="pwdStrength >= 2 ? `str-${pwdStrength}` : ''"></div>
@@ -87,50 +111,36 @@
 
           <div class="form-options">
             <el-checkbox v-model="loginForm.rememberMe">记住密码</el-checkbox>
-            <div class="options-right">
-              <a class="glass-link" @click="showMsg('请联系管理员', false)">联系管理员</a>
-            </div>
+            <el-link type="primary" :underline="false" @click="showMsg('请联系管理员', false)">联系管理员</el-link>
           </div>
 
-          <button
-            type="button"
-            class="btn-primary"
-            :disabled="loading"
+          <el-button
+            type="primary"
+            :loading="loading"
+            class="login-button"
+            size="large"
             @click="handleLogin"
           >
-            <template v-if="!loading">
-              <el-icon :size="16"><Right /></el-icon>
-              <span>登录系统</span>
-            </template>
-            <span v-else class="btn-loading">
-              <i class="spinner"></i> 登录中...
-            </span>
-          </button>
+            <span v-if="!loading">登 录</span>
+            <span v-else>登录中...</span>
+          </el-button>
         </el-form>
 
-        <!-- 演示账号提示 -->
+        <!-- 演示账号 -->
         <div class="demo-tip">
-          <div class="demo-row">管理员账号：<strong>admin</strong> / <strong>admin123</strong></div>
-          <div class="demo-row">普通用户账号：<strong>user01</strong> / <strong>user123</strong></div>
+          <div class="demo-row">管理员：<strong>admin</strong> / <strong>admin123</strong></div>
+          <div class="demo-row">普通用户：<strong>user01</strong> / <strong>user123</strong></div>
         </div>
 
-        <!-- 底部 -->
-        <div class="card-footer">
-          <div class="footer-links">
-            <span>还没有账号?</span>
-            <a class="glass-link" @click="goToRegister">立即注册</a>
-          </div>
-          <p class="copyright">毕业设计 · 罗森 · 2022407443</p>
+        <div class="register-link">
+          <span>还没有账号？</span>
+          <el-link type="primary" :underline="false" @click="goToRegister">立即注册</el-link>
         </div>
-      </div>
 
-      <!-- 技术标签 -->
-      <div class="tech-tags">
-        <span>Vue 3</span>
-        <span>Flask</span>
-        <span>Spark</span>
-        <span>ChineseBERT</span>
-        <span>ECharts</span>
+        <div class="login-footer">
+          <p>本科毕业设计 · 微博舆情分析系统</p>
+          <p class="copyright">© 2026 罗森 · 学号 2022407443</p>
+        </div>
       </div>
     </div>
   </div>
@@ -140,9 +150,10 @@
 import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
-import { User, Lock, View, Hide, DataAnalysis, TrendCharts, Right } from '@element-plus/icons-vue';
+import { User, Lock, View, Hide, DataAnalysis, TrendCharts, Histogram, Cpu } from '@element-plus/icons-vue';
 import apiClient from '@/api/index';
 import { useAuthStore } from '@/store/auth';
+import MascotEyes from '@/components/MascotEyes.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -275,373 +286,257 @@ const goToRegister = () => {
 
 <style scoped lang="scss">
 /* ============================================================
-   Glassmorphism Login — v2 (background image + strength bar)
+   Login Page - 与 Register.vue 同款左右分栏 (统一品牌)
    ============================================================ */
 .login-page {
-  position: relative;
+  display: flex;
   min-height: 100vh;
-  width: 100%;
-  overflow: auto;
-  background: #0a0f2a;
+  background: #f5f7fa;
+}
+
+// ---------- 左侧品牌区域 ----------
+.brand-section {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  position: relative;
+  overflow: hidden;
+  padding: 40px;
+
+  .brand-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    color: white;
+    max-width: 500px;
+  }
+
+  .mascot-brand {
+    width: 260px;
+    margin: 0 auto 20px;
+    display: block;
+    filter: drop-shadow(0 6px 24px rgba(0, 0, 0, 0.25));
+  }
+
+  .brand-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 8px 0;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  }
+
+  .brand-subtitle {
+    font-size: 14px;
+    opacity: 0.9;
+    margin: 0 0 32px 0;
+    letter-spacing: 1px;
+  }
+
+  .features-list {
+    text-align: left;
+    margin-bottom: 24px;
+
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      margin-bottom: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateX(5px);
+      }
+
+      .el-icon {
+        font-size: 18px;
+      }
+
+      span {
+        font-size: 14px;
+      }
+    }
+  }
+
+  .tech-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 12px;
+
+    span {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.85);
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(6px);
+    }
+  }
 }
 
-/* ---------- background image + overlay ---------- */
-.bg-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-}
-
-.bg-img {
-  width: 100%; height: 100%;
-  background:
-    url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1920&q=80') center/cover no-repeat,
-    linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-}
-
-.bg-overlay {
+// ---------- 背景动态圆 ----------
+.bg-decoration {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+
+  .circle {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .circle-1 { width: 400px; height: 400px; top: -100px; left: -100px; animation: pulse 4s ease-in-out infinite; }
+  .circle-2 { width: 300px; height: 300px; bottom: -50px; right: -50px; animation: pulse 5s ease-in-out infinite 1s; }
+  .circle-3 { width: 200px; height: 200px; top: 50%; left: 50%; transform: translate(-50%, -50%); animation: pulse 6s ease-in-out infinite 2s; }
 }
 
-/* ---------- card wrapper ---------- */
-.card-wrap {
-  position: relative;
-  z-index: 1;
+// ---------- 右侧登录区 ----------
+.login-section {
+  width: 520px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 16px;
+  justify-content: center;
+  padding: 40px;
+  background: white;
+  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
 }
 
-/* ---------- glass card ---------- */
-.glass-card {
+.login-box {
   width: 100%;
-  max-width: 430px;
-  padding: 32px 28px 24px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow: 0 25px 45px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255,255,255,0.08);
-  color: #fff;
-  animation: fadeUp 0.5s ease-out;
+  max-width: 400px;
 }
 
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(24px); }
-  to   { opacity: 1; transform: translateY(0); }
+.login-header {
+  text-align: center;
+  margin-bottom: 24px;
+
+  h2 {
+    font-size: 26px;
+    font-weight: 600;
+    color: #303133;
+    margin: 0 0 8px 0;
+  }
+
+  .login-desc {
+    color: var(--color-text-secondary, #909399);
+    font-size: 14px;
+    margin: 0;
+  }
 }
 
-/* ---------- card header ---------- */
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 22px;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.brand-icon {
-  width: 34px; height: 34px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #ec4899, #3b82f6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);
-}
-
-.brand-title {
-  font-size: 22px;
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: 0.3px;
-}
-
-.header-badge {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-/* ---------- message banner ---------- */
+// ---------- 消息横幅 ----------
 .msg-banner {
   margin-bottom: 16px;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: 8px;
   font-size: 13px;
   text-align: center;
-  backdrop-filter: blur(8px);
-  transition: all 0.3s;
 }
+.msg-error   { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
+.msg-success { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; }
+.error-shake { animation: shake 0.3s ease-in-out 0s 2; }
+.msg-fade-enter-active, .msg-fade-leave-active { transition: all 0.3s ease; }
+.msg-fade-enter-from, .msg-fade-leave-to { opacity: 0; transform: translateY(-8px); }
 
-.msg-error {
-  background: rgba(239, 68, 68, 0.3);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-}
-
-.msg-success {
-  background: rgba(34, 197, 94, 0.3);
-  border: 1px solid rgba(34, 197, 94, 0.4);
-}
-
-.error-shake {
-  animation: shake 0.3s ease-in-out 0s 2;
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25%      { transform: translateX(-5px); }
-  75%      { transform: translateX(5px); }
-}
-
-.msg-fade-enter-active,
-.msg-fade-leave-active {
-  transition: all 0.3s ease;
-}
-.msg-fade-enter-from,
-.msg-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
-/* ---------- login subtitle ---------- */
-.login-subtitle {
-  font-size: 15px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 18px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* ---------- form ---------- */
+// ---------- 表单 ----------
 .login-form {
   .el-form-item {
-    margin-bottom: 20px;
-  }
-
-  :deep(.el-form-item__label) {
-    display: none;
+    margin-bottom: 18px;
   }
 
   :deep(.el-input__wrapper) {
-    background: rgba(255, 255, 255, 0.18);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    border-radius: 10px;
-    box-shadow: none;
-    padding: 4px 14px;
-    transition: all 0.2s;
+    padding: 4px 15px;
+    border-radius: 8px;
 
-    &:hover {
-      border-color: rgba(255, 255, 255, 0.35);
-    }
-
-    &.is-focus {
-      background: rgba(255, 255, 255, 0.25);
-      border-color: #165DFF;
-      box-shadow: 0 0 0 3px rgba(22, 93, 255, 0.25);
-      transform: scale(1.01);
+    &:hover, &.is-focus {
+      box-shadow: 0 0 0 1px #667eea inset;
     }
   }
 
   :deep(.el-input__inner) {
     height: 42px;
-    color: #fff;
-    font-size: 14px;
-
-    &::placeholder { color: rgba(255, 255, 255, 0.5); }
   }
 
-  :deep(.el-input__prefix .el-icon) {
-    color: rgba(255, 255, 255, 0.5);
-  }
-  :deep(.el-input__suffix .el-icon) {
-    color: rgba(255, 255, 255, 0.5);
-  }
+  .password-toggle {
+    cursor: pointer;
+    color: var(--color-text-secondary, #909399);
 
-  :deep(.el-form-item__error) {
-    color: #fca5a5;
+    &:hover {
+      color: #667eea;
+    }
   }
 }
 
-.glass-label {
-  display: block;
-  font-size: 15px;
-  font-weight: 500;
-  color: #fff;
-  margin-bottom: 8px;
-}
-
-.label-hint {
-  font-size: 12px;
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.pwd-eye {
-  cursor: pointer;
-  &:hover { color: rgba(255, 255, 255, 0.9) !important; }
-}
-
-/* ---------- password strength ---------- */
+// ---------- 密码强度条 ----------
 .strength-row {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 6px;
 }
-
-.strength-bars {
-  display: flex;
-  gap: 4px;
-  flex: 1;
-}
-
+.strength-bars { display: flex; gap: 4px; flex: 1; }
 .strength-seg {
   height: 4px;
   flex: 1;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.15);
+  background: #ebeef5;
   transition: background 0.25s;
 }
-
 .strength-seg.str-1 { background: #f87171; }
 .strength-seg.str-2 { background: #fbbf24; }
 .strength-seg.str-3 { background: #34d399; }
-
 .strength-text {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.55);
+  color: #909399;
   flex-shrink: 0;
   min-width: 24px;
 }
 
-/* ---------- form options ---------- */
+// ---------- 选项行 ----------
 .form-options {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 6px;
-
-  :deep(.el-checkbox__label) {
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 13px;
-  }
-
-  :deep(.el-checkbox__inner) {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.5);
-    border-radius: 4px;
-  }
-
-  :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-    background: #165DFF;
-    border-color: #165DFF;
-  }
+  margin-bottom: 16px;
 }
 
-.options-right {
-  display: flex;
-  gap: 12px;
-}
-
-.glass-link {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 13px;
-  cursor: pointer;
-  transition: color 0.2s;
-  text-decoration: none;
-
-  &:hover { color: #fff; }
-}
-
-/* ---------- primary button ---------- */
-.btn-primary {
+// ---------- 登录按钮 ----------
+.login-button {
   width: 100%;
-  padding: 13px 0;
-  border: none;
-  border-radius: 10px;
+  height: 46px;
   font-size: 16px;
-  font-weight: 600;
-  color: #fff;
-  background: linear-gradient(135deg, #165DFF 0%, #0F48C9 100%);
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  position: relative;
-  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  margin-top: 4px;
 
-  &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px -5px rgba(22, 93, 255, 0.5);
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(1px);
-  }
-
-  &:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
+  &:hover {
+    background: linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%);
   }
 }
 
-.btn-loading {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.spinner {
-  display: inline-block;
-  width: 14px; height: 14px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-
-/* ---------- demo tip ---------- */
+// ---------- 演示账号提示 ----------
 .demo-tip {
   margin-top: 18px;
   padding: 10px 14px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #f5f7fa;
+  border: 1px solid #ebeef5;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.55);
+  color: #909399;
 
   strong {
-    color: #60a5fa;
+    color: #667eea;
     font-weight: 600;
   }
 
@@ -650,60 +545,59 @@ const goToRegister = () => {
   }
 }
 
-/* ---------- card footer ---------- */
-.card-footer {
-  margin-top: 18px;
+// ---------- 注册链接 ----------
+.register-link {
   text-align: center;
-}
-
-.footer-links {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
-
-  .glass-link {
-    margin-left: 4px;
-    color: #60a5fa;
-    font-weight: 500;
-
-    &:hover { color: #93c5fd; }
-  }
-}
-
-.copyright {
-  margin: 10px 0 0;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.25);
-}
-
-/* ---------- tech tags ---------- */
-.tech-tags {
-  display: flex;
-  gap: 8px;
   margin-top: 18px;
-  flex-wrap: wrap;
-  justify-content: center;
+  font-size: 14px;
+  color: #606266;
+}
 
-  span {
-    padding: 4px 14px;
-    border-radius: 20px;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.55);
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(6px);
+// ---------- 底部 ----------
+.login-footer {
+  margin-top: 20px;
+  text-align: center;
+
+  p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--color-text-secondary, #909399);
+
+    &.copyright {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #c0c4cc;
+    }
   }
 }
 
-/* ---------- responsive ---------- */
-@media (max-width: 480px) {
-  .glass-card {
-    padding: 24px 18px 20px;
-  }
-
-  .brand-title { font-size: 18px; }
-
-  .tech-tags { display: none; }
-
-  .options-right { gap: 8px; }
+// ---------- 动画 ----------
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.1; }
+  50%      { transform: scale(1.1); opacity: 0.15; }
 }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-5px); }
+  75%      { transform: translateX(5px); }
+}
+
+// ---------- 响应式 ----------
+@media (max-width: 900px) {
+  .login-page {
+    flex-direction: column;
+  }
+  .brand-section {
+    padding: 30px 20px;
+    .features-list, .tech-tags { display: none; }
+    .brand-title { font-size: 22px; }
+    .mascot-brand { width: 180px; }
+  }
+  .login-section {
+    width: 100%;
+    flex: 1;
+  }
+}
+
 </style>
+
