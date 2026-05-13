@@ -40,6 +40,9 @@
     <!-- 右侧注册区域 -->
     <div class="register-section">
       <div class="register-box">
+        <!-- 4 个跟随鼠标的卡通吉祥物 -->
+        <MascotEyes class="mascot-wrapper" />
+
         <div class="register-header">
           <h2>创建账号</h2>
           <p class="register-desc">注册以使用舆情分析系统</p>
@@ -173,6 +176,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { User, Lock, View, Hide, DataAnalysis, TrendCharts, Histogram, Cpu, Message, Key } from '@element-plus/icons-vue';
 import apiClient from '@/api/index';
 import { useAuthStore } from '@/store/auth';
+import MascotEyes from '@/components/MascotEyes.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -492,9 +496,16 @@ onUnmounted(() => {
   max-width: 400px;
 }
 
+// 4 个会跟随鼠标的吉祥物 (论文演示彩蛋)
+.mascot-wrapper {
+  width: 220px;
+  margin: 0 auto 8px;
+  display: block;
+}
+
 .register-header {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   
   h2 {
     font-size: 26px;
