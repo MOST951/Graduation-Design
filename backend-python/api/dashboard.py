@@ -17,6 +17,14 @@ from config import config
 # 添加路径
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
+# 论文 4.3.1: Redis 缓存热点数据
+try:
+    from utils.redis_cache import redis_cache
+except Exception:  # pragma: no cover
+    def redis_cache(*_a, **_kw):
+        def _deco(f): return f
+        return _deco
+
 # 导入Spark优化模块
 try:
     from spark.spark_optimizer import (
@@ -87,6 +95,7 @@ def _fetch_real_data():
     return _dashboard_cache
 
 @dashboard_bp.route('/overview', methods=['GET'])
+@redis_cache('dashboard:overview', ttl=60)
 def get_overview():
     """获取概览数据 - 基于数据库统计"""
     data = {
@@ -274,6 +283,7 @@ def get_trend():
     })
 
 @dashboard_bp.route('/realtime', methods=['GET'])
+@redis_cache('dashboard:realtime', ttl=30)
 def get_realtime():
     """获取实时数据流 - 基于真实微博数据"""
     cache = _fetch_real_data()
@@ -325,6 +335,7 @@ def get_realtime():
     })
 
 @dashboard_bp.route('/hot-topics', methods=['GET'])
+@redis_cache('dashboard:hot_topics', ttl=120)  # 论文 4.3.1: 热搜列表是典型热点数据
 def get_hot_topics():
     """获取热门话题 - 基于真实微博热搜"""
     cache = _fetch_real_data()

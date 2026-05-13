@@ -148,6 +148,47 @@ class SparkJobStore:
         self._jobs: Dict[str, SparkJob] = {}
         self._lock = threading.Lock()
         self._load()
+        # 论文 4.3.1: Redis 暂存任务状态 (热点数据/任务状态)
+        # 失败不影响 JSON 主存储; 接口可优先从 Redis 拿到亚毫秒级 job 进度
+        self._redis = self._init_redis()
+
+    def _init_redis(self):
+        try:
+            import redis as _redis
+            client = _redis.Redis(
+                host=os.environ.get('REDIS_HOST', 'localhost'),
+                port=int(os.environ.get('REDIS_PORT', '6379')),
+                password=os.environ.get('REDIS_PASSWORD') or None,
+                db=int(os.environ.get('REDIS_DB', '0')),
+                decode_responses=True,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+            )
+            client.ping()
+            logger.info("SparkJobStore: Redis 任务状态镜像已启用")
+            return client
+        except Exception as e:
+            logger.warning(f"SparkJobStore: Redis 不可用, 仅 JSON 存储: {e}")
+            return None
+
+    def _mirror_to_redis(self, job: 'SparkJob'):
+        if self._redis is None:
+            return
+        try:
+            key = f"spark:job:{job.job_id}"
+            self._redis.setex(key, 3600, json.dumps(job.to_dict(), ensure_ascii=False))
+            # 维护按状态分组的 set, 便于 dashboard 拉 running/completed
+            self._redis.sadd(f"spark:jobs:by_status:{job.status}", job.job_id)
+            # 总作业列表 zset (score=created_at_ts)
+            try:
+                ts = int(datetime.fromisoformat(
+                    (job.created_at or datetime.now().isoformat()).replace('Z', '')
+                ).timestamp())
+            except Exception:
+                ts = int(time.time())
+            self._redis.zadd("spark:jobs:all", {job.job_id: ts})
+        except Exception as e:
+            logger.debug(f"Redis 镜像失败(忽略): {e}")
     
     def _load(self):
         """加载作业记录"""
@@ -176,6 +217,7 @@ class SparkJobStore:
         with self._lock:
             self._jobs[job.job_id] = job
             self._save()
+        self._mirror_to_redis(job)
         return job
     
     def update(self, job: SparkJob) -> SparkJob:
@@ -183,6 +225,7 @@ class SparkJobStore:
         with self._lock:
             self._jobs[job.job_id] = job
             self._save()
+        self._mirror_to_redis(job)
         return job
     
     def get(self, job_id: str) -> Optional[SparkJob]:
