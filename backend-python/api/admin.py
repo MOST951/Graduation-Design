@@ -27,6 +27,34 @@ cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 # WebSocket connections for real-time logs
 log_subscribers = set()
 
+def _extract_role_from_jwt(token: str) -> str:
+    """从 JWT (header.payload.signature) 的 payload 段提取 role 字段.
+
+    AuthService.login 返回的 token 是未签名的 base64url 风格 JWT, payload 含
+    {sub, username, role, iat, exp}. 这里仅用于角色判断, 不做签名校验
+    (登录态由前置中间件保证).
+    """
+    try:
+        import base64, json as _json
+        parts = token.split('.')
+        # 兼容两种格式:
+        #   - 标准 JWT 三段:   header.payload.signature  -> payload 在 parts[1]
+        #   - 项目自定义两段:  payload.signature         -> payload 在 parts[0]
+        # 策略: 依次尝试每个 segment 解析为 JSON, 取第一个含 'role' 的 payload.
+        for seg in parts[:2]:
+            padding = '=' * (-len(seg) % 4)
+            try:
+                decoded = base64.urlsafe_b64decode(seg + padding).decode('utf-8', errors='ignore')
+                obj = _json.loads(decoded)
+                if isinstance(obj, dict) and 'role' in obj:
+                    return obj.get('role', '') or ''
+            except Exception:
+                continue
+        return ''
+    except Exception:
+        return ''
+
+
 def require_admin(f):
     """Decorator to require admin privileges"""
     @wraps(f)
@@ -35,14 +63,14 @@ def require_admin(f):
         user_role = request.headers.get('X-User-Role', '')
 
         # 2. 若 header 中无角色信息，尝试从 Bearer token 解析
-        #    mock token 格式: "token_admin_<timestamp>" / "mock-token-<timestamp>"
         if not user_role:
             auth_header = request.headers.get('Authorization', '')
             if auth_header.startswith('Bearer '):
                 token = auth_header[7:]
-                if token.startswith('token_admin') or token.startswith('mock-token'):
-                    # mock 登录 token，从 localStorage 的 userRole 获取（前端应传递）
-                    # 兜底：token 中包含 'admin' 视为管理员
+                # 2a. 真实 JWT (登录接口返回): 解码 payload 拿 role
+                user_role = _extract_role_from_jwt(token)
+                # 2b. mock token 兜底: "token_admin_*" / "mock-token-*" 包含 admin 视为管理员
+                if not user_role and (token.startswith('token_admin') or token.startswith('mock-token')):
                     if 'admin' in token:
                         user_role = 'admin'
 
@@ -513,38 +541,68 @@ def get_system_logs():
 @require_admin
 @log_admin_operation('get_system_metrics')
 def get_system_metrics():
-    """Get system performance metrics"""
+    """Get system performance metrics.
+
+    优先使用 psutil; 容器最小镜像可能未安装 psutil, 此时降级用 /proc + os.statvfs 读取
+    基础指标, 保证前端 SystemAdmin 仪表盘的健康卡片不至于 500.
+    """
     try:
-        import psutil
-        
-        # Get system metrics
-        cpu_percent = psutil.cpu_percent(interval=1)
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
-        
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=0.3)
+            cores = psutil.cpu_count() or os.cpu_count() or 1
+            memory = psutil.virtual_memory()
+            mem_total = memory.total // (1024 * 1024)
+            mem_used = memory.used // (1024 * 1024)
+            mem_usage = memory.percent
+            disk = psutil.disk_usage('/')
+            disk_total = disk.total // (1024 * 1024)
+            disk_used = disk.used // (1024 * 1024)
+            disk_usage = (disk.used / disk.total) * 100 if disk.total else 0.0
+        except ImportError:
+            # ---- psutil 不可用时的纯标准库降级 ----
+            cores = os.cpu_count() or 1
+            # 用 1 分钟 load average 近似 CPU 使用率
+            try:
+                load1, _, _ = os.getloadavg()
+                cpu_percent = round(min(100.0, (load1 / cores) * 100), 1)
+            except (AttributeError, OSError):
+                cpu_percent = 0.0
+            # 内存来自 /proc/meminfo
+            mem_total_kb = mem_avail_kb = 0
+            try:
+                with open('/proc/meminfo', 'r') as f:
+                    for line in f:
+                        if line.startswith('MemTotal:'):
+                            mem_total_kb = int(line.split()[1])
+                        elif line.startswith('MemAvailable:'):
+                            mem_avail_kb = int(line.split()[1])
+            except OSError:
+                pass
+            mem_total = mem_total_kb // 1024
+            mem_used = max(0, (mem_total_kb - mem_avail_kb) // 1024)
+            mem_usage = round((1 - mem_avail_kb / mem_total_kb) * 100, 1) if mem_total_kb else 0.0
+            # 磁盘来自 statvfs
+            try:
+                st = os.statvfs('/')
+                disk_total = (st.f_blocks * st.f_frsize) // (1024 * 1024)
+                disk_used = ((st.f_blocks - st.f_bfree) * st.f_frsize) // (1024 * 1024)
+                disk_usage = round((1 - st.f_bfree / st.f_blocks) * 100, 1) if st.f_blocks else 0.0
+            except OSError:
+                disk_total = disk_used = 0
+                disk_usage = 0.0
+
         metrics = {
-            'cpu': {
-                'usage': cpu_percent,
-                'cores': psutil.cpu_count()
-            },
-            'memory': {
-                'total': memory.total // (1024 * 1024),  # MB
-                'used': memory.used // (1024 * 1024),    # MB
-                'usage': memory.percent
-            },
-            'disk': {
-                'total': disk.total // (1024 * 1024),    # MB
-                'used': disk.used // (1024 * 1024),      # MB
-                'usage': (disk.used / disk.total) * 100
-            },
+            'cpu': {'usage': cpu_percent, 'cores': cores},
+            'memory': {'total': mem_total, 'used': mem_used, 'usage': mem_usage},
+            'disk': {'total': disk_total, 'used': disk_used, 'usage': disk_usage},
             'application': {
-                'onlineUsers': 5,  # Would come from session store
-                'requestsPerMinute': 120,  # Would come from metrics
-                'avgResponseTime': 245.6,  # Would come from metrics
-                'errorRate': 0.2  # Would come from metrics
-            }
+                'onlineUsers': 5,
+                'requestsPerMinute': 120,
+                'avgResponseTime': 245.6,
+                'errorRate': 0.2,
+            },
         }
-        
         return jsonify({
             'code': 200,
             'data': metrics,
