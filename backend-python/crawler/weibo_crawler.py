@@ -427,14 +427,17 @@ class WeiboCrawler:
         card_pattern = re.compile(
             r'<div\s+class="card-wrap"[^>]*mid="(?P<mid>\d+)"[^>]*>'
             r'(?P<body>.*?)'
-            r'(?=<div\s+class="card-wrap"|<div\s+class="m-page"|</div>\s*</div>\s*</div>\s*</body>)',
+            r'(?=<div\s+class="card-wrap"|<div\s+class="m-page"|\Z)',
             re.DOTALL
         )
-        re_user = re.compile(r'<a[^>]*class="name"[^>]*href="(?P<href>[^"]+)"[^>]*nick-name="(?P<nick>[^"]*)"', re.DOTALL)
-        re_user_fallback = re.compile(r'<a[^>]*class="name"[^>]*href="(?P<href>[^"]+)"[^>]*>(?P<nick>[^<]+)</a>', re.DOTALL)
+        # 用户 a 标签 (class 顺序 / 属性顺序在不同卡片可能不同, 故先抓整体 tag 再分别取属性)
+        re_user_tag = re.compile(r'<a\b(?P<attrs>[^>]*\bclass="name"[^>]*)>(?P<inner>[^<]+)</a>', re.DOTALL)
+        re_attr_href = re.compile(r'\bhref="([^"]+)"')
+        re_attr_nick = re.compile(r'\bnick-name="([^"]*)"')
         re_uid = re.compile(r'(?:weibo\.com|com)/(?:u/)?(\d{6,})')
-        re_text_full = re.compile(r'<p[^>]*class="txt"[^>]*node-type="feed_list_content_full"[^>]*>(?P<txt>.*?)</p>', re.DOTALL)
-        re_text_short = re.compile(r'<p[^>]*class="txt"[^>]*node-type="feed_list_content"[^>]*>(?P<txt>.*?)</p>', re.DOTALL)
+        # 正文 (顺序: 优先 _full 隐藏完整段, 否则取常规)
+        re_text_full = re.compile(r'<p[^>]*node-type="feed_list_content_full"[^>]*>(?P<txt>.*?)</p>', re.DOTALL)
+        re_text_short = re.compile(r'<p[^>]*node-type="feed_list_content"[^>]*>(?P<txt>.*?)</p>', re.DOTALL)
         re_time = re.compile(r'<div\s+class="from">\s*<a[^>]*>([^<]+)</a>', re.DOTALL)
         re_act_li = re.compile(r'<li[^>]*>\s*<a[^>]*action-type="feed_list_(?:forward|comment|like)"[^>]*>(?P<inner>.*?)</a>', re.DOTALL)
         # 移除标签后取文本里的数字
@@ -445,15 +448,19 @@ class WeiboCrawler:
             mid = m.group('mid')
             body = m.group('body')
 
-            # 用户
-            mu = re_user.search(body) or re_user_fallback.search(body)
+            # 用户: 抓 <a class="name" ...>nick</a> 整 tag 再分别取属性
+            mu = re_user_tag.search(body)
             if not mu:
                 continue
-            href = mu.group('href')
-            nick = mu.group('nick').strip()
+            attrs = mu.group('attrs')
+            inner_nick = mu.group('inner').strip()
+            href_m = re_attr_href.search(attrs)
+            nick_m = re_attr_nick.search(attrs)
+            href = href_m.group(1) if href_m else ''
+            nick = (nick_m.group(1) if nick_m else inner_nick).strip()
             uid_m = re_uid.search(href)
             uid = uid_m.group(1) if uid_m else ''
-            if not href.startswith('http'):
+            if href and not href.startswith('http'):
                 profile_url = ('https:' + href) if href.startswith('//') else ('https://weibo.com' + href if href.startswith('/') else href)
             else:
                 profile_url = href
