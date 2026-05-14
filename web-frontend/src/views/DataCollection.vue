@@ -573,8 +573,13 @@ const updatePipelineFromTask = (task: DataflowTask) => {
     pipelineStages[0].status = task.phases.crawl?.status || 'pending';
     pipelineStages[0].progress = task.phases.crawl?.progress || 0;
     
-    // HDFS存储（跟随爬虫阶段）
-    if (task.phases.crawl?.status === 'completed') {
+    // HDFS 存储: 优先读真实的 phases.hdfs；后端旧版本没有该字段时回退跟随 crawl
+    const hdfsPhase = (task.phases as any).hdfs;
+    if (hdfsPhase && hdfsPhase.status) {
+      pipelineStages[1].status = hdfsPhase.status;
+      pipelineStages[1].progress = hdfsPhase.progress || (hdfsPhase.status === 'completed' ? 100 : 0);
+      pipelineStages[1].count = task.collected;
+    } else if (task.phases.crawl?.status === 'completed') {
       pipelineStages[1].status = 'completed';
       pipelineStages[1].progress = 100;
       pipelineStages[1].count = task.collected;

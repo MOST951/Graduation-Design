@@ -1307,6 +1307,7 @@ def collect_and_process():
             'error': None,
             'phases': {
                 'crawl': {'status': 'running', 'progress': 0},
+                'hdfs': {'status': 'pending', 'progress': 0},
                 'clean': {'status': 'pending', 'progress': 0},
                 'analyze': {'status': 'pending', 'progress': 0},
                 'rank': {'status': 'pending', 'progress': 0},
@@ -1396,6 +1397,43 @@ def collect_and_process():
                     save_metadata()
                     return
                 
+                # ========== 阶段1.5: HDFS 原始数据上传 ==========
+                # 把爬虫产出的本地 JSON 通过 WebHDFS 落到 hdfs:///weibo/raw/dt=YYYY-MM-DD/{task_id}.json
+                # 失败时降级为本地路径继续走 Spark, 不阻塞流水线 (HDFS phase 标记 failed)
+                logger.info(f"[{task_id}] 阶段1.5: 上传原始数据到 HDFS...")
+                task_info['phase'] = 'hdfs'
+                task_info['phases']['hdfs']['status'] = 'running'
+                task_info['progress'] = 21
+                spark_input_path = result_file  # 默认本地, 上传成功后切到 HDFS URI
+                try:
+                    from hdfs import InsecureClient
+                    hdfs_http = os.environ.get('HDFS_HTTP_URL', 'http://namenode:50070')
+                    hdfs_rpc = os.environ.get('HDFS_DEFAULT_FS', 'hdfs://namenode:9000')
+                    hdfs_user = os.environ.get('HDFS_USER', 'root')
+                    client = InsecureClient(hdfs_http, user=hdfs_user, timeout=20)
+                    date_part = datetime.now().strftime('%Y-%m-%d')
+                    hdfs_dir = f'/weibo/raw/dt={date_part}'
+                    hdfs_path = f'{hdfs_dir}/{task_id}.json'
+                    client.makedirs(hdfs_dir)
+                    client.upload(hdfs_path, result_file, overwrite=True)
+                    uploaded_status = client.status(hdfs_path)
+                    task_info['hdfs_path'] = f'{hdfs_rpc}{hdfs_path}'
+                    task_info['hdfs_bytes'] = uploaded_status.get('length', 0)
+                    task_info['phases']['hdfs']['progress'] = 100
+                    task_info['phases']['hdfs']['status'] = 'completed'
+                    task_info['progress'] = 24
+                    spark_input_path = task_info['hdfs_path']
+                    logger.info(
+                        f"[{task_id}] HDFS 上传成功: {task_info['hdfs_path']} "
+                        f"({task_info['hdfs_bytes']} bytes)"
+                    )
+                except Exception as hdfs_err:
+                    logger.warning(
+                        f"[{task_id}] HDFS 上传失败, 降级使用本地路径继续: {hdfs_err}"
+                    )
+                    task_info['phases']['hdfs']['status'] = 'failed'
+                    task_info['hdfs_error'] = str(hdfs_err)
+                
                 # ========== 阶段2: 数据清洗 ==========
                 logger.info(f"[{task_id}] 阶段2: 开始数据清洗...")
                 task_info['phase'] = 'clean'
@@ -1406,9 +1444,9 @@ def collect_and_process():
                 from services.spark_service import get_spark_service, JobStatus
                 spark_service = get_spark_service()
                 
-                # 提交清洗作业
+                # 提交清洗作业 (优先用 HDFS 路径, 失败时退回本地文件)
                 clean_job = spark_service.submit_cleaning_job(
-                    input_path=result_file,
+                    input_path=spark_input_path,
                     output_path=f'/weibo/cleaned/{task_id}',
                     crawl_task_id=task_id
                 )
