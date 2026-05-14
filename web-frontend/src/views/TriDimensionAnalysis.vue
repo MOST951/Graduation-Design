@@ -1258,6 +1258,31 @@ onMounted(() => {
 
 .tri-dimension-module {
   padding: $spacing-md;
+  // 论文 3.x: dashboard 风格 — 整页占满 main-content, 无下方留白
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  overflow: hidden;
+
+  > .action-bar { flex-shrink: 0; }
+
+  > .main-row {
+    flex: 1;
+    min-height: 0;
+    margin: 0 !important;
+  }
+  > .main-row > .el-col {
+    height: 100%;
+    overflow-y: auto;
+    padding-bottom: $spacing-md;
+    &::-webkit-scrollbar { width: 6px; }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 3px;
+    }
+    &::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
+  }
 }
 
 .action-bar {
@@ -1543,19 +1568,12 @@ onMounted(() => {
   align-items: flex-start;
 }
 .sidebar-col {
-  // 论文 3.x: 侧栏在视口内独立滚动，不撑高整页（消除主内容下方留白）
+  // dashboard 模式: col 自身是滚动容器
   .sidebar-sticky {
-    position: sticky;
-    top: $spacing-base;
-    max-height: calc(100vh - 110px);
-    overflow-y: auto;
-    padding-right: 4px;
-    &::-webkit-scrollbar { width: 6px; }
-    &::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.15);
-      border-radius: 3px;
-    }
-    &::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 }
 </style>

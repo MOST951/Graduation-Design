@@ -1450,7 +1450,33 @@ onMounted(() => {
 .sentiment-analysis-module {
   padding: $spacing-md;
   background: $bg-page;
-  min-height: calc(100vh - 120px);
+  // 论文 3.x: dashboard 风格 — 整页占满 main-content, 无下方留白
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  overflow: hidden;
+
+  > .stats-cards,
+  > .cascade-row,
+  > .pipeline-progress-card { flex-shrink: 0; }
+
+  > .main-row {
+    flex: 1;
+    min-height: 0;
+    margin: 0 !important;
+  }
+  > .main-row > .el-col {
+    height: 100%;
+    overflow-y: auto;
+    padding-bottom: $spacing-md;
+    &::-webkit-scrollbar { width: 6px; }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 3px;
+    }
+    &::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
+  }
 }
 
 // 顶部统计卡片
@@ -2059,23 +2085,16 @@ onMounted(() => {
   align-items: flex-start;
 }
 .sidebar-col {
-  // 侧栏在视口内独立滚动，不撑高整页
+  // dashboard 模式: col 自身已是滚动容器，wrapper 仅为语义用
   .sidebar-sticky {
-    position: sticky;
-    top: $spacing-base;
+    position: static;
+    max-height: none;
+    overflow: visible;
     display: flex;
     flex-direction: column;
     gap: $spacing-base;
-    max-height: calc(100vh - 110px);
-    overflow-y: auto;
-    padding-right: 4px;
+    padding-right: 0;
     > * { flex-shrink: 0; }
-    &::-webkit-scrollbar { width: 6px; }
-    &::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.15);
-      border-radius: 3px;
-    }
-    &::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
   }
 }
 </style>

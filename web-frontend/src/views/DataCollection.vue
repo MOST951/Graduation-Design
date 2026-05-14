@@ -1096,6 +1096,35 @@ onUnmounted(() => {
 
 .data-collection-module {
   padding: $spacing-md;
+  // 论文 3.x: dashboard 风格 — 整页占满 main-content 可见高度，无下方留白
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-md;
+  overflow: hidden;
+
+  // 顶部固定区域不被压缩
+  > .dataflow-pipeline,
+  > .action-bar,
+  > .summary-card { flex-shrink: 0; }
+
+  // 主双栏区撑满剩余空间, col 各自独立滚动
+  > .main-row {
+    flex: 1;
+    min-height: 0;
+    margin: 0 !important;
+  }
+  > .main-row > .el-col {
+    height: 100%;
+    overflow-y: auto;
+    padding-bottom: $spacing-md;
+    &::-webkit-scrollbar { width: 6px; }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 3px;
+    }
+    &::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
+  }
 }
 
 // 数据流可视化样式
@@ -1473,19 +1502,12 @@ onUnmounted(() => {
   align-items: flex-start;
 }
 .sidebar-col {
-  // 侧栏在视口内独立滚动，不撑高整页
+  // dashboard 模式: col 自身已是滚动容器，wrapper 仅为语义用，不再 sticky/限高
   .sidebar-sticky {
-    position: sticky;
-    top: $spacing-base;
-    max-height: calc(100vh - 110px);
-    overflow-y: auto;
-    padding-right: 4px;
-    &::-webkit-scrollbar { width: 6px; }
-    &::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.15);
-      border-radius: 3px;
-    }
-    &::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 }
 .task-id-cell {

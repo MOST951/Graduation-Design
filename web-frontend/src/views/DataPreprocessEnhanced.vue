@@ -1309,7 +1309,15 @@ onMounted(async () => {
 .preprocess-module {
   padding: $spacing-md;
   background: $bg-page;
-  min-height: calc(100vh - 120px);
+  // 论文 3.x: dashboard 风格 — 整页占满 main-content, 无下方留白
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-base;
+  overflow: hidden;
+
+  > .status-bar { flex-shrink: 0; }
+  > .preprocess-layout { flex: 1; min-height: 0; }
 }
 
 .status-bar {
@@ -1340,7 +1348,8 @@ onMounted(async () => {
 .preprocess-layout {
   display: flex;
   gap: $spacing-base;
-  align-items: flex-start;
+  align-items: stretch; // dashboard: 双栏等高
+  min-height: 0;
 }
 
 .operation-panel {
@@ -1349,13 +1358,10 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: $spacing-sm;
-  // 论文 3.x: 侧栏在视口内独立滚动，不撑高整页（消除主内容下方留白）
-  position: sticky;
-  top: $spacing-base;
-  max-height: calc(100vh - 110px);
+  // dashboard 风格: 侧栏在视口内独立滚动，主区域填满高度
+  height: 100%;
   overflow-y: auto;
   padding-right: 4px;
-  // 关键: 阻止 flex 容器把子卡片压扁 — 让超出部分通过 overflow-y 自然滚动
   > * { flex-shrink: 0; }
   &::-webkit-scrollbar { width: 6px; }
   &::-webkit-scrollbar-thumb {
@@ -1396,8 +1402,16 @@ onMounted(async () => {
 .preview-panel {
   flex: 1;
   min-width: 0;
-  position: sticky;
-  top: $spacing-base;
+  // dashboard: 主预览区独立滚动
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 4px;
+  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
 }
 
 .data-toolbar {
