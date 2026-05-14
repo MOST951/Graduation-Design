@@ -1160,9 +1160,19 @@ onUnmounted(() => {
   align-items: flex-start;
 }
 .sidebar-col {
+  // 侧栏在视口内独立滚动，不撑高整页
   .sidebar-sticky {
     position: sticky;
     top: $spacing-base;
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
+    padding-right: 4px;
+    &::-webkit-scrollbar { width: 6px; }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 3px;
+    }
+    &::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
   }
 }
 .text-muted { color: $text-secondary; }
