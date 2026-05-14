@@ -101,23 +101,23 @@ class WeiboCrawler:
                     cookie_data = json.load(f)
                     
                     # 支持两种格式：字典或列表
-                    if isinstance(cookie_data, dict):
-                        # 单个cookie字典
-                        if cookie_data.get('SUB'):
-                            cookie_str = '; '.join([f"{k}={v}" for k, v in cookie_data.items() if v and not k.startswith('_')])
-                            if cookie_str:
-                                self.session.headers['Cookie'] = cookie_str
-                                logger.info(f"已加载Cookie (SUB: {cookie_data.get('SUB')[:20]}...)")
-                                return
-                    elif isinstance(cookie_data, list):
-                        # cookie列表
-                        for cookie_dict in cookie_data:
-                            if cookie_dict.get('SUB'):
-                                cookie_str = '; '.join([f"{k}={v}" for k, v in cookie_dict.items() if v and not k.startswith('_')])
-                                if cookie_str:
-                                    self.session.headers['Cookie'] = cookie_str
-                                    logger.info("已加载Cookie")
-                                    return
+                    candidates = [cookie_data] if isinstance(cookie_data, dict) else (cookie_data or [])
+                    for cookie_dict in candidates:
+                        if not isinstance(cookie_dict, dict) or not cookie_dict.get('SUB'):
+                            continue
+                        cookie_str = '; '.join([f"{k}={v}" for k, v in cookie_dict.items() if v and not k.startswith('_')])
+                        if not cookie_str:
+                            continue
+                        self.session.headers['Cookie'] = cookie_str
+                        # 同步 _user_agent / _referer 等浏览器取证头，保证与导出 cookie 处于同一会话指纹
+                        ua = cookie_dict.get('_user_agent')
+                        if ua:
+                            self.session.headers['User-Agent'] = ua
+                        ref = cookie_dict.get('_referer')
+                        if ref:
+                            self.session.headers['Referer'] = ref
+                        logger.info(f"已加载Cookie (SUB: {cookie_dict.get('SUB','')[:20]}..., UA: {(ua or '')[:50]})")
+                        return
         except Exception as e:
             logger.warning(f"加载Cookie失败: {e}")
         
@@ -389,8 +389,10 @@ class WeiboCrawler:
             return []
 
         url = f"https://s.weibo.com/weibo?q={quote(keyword)}&page={page}"
+        # 优先用 cookies.json 里随会话导出的 UA, 保证指纹一致
+        ua = self.session.headers.get('User-Agent') or 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': ua,
             'Accept': 'text/html,application/xhtml+xml',
             'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
             'Referer': 'https://s.weibo.com/',
