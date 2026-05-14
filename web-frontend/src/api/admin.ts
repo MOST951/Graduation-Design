@@ -182,8 +182,35 @@ export async function getUsers(params?: {
   sortOrder?: 'asc' | 'desc';
 }): Promise<{ list: User[]; total: number }> {
   try {
-    const response = await api.get<{ list: User[]; total: number }>('/admin/users', { params });
-    return response.data;
+    const response = await api.get<any>('/admin/users', { params });
+    // 兼容多种后端响应形态:
+    //   ①  { code, data: [users] }          ← 当前 Flask 后端
+    //   ②  { code, data: { list, total } }
+    //   ③  { list, total }                  ← 原期望
+    const body = response.data;
+    const payload = body?.data ?? body;
+    // 后端 admin user 用 role: string, 这里 normalize 成前端 User.roles: Role[]
+    const normalize = (u: any): User => ({
+      ...u,
+      id: String(u.id),
+      roles: Array.isArray(u.roles) ? u.roles : (u.role ? [{
+        id: `role-${u.role}`,
+        name: u.role === 'admin' ? '系统管理员' : '普通用户',
+        code: u.role,
+        description: '',
+        permissions: u.role === 'admin' ? ['*'] : [],
+        isSystem: true,
+        createdAt: u.createdAt || new Date().toISOString(),
+      }] : []),
+    });
+    if (Array.isArray(payload)) {
+      const list = payload.map(normalize);
+      return { list, total: list.length };
+    }
+    if (payload && typeof payload === 'object' && 'list' in payload) {
+      return { list: payload.list.map(normalize), total: payload.total ?? payload.list.length };
+    }
+    return { list: [], total: 0 };
   } catch (error) {
     await sleep(300);
     return {
