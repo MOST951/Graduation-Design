@@ -2069,6 +2069,7 @@ onMounted(() => {
     max-height: calc(100vh - 110px);
     overflow-y: auto;
     padding-right: 4px;
+    > * { flex-shrink: 0; }
     &::-webkit-scrollbar { width: 6px; }
     &::-webkit-scrollbar-thumb {
       background: rgba(0, 0, 0, 0.15);

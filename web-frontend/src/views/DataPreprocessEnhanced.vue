@@ -1355,6 +1355,8 @@ onMounted(async () => {
   max-height: calc(100vh - 110px);
   overflow-y: auto;
   padding-right: 4px;
+  // 关键: 阻止 flex 容器把子卡片压扁 — 让超出部分通过 overflow-y 自然滚动
+  > * { flex-shrink: 0; }
   &::-webkit-scrollbar { width: 6px; }
   &::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.15);
