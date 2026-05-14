@@ -371,58 +371,173 @@ class WeiboCrawler:
                             yield self._parse_weibo(mblog, keyword)
     
     def _search_weibo_pc(self, keyword: str, page: int = 1) -> List[Dict]:
-        """使用PC端API搜索微博（需要Cookie）"""
+        """
+        使用 s.weibo.com PC 搜索结果页（HTML）解析真实微博。
+
+        历史 bug：旧实现调的是 ajax/feed/hottimeline 与 ajax/statuses/friends_timeline，
+        前者是“推荐流”、后者是“关注 timeline”，跟搜索关键词没有任何关系，
+        且这两个 API 在大多数 cookie 状态下返回 statuses=[]。导致 search_weibo()
+        对外永远返回空，整个采集链路 fallback 到 _generate_keyword_data 模板兜底
+        （表现为每次稳定 75 条全合成数据）。
+
+        新实现：直接请求 https://s.weibo.com/weibo?q={kw}&page={n}，纯 regex
+        解析卡片区域，避免引入 bs4/lxml 等运行时依赖。需要 cookie 中包含 SUB。
+        """
+        cookie = self.session.headers.get('Cookie', '')
+        if not cookie or 'SUB=' not in cookie:
+            logger.warning("s.weibo.com 搜索需要登录 Cookie (SUB)")
+            return []
+
+        url = f"https://s.weibo.com/weibo?q={quote(keyword)}&page={page}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Referer': 'https://s.weibo.com/',
+            'Cookie': cookie,
+        }
+
         try:
-            # 使用session的Cookie
-            cookie = self.session.headers.get('Cookie', '')
-            if not cookie or 'SUB=' not in cookie:
-                logger.warning("PC端搜索需要Cookie")
-                return []
-            
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'Referer': 'https://weibo.com/',
-                'Cookie': cookie,
-                'X-Requested-With': 'XMLHttpRequest',
-            }
-            
-            # API列表 - 按优先级尝试
-            apis = [
-                f"https://weibo.com/ajax/feed/hottimeline?since_id=0&refresh=0&group_id=102803&containerid=102803&extparam=discover%7Cnew_feed&max_id=0&count=20",
-                f"https://weibo.com/ajax/statuses/friends_timeline?since_id=0&count=20",
-            ]
-            
-            for api_url in apis:
-                try:
-                    time.sleep(random.uniform(1, 2))
-                    response = requests.get(api_url, headers=headers, timeout=15)
-                    logger.info(f"尝试API: {api_url[:60]}... 状态码: {response.status_code}")
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        statuses = data.get('statuses', []) or data.get('data', {}).get('statuses', [])
-                        
-                        if statuses:
-                            logger.info(f"成功获取 {len(statuses)} 条真实微博")
-                            result = []
-                            for mblog in statuses[:10]:
-                                parsed = self._parse_weibo(mblog, keyword)
-                                screen_name = parsed.get('user', {}).get('screen_name', '')
-                                if screen_name:
-                                    logger.info(f"真实用户: @{screen_name}")
-                                    result.append(parsed)
-                            if result:
-                                return result
-                except Exception as e:
-                    logger.warning(f"API请求失败: {e}")
-                    continue
-                    
+            time.sleep(random.uniform(1, 2))
+            resp = requests.get(url, headers=headers, timeout=15)
         except Exception as e:
-            logger.warning(f"PC端搜索失败: {e}")
-        
-        return []
+            logger.warning(f"s.weibo.com 请求失败: {e}")
+            return []
+
+        if resp.status_code != 200:
+            logger.warning(f"s.weibo.com 返回 {resp.status_code}")
+            return []
+
+        html = resp.text
+        # 登录拦截 / 风控
+        if 'passport.weibo.com/visitor' in html[:5000] or 'passport.weibo.com/sso' in html[:5000]:
+            logger.warning("s.weibo.com 被重定向至登录/访客系统，Cookie 可能已失效")
+            return []
+
+        result = self._parse_search_html(html, keyword)
+        if result:
+            logger.info(f"s.weibo.com 搜索 '{keyword}' page={page} 解析得到 {len(result)} 条真实微博")
+        else:
+            logger.info(f"s.weibo.com '{keyword}' page={page} 未解析到卡片（页面结构可能变化）")
+        return result
+
+    def _parse_search_html(self, html: str, keyword: str) -> List[Dict]:
+        """从 s.weibo.com 搜索结果页 HTML 中正则抽取微博卡片"""
+        # 每张微博一个 card-wrap, 带 mid; 用懒匹配切到下一张 card-wrap 或分页区
+        card_pattern = re.compile(
+            r'<div\s+class="card-wrap"[^>]*mid="(?P<mid>\d+)"[^>]*>'
+            r'(?P<body>.*?)'
+            r'(?=<div\s+class="card-wrap"|<div\s+class="m-page"|</div>\s*</div>\s*</div>\s*</body>)',
+            re.DOTALL
+        )
+        re_user = re.compile(r'<a[^>]*class="name"[^>]*href="(?P<href>[^"]+)"[^>]*nick-name="(?P<nick>[^"]*)"', re.DOTALL)
+        re_user_fallback = re.compile(r'<a[^>]*class="name"[^>]*href="(?P<href>[^"]+)"[^>]*>(?P<nick>[^<]+)</a>', re.DOTALL)
+        re_uid = re.compile(r'(?:weibo\.com|com)/(?:u/)?(\d{6,})')
+        re_text_full = re.compile(r'<p[^>]*class="txt"[^>]*node-type="feed_list_content_full"[^>]*>(?P<txt>.*?)</p>', re.DOTALL)
+        re_text_short = re.compile(r'<p[^>]*class="txt"[^>]*node-type="feed_list_content"[^>]*>(?P<txt>.*?)</p>', re.DOTALL)
+        re_time = re.compile(r'<div\s+class="from">\s*<a[^>]*>([^<]+)</a>', re.DOTALL)
+        re_act_li = re.compile(r'<li[^>]*>\s*<a[^>]*action-type="feed_list_(?:forward|comment|like)"[^>]*>(?P<inner>.*?)</a>', re.DOTALL)
+        # 移除标签后取文本里的数字
+        re_strip = re.compile(r'<[^>]+>')
+
+        results = []
+        for m in card_pattern.finditer(html):
+            mid = m.group('mid')
+            body = m.group('body')
+
+            # 用户
+            mu = re_user.search(body) or re_user_fallback.search(body)
+            if not mu:
+                continue
+            href = mu.group('href')
+            nick = mu.group('nick').strip()
+            uid_m = re_uid.search(href)
+            uid = uid_m.group(1) if uid_m else ''
+            if not href.startswith('http'):
+                profile_url = ('https:' + href) if href.startswith('//') else ('https://weibo.com' + href if href.startswith('/') else href)
+            else:
+                profile_url = href
+
+            # 正文 (优先取 _full, 否则取 short)
+            mt = re_text_full.search(body) or re_text_short.search(body)
+            if not mt:
+                continue
+            text_html = mt.group('txt')
+            text = re_strip.sub('', text_html)
+            text = re.sub(r'\s+', ' ', text).strip()
+            if not text:
+                continue
+
+            # 时间
+            mtime = re_time.search(body)
+            created_at = mtime.group(1).strip() if mtime else ''
+
+            # 互动数 (转/评/赞)
+            counts = []
+            for am in re_act_li.finditer(body):
+                inner_txt = re_strip.sub('', am.group('inner'))
+                inner_txt = inner_txt.strip()
+                # "转发 12" / "评论" / "1.2万"
+                num = self._extract_count(inner_txt)
+                counts.append(num)
+            counts = (counts + [0, 0, 0])[:3]
+            reposts_count, comments_count, attitudes_count = counts
+
+            results.append({
+                'id': mid,
+                'mid': mid,
+                'text': text,
+                'text_raw': text_html,
+                'source': '微博搜索',
+                'created_at': created_at,
+                'user': {
+                    'id': uid,
+                    'screen_name': nick,
+                    'profile_url': profile_url,
+                    'followers_count': 0,
+                    'friends_count': 0,
+                    'statuses_count': 0,
+                    'verified': False,
+                    'verified_type': -1,
+                    'description': '',
+                    'gender': '',
+                    'location': '',
+                },
+                'reposts_count': reposts_count,
+                'comments_count': comments_count,
+                'attitudes_count': attitudes_count,
+                'pics': [],
+                'video_url': None,
+                'is_long_text': False,
+                'keyword': keyword,
+                'crawl_time': datetime.now().isoformat(),
+                'sentiment': None,
+                'sentiment_score': None,
+            })
+
+        return results
+
+    @staticmethod
+    def _extract_count(text: str) -> int:
+        """从 '转发 1.2万' / '评论 0' / '12345' 这种文本里抽取整数计数"""
+        if not text:
+            return 0
+        # 匹配 "1.2万" / "12万" / "1234"
+        m = re.search(r'([\d.]+)\s*([万亿千])?', text.replace(',', ''))
+        if not m:
+            return 0
+        try:
+            num = float(m.group(1))
+        except ValueError:
+            return 0
+        unit = m.group(2)
+        if unit == '万':
+            num *= 10000
+        elif unit == '亿':
+            num *= 100000000
+        elif unit == '千':
+            num *= 1000
+        return int(num)
     
     def get_topic_weibo(self, topic: str, page: int = 1) -> Generator[Dict, None, None]:
         """
