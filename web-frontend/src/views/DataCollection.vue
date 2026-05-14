@@ -387,7 +387,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, nextTick, computed, watch } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, onActivated, nextTick, computed, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { ElMessage } from 'element-plus';
 import { 
@@ -1081,6 +1081,48 @@ onMounted(async () => {
     currentPhase.value = 'crawl';
     pipelineStages[0].status = 'running';
     addLog('info', `检测到运行中的任务: ${running.id}，自动恢复监控`);
+  }
+});
+
+// keep-alive 重新激活时: 防止 phase 卡在旧状态 (如“Spark清洗中” 但后端已 idle)
+onActivated(async () => {
+  // 若 UI 认为还在运行, 但轮询已被清理, 则主动拉一次真实状态判断
+  if (currentPhase.value !== 'idle' && currentPhase.value !== 'done' && !dataflowTimer) {
+    if (dataflowTaskId.value) {
+      try {
+        const status = await getDataflowTaskStatus(dataflowTaskId.value);
+        if (status.status === 'completed') {
+          // 任务已完成, 重置 UI
+          isRunning.value = false;
+          isPaused.value = false;
+          currentPhase.value = 'done';
+          updatePipelineFromTask(status);
+          addLog('success', '检测到任务已完成，状态已同步');
+        } else if (status.status === 'failed') {
+          isRunning.value = false;
+          isPaused.value = false;
+          currentPhase.value = 'idle';
+          addLog('error', `任务已失败: ${status.error || ''}`);
+        } else if (status.status === 'running') {
+          // 任务仍在跑, 重启轮询
+          startDataflowPolling();
+          addLog('info', '重新连接任务轮询');
+        }
+      } catch {
+        // 后端查不到任务 (已过期 / 重启) — 重置 UI
+        isRunning.value = false;
+        isPaused.value = false;
+        currentPhase.value = 'idle';
+        resetPipelineStages();
+        addLog('warning', '未能获取任务状态，已重置为空闲');
+      }
+    } else {
+      // 没有 taskId 却显示“运行中” — 是孤儿状态, 直接重置
+      isRunning.value = false;
+      isPaused.value = false;
+      currentPhase.value = 'idle';
+      resetPipelineStages();
+    }
   }
 });
 
