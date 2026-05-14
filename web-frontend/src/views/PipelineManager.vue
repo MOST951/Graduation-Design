@@ -59,9 +59,10 @@
     </el-card>
 
     <!-- 参数配置 + 状态信息 -->
-    <el-row :gutter="20" style="margin-top: 16px">
+    <el-row :gutter="20" style="margin-top: 16px" class="main-row">
       <!-- 参数配置 -->
-      <el-col :span="8">
+      <el-col :span="8" class="sidebar-col">
+       <div class="sidebar-sticky">
         <el-card header="执行参数" shadow="hover" class="config-card">
           <el-form label-position="top" size="default">
             <el-form-item label="最大处理条数">
@@ -119,6 +120,7 @@
             </div>
           </div>
         </el-card>
+       </div>
       </el-col>
 
       <!-- 运行状态 -->
@@ -211,8 +213,8 @@
               </div>
             </div>
           </template>
-          <el-table :data="historyRecords" stripe size="small" max-height="300">
-            <el-table-column prop="batch_id" label="批次ID" width="200" show-overflow-tooltip />
+          <el-table :data="historyRecords" stripe size="small" max-height="320">
+            <el-table-column prop="batch_id" label="批次ID" min-width="170" show-overflow-tooltip />
             <el-table-column label="状态" width="80" align="center">
               <template #default="{ row }">
                 <el-tag :type="row.status === 'completed' ? 'success' : row.status === 'failed' ? 'danger' : 'warning'" size="small">
@@ -220,16 +222,17 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="processed" label="处理条数" width="90" align="center" />
-            <el-table-column prop="duration" label="耗时" width="90" align="center">
+            <el-table-column prop="processed" label="条数" width="70" align="center" />
+            <el-table-column prop="duration" label="耗时" width="80" align="center">
               <template #default="{ row }">{{ row.duration ? row.duration + 'ms' : '-' }}</template>
             </el-table-column>
-            <el-table-column prop="time" label="执行时间" width="170" />
-            <el-table-column label="操作" width="120" align="center">
+            <el-table-column prop="time" label="执行时间" width="160" />
+            <el-table-column label="操作" width="100" align="center" fixed="right">
               <template #default="{ row }">
                 <el-button v-if="row.status === 'failed'" size="small" type="warning" @click="retryFromStage(row)">
-                  断点续跑
+                  续跑
                 </el-button>
+                <span v-else class="text-muted">-</span>
               </template>
             </el-table-column>
           </el-table>
@@ -1151,4 +1154,16 @@ onUnmounted(() => {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+// 论文 3.x: 优化排版 — 左侧"执行参数+数据库统计"在右侧表格滚动时跟随
+.main-row {
+  align-items: flex-start;
+}
+.sidebar-col {
+  .sidebar-sticky {
+    position: sticky;
+    top: $spacing-base;
+  }
+}
+.text-muted { color: $text-secondary; }
 </style>

@@ -65,9 +65,10 @@
       </div>
     </div>
     
-    <el-row :gutter="20">
+    <el-row :gutter="20" class="main-row">
       <!-- 左侧：配置面板 -->
-      <el-col :span="8">
+      <el-col :span="8" class="sidebar-col">
+       <div class="sidebar-sticky">
         <el-card header="采集配置" shadow="hover">
           <el-form label-position="top" size="default">
             <el-form-item label="Keyword">
@@ -173,6 +174,7 @@
             </el-form-item>
           </el-form>
         </el-card>
+       </div>
       </el-col>
       
       <!-- 中间：实时状态 -->
@@ -254,17 +256,21 @@
 
         <!-- 任务列表 -->
         <el-card header="采集任务" shadow="hover" style="margin-top: 16px">
-          <el-table :data="tasks" height="200" size="small">
-            <el-table-column prop="id" label="任务ID" width="100" />
-            <el-table-column prop="keyword" label="关键词" />
-            <el-table-column prop="status" label="状态" width="80">
+          <el-table :data="tasks" height="220" size="small">
+            <el-table-column prop="id" label="任务ID" min-width="100" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span class="task-id-cell">{{ String(row.id).slice(-8) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="keyword" label="关键词" min-width="100" show-overflow-tooltip />
+            <el-table-column prop="status" label="状态" width="80" align="center">
               <template #default="{ row }">
                 <el-tag :type="getStatusType(row.status)" size="small">
                   {{ getStatusLabel(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="count" label="数量" width="80" />
+            <el-table-column prop="count" label="数量" width="70" align="center" />
           </el-table>
         </el-card>
       </el-col>
@@ -1460,5 +1466,21 @@ onUnmounted(() => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+// 论文 3.x: 优化排版 — 左侧配置面板向下滚动时跟随
+.main-row {
+  align-items: flex-start;
+}
+.sidebar-col {
+  .sidebar-sticky {
+    position: sticky;
+    top: $spacing-base;
+  }
+}
+.task-id-cell {
+  font-family: 'Consolas', monospace;
+  font-size: $font-size-extra-small;
+  color: $text-regular;
 }
 </style>

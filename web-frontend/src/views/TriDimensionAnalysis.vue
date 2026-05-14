@@ -24,9 +24,10 @@
       </div>
     </div>
     
-    <el-row :gutter="20">
+    <el-row :gutter="20" class="main-row">
       <!-- 左侧：三维权重配置面板 -->
-      <el-col :span="6">
+      <el-col :span="6" class="sidebar-col">
+       <div class="sidebar-sticky">
         <!-- 论文公式卡片 -->
         <el-card shadow="hover" class="formula-card">
           <template #header>
@@ -122,6 +123,7 @@
             </el-form-item>
           </el-form>
         </el-card>
+       </div>
       </el-col>
       
       <!-- 中间：散点图可视化 -->
@@ -164,7 +166,8 @@
       </el-col>
       
       <!-- 右侧：排名列表 -->
-      <el-col :span="6">
+      <el-col :span="6" class="sidebar-col">
+       <div class="sidebar-sticky">
         <el-card shadow="hover">
           <template #header>
             <div class="rank-header">
@@ -206,6 +209,7 @@
             </div>
           </div>
         </el-card>
+       </div>
       </el-col>
     </el-row>
     
@@ -1530,6 +1534,18 @@ onMounted(() => {
       color: $text-regular;
       font-family: 'Consolas', monospace;
     }
+  }
+}
+
+// 论文 3.x: 优化排版 — 让左右两侧"配置/排名"较短的列在用户向下滚动时跟随,
+// 避免出现大片空白，参考 DataPreprocessEnhanced 的方案
+.main-row {
+  align-items: flex-start;
+}
+.sidebar-col {
+  .sidebar-sticky {
+    position: sticky;
+    top: $spacing-base;
   }
 }
 </style>

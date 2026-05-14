@@ -177,9 +177,10 @@
     </el-row>
 
     <!-- 主内容区域 -->
-    <el-row :gutter="20">
+    <el-row :gutter="20" class="main-row">
       <!-- 左侧：实时分析 + 配置 -->
-      <el-col :span="6">
+      <el-col :span="6" class="sidebar-col">
+       <div class="sidebar-sticky">
         <!-- 实时分析测试 -->
         <el-card class="analysis-card" shadow="hover">
           <template #header>
@@ -345,6 +346,7 @@
             </el-form-item>
           </el-form>
         </el-card>
+       </div>
       </el-col>
       
       <!-- 中间：图表展示 -->
@@ -417,7 +419,8 @@
       </el-col>
       
       <!-- 右侧：分析结果列表 -->
-      <el-col :span="6">
+      <el-col :span="6" class="sidebar-col">
+       <div class="sidebar-sticky">
         <el-card class="result-card" shadow="hover">
           <template #header>
             <div class="card-header-custom">
@@ -459,6 +462,7 @@
             <el-empty v-if="analyzedWeibos.length === 0" description="暂无分析结果" />
           </div>
         </el-card>
+       </div>
       </el-col>
     </el-row>
     
@@ -2047,6 +2051,20 @@ onMounted(() => {
 @media (max-width: 992px) {
   .stats-cards {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+// 论文 3.x: 优化排版 — 左侧"实时分析+配置"、右侧"分析结果"在用户向下滚动时跟随
+.main-row {
+  align-items: flex-start;
+}
+.sidebar-col {
+  .sidebar-sticky {
+    position: sticky;
+    top: $spacing-base;
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-base;
   }
 }
 </style>
