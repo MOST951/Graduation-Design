@@ -354,31 +354,52 @@ class SparkSentimentAnalyzer:
             return self._analyze_local(data)
             
     def _analyze_with_spark(self, data: List[Dict]) -> List[Dict]:
-        """使用Spark进行分析"""
+        """使用Spark进行分析
+
+        历史 bug: 直接 ``self.spark.createDataFrame(data)`` 会让 PySpark 对每个
+        字段做类型推断, 但爬虫产出的 dict 里含有空 list (``pics=[]``)、全 None
+        字段 (``video_url``)、嵌套 dict (``user``) 等, 触发
+        ``PySparkValueError: [CANNOT_DETERMINE_TYPE]`` 导致整个流水线失败。
+        修复策略: 只把分析必需的最小字段 (idx, text) 送进 Spark, 用显式 schema,
+        分析完毕再把 sentiment/sentiment_score 合回原始数据。
+        """
+        from pyspark.sql.types import StructType, StructField, StringType as _Str
         logger.info(f"使用Spark分析 {len(data)} 条微博...")
-        
-        # 创建DataFrame
-        df = self.spark.createDataFrame(data)
-        
-        # 注册UDF
+
+        schema = StructType([
+            StructField('_idx', _Str(), False),
+            StructField('text', _Str(), True),
+        ])
+        rows = [
+            {'_idx': str(i), 'text': str(item.get('text') or '')}
+            for i, item in enumerate(data)
+        ]
+        df = self.spark.createDataFrame(rows, schema=schema)
+
         sentiment_udf = udf(
-            lambda text: SentimentLexicon.analyze(text)[0],
+            lambda text: SentimentLexicon.analyze(text or '')[0],
             StringType()
         )
         score_udf = udf(
-            lambda text: float(SentimentLexicon.analyze(text)[1]),
+            lambda text: float(SentimentLexicon.analyze(text or '')[1]),
             FloatType()
         )
-        
-        # 应用情感分析
+
         result_df = df.withColumn('sentiment', sentiment_udf(col('text'))) \
                       .withColumn('sentiment_score', score_udf(col('text')))
-        
-        # 转换回Python列表
-        result = [row.asDict() for row in result_df.collect()]
-        
-        logger.info(f"Spark分析完成")
-        return result
+
+        spark_results = {row['_idx']: row.asDict() for row in result_df.collect()}
+
+        merged_result: List[Dict] = []
+        for i, item in enumerate(data):
+            merged = dict(item)
+            sp = spark_results.get(str(i), {})
+            merged['sentiment'] = sp.get('sentiment')
+            merged['sentiment_score'] = sp.get('sentiment_score')
+            merged_result.append(merged)
+
+        logger.info("Spark分析完成")
+        return merged_result
         
     def _analyze_local(self, data: List[Dict]) -> List[Dict]:
         """本地模式分析"""
