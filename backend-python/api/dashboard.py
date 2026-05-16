@@ -797,11 +797,12 @@ def get_dashboard_extras():
 
         with db.get_connection() as conn:
             with conn.cursor() as cur:
-                # 1) 关键词分布 (替代地域分布)
+                # 1) 关键词分布 (替代地域分布) - 排除系统内部标识 realtime_feed
                 cur.execute("""
                     SELECT keyword, COUNT(*) AS n
                     FROM weibo_core_data
                     WHERE keyword IS NOT NULL AND TRIM(keyword) != ''
+                      AND keyword NOT IN ('realtime_feed')
                     GROUP BY keyword ORDER BY n DESC LIMIT 12
                 """)
                 rows = cur.fetchall() or []
@@ -859,7 +860,9 @@ def get_dashboard_extras():
                 # 5) top3 keyword 按日趋势 (最近 7 天)
                 cur.execute("""
                     SELECT keyword, COUNT(*) AS n
-                    FROM weibo_core_data WHERE keyword IS NOT NULL AND TRIM(keyword)!=''
+                    FROM weibo_core_data
+                    WHERE keyword IS NOT NULL AND TRIM(keyword)!=''
+                      AND keyword NOT IN ('realtime_feed')
                     GROUP BY keyword ORDER BY n DESC LIMIT 3
                 """)
                 top3_kws = [rr['keyword'] for rr in (cur.fetchall() or [])]
@@ -883,7 +886,7 @@ def get_dashboard_extras():
                         'series': [{'name': kw, 'data': [by_kw[kw][d] for d in date_set]} for kw in top3_kws],
                     }
 
-                # 6) 关键词 + 主要情感 (用于情感词云替代图)
+                # 6) 关键词 + 主要情感 (用于情感词云) - 排除内部标识
                 cur.execute("""
                     SELECT w.keyword,
                            SUM(CASE WHEN s.sentiment_class='positive' THEN 1 ELSE 0 END) AS pos,
@@ -893,7 +896,8 @@ def get_dashboard_extras():
                     FROM weibo_core_data w
                     LEFT JOIN sentiment_analysis_results s ON s.weibo_id = w.weibo_id
                     WHERE w.keyword IS NOT NULL AND TRIM(w.keyword) != ''
-                    GROUP BY w.keyword ORDER BY total DESC LIMIT 12
+                      AND w.keyword NOT IN ('realtime_feed')
+                    GROUP BY w.keyword ORDER BY total DESC LIMIT 30
                 """)
                 kw_sent = []
                 for rr in (cur.fetchall() or []):

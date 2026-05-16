@@ -516,6 +516,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import * as echarts from 'echarts';
+import 'echarts-wordcloud';
 import { ElMessage } from 'element-plus';
 import {
   Refresh, ArrowDown, Document, CircleCheck, CircleClose, Warning,
@@ -846,17 +847,47 @@ const initSentimentCharts = () => {
     }],
   });
 
-  // 关键词+主导情感 (替代情感词云: 用真实 keyword 出现次数 + sentiment_analysis_results 主导情感)
+  // 情感词云 (真实 keyword + 主导情感着色)
   const ks = backendExtras.value?.keywordSentiment || [];
   const sentColor = (s: string) => s === 'positive' ? SUCCESS : s === 'negative' ? DANGER : INFO;
+  const cloudData = ks.length
+    ? ks.map((k: any) => ({
+        name: k.name,
+        value: k.value,
+        textStyle: { color: sentColor(k.sentiment) },
+      }))
+    : [{ name: '暂无数据', value: 1, textStyle: { color: INFO } }];
   initChart(sentimentWordCloudRef.value, {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (p: any) => `${p[0].name}<br/>出现次数: ${p[0].value}<br/>主导情感: ${ks[p[0].dataIndex]?.sentiment || '-'}` },
-    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
-    xAxis: { type: 'category', data: ks.length ? ks.map((k: any) => k.name) : ['暂无数据'], axisLabel: { rotate: 30, interval: 0, fontSize: 10 } },
-    yAxis: { type: 'value' },
+    tooltip: {
+      show: true,
+      formatter: (p: any) => {
+        const item = ks.find((k: any) => k.name === p.name);
+        const sLabel = item ? ({ positive: '正面', negative: '负面', neutral: '中性' } as any)[item.sentiment] || '-' : '-';
+        return `${p.name}<br/>出现次数: ${p.value}<br/>主导情感: ${sLabel}`;
+      },
+    },
     series: [{
-      type: 'bar',
-      data: ks.length ? ks.map((k: any) => ({ value: k.value, itemStyle: { color: sentColor(k.sentiment) } })) : [0],
+      type: 'wordCloud',
+      shape: 'circle',
+      left: 'center',
+      top: 'center',
+      width: '94%',
+      height: '90%',
+      sizeRange: [14, 56],
+      rotationRange: [-30, 30],
+      rotationStep: 15,
+      gridSize: 8,
+      drawOutOfBound: false,
+      layoutAnimation: true,
+      textStyle: {
+        fontFamily: 'sans-serif',
+        fontWeight: 'bold',
+      },
+      emphasis: {
+        focus: 'self',
+        textStyle: { textShadowBlur: 8, textShadowColor: 'rgba(0,0,0,0.3)' },
+      },
+      data: cloudData,
     }],
   });
 };
