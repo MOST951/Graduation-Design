@@ -1541,6 +1541,35 @@ const loadConfigurations = async () => {
     if (systemRes.data.code === 200) {
       Object.assign(systemParamsForm.value, systemRes.data.data);
     }
+
+    // Load database config (password masked)
+    try {
+      const dbRes = await apiClient.get('/admin/config/database');
+      if (dbRes.data.code === 200 && dbRes.data.data) {
+        const d = dbRes.data.data;
+        Object.assign(dbConfigForm.value, {
+          type: d.type || 'mysql',
+          host: d.host ?? dbConfigForm.value.host,
+          port: d.port ?? dbConfigForm.value.port,
+          username: d.username ?? dbConfigForm.value.username,
+          password: '', // 后端脱敏, 留空表示不修改
+          database: d.database ?? dbConfigForm.value.database,
+          charset: d.charset ?? dbConfigForm.value.charset,
+        });
+      }
+    } catch (e) {
+      console.error('load db config failed', e);
+    }
+
+    // Load HBase config
+    try {
+      const hbaseRes = await apiClient.get('/admin/config/hbase');
+      if (hbaseRes.data.code === 200 && hbaseRes.data.data) {
+        Object.assign(hbaseConfigForm.value, hbaseRes.data.data);
+      }
+    } catch (e) {
+      console.error('load hbase config failed', e);
+    }
   } catch (error) {
     console.error('Error loading configurations:', error);
   }
