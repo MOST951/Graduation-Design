@@ -768,49 +768,135 @@ _STATUS_MAP = {
 }
 
 
+def _parse_dt(v):
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v
+    try:
+        s = str(v).replace('T', ' ')
+        # 兼容 ISO/MySQL 两种格式
+        return datetime.strptime(s[:19], '%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return None
+
+
+def _fmt_dt(v):
+    dt = _parse_dt(v)
+    return dt.strftime('%Y-%m-%d %H:%M:%S') if dt else None
+
+
 @admin_bp.route('/tasks', methods=['GET'])
 @require_admin
 def get_task_logs():
-    """获取真实任务列表 (来源: task_queue 内存中的所有任务)"""
+    """获取真实任务列表
+
+    来源:
+      1) MySQL crawl_tasks 表 (采集任务持久化, 跨进程可见)
+      2) services.task_queue 内存任务 (其他类型: spark/分析)
+    """
+    task_type = request.args.get('taskType')
+    status_filter = request.args.get('status')
+    result = []
+
+    # ---------- 1. MySQL crawl_tasks ----------
+    try:
+        from services.database_service import get_db_service
+        db = get_db_service()
+        if db is not None:
+            with db.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT task_id, sys_user_id, keywords, pages, crawl_hot,
+                               status, progress, collected, start_time, end_time, error
+                        FROM crawl_tasks
+                        ORDER BY COALESCE(start_time, created_at) DESC
+                        LIMIT 200
+                    """)
+                    for row in cursor.fetchall():
+                        kw_raw = row.get('keywords')
+                        if isinstance(kw_raw, str):
+                            try:
+                                kw_list = json.loads(kw_raw) if kw_raw else []
+                            except Exception:
+                                kw_list = []
+                        elif isinstance(kw_raw, list):
+                            kw_list = kw_raw
+                        else:
+                            kw_list = []
+                        kw_text = ','.join(kw_list[:3]) if kw_list else ('热搜爬取' if row.get('crawl_hot') else '采集任务')
+                        name = f"数据采集: {kw_text}"
+                        db_status = (row.get('status') or 'pending').lower()
+                        fstatus = {
+                            'completed': 'success',
+                            'success': 'success',
+                            'failed': 'failed',
+                            'error': 'failed',
+                            'interrupted': 'failed',
+                            'cancelled': 'cancelled',
+                            'running': 'running',
+                            'pending': 'pending',
+                        }.get(db_status, db_status)
+                        st = _parse_dt(row.get('start_time'))
+                        ed = _parse_dt(row.get('end_time'))
+                        result.append({
+                            'id': str(row.get('task_id')),
+                            'taskName': name,
+                            'taskType': 'collection',
+                            'status': fstatus,
+                            'startTime': _fmt_dt(st),
+                            'endTime': _fmt_dt(ed),
+                            'duration': _format_duration(st, ed),
+                            'progress': int(row.get('progress') or 0),
+                            'executor': row.get('sys_user_id') or 'system',
+                            'collected': int(row.get('collected') or 0),
+                            'errorMessage': row.get('error'),
+                        })
+    except Exception as e:
+        logger.warning(f"Read crawl_tasks from DB failed: {e}")
+
+    # ---------- 2. task_queue 内存 (其他类型) ----------
     try:
         from services.task_queue import task_queue
-        all_tasks = task_queue.get_all_tasks()
-
-        task_type = request.args.get('taskType')
-        status_filter = request.args.get('status')
-
-        result = []
-        for t in all_tasks:
+        for t in task_queue.get_all_tasks():
             started = t.started_at or t.created_at
             ended = t.completed_at
-            ttype = _guess_task_type(t.name)
-            fstatus = _STATUS_MAP.get(t.status.value if hasattr(t.status, 'value') else str(t.status), 'pending')
-            executor = (t.config or {}).get('executor') or (t.config or {}).get('user') or 'system'
-
-            item = {
+            fstatus = _STATUS_MAP.get(
+                t.status.value if hasattr(t.status, 'value') else str(t.status),
+                'pending'
+            )
+            result.append({
                 'id': t.id,
                 'taskName': t.name,
-                'taskType': ttype,
+                'taskType': _guess_task_type(t.name),
                 'status': fstatus,
-                'startTime': started.strftime('%Y-%m-%d %H:%M:%S') if started else None,
-                'endTime': ended.strftime('%Y-%m-%d %H:%M:%S') if ended else None,
+                'startTime': _fmt_dt(started),
+                'endTime': _fmt_dt(ended),
                 'duration': _format_duration(t.started_at, ended),
                 'progress': int(t.progress or 0),
-                'executor': executor,
+                'executor': (t.config or {}).get('executor') or (t.config or {}).get('user') or 'system',
                 'errorMessage': t.error_message,
-            }
-            if task_type and item['taskType'] != task_type:
-                continue
-            if status_filter and item['status'] != status_filter:
-                continue
-            result.append(item)
-
-        # 按开始时间倒序
-        result.sort(key=lambda x: x.get('startTime') or '', reverse=True)
-        return jsonify({'code': 200, 'data': result, 'total': len(result), 'message': 'OK'})
+            })
     except Exception as e:
-        logger.error(f"Failed to get task logs: {e}", exc_info=True)
-        return jsonify({'code': 500, 'message': str(e), 'data': []}), 500
+        logger.warning(f"Read task_queue failed: {e}")
+
+    # 过滤
+    if task_type:
+        result = [r for r in result if r['taskType'] == task_type]
+    if status_filter:
+        result = [r for r in result if r['status'] == status_filter]
+
+    # 去重 (按 id) + 按时间倒序
+    seen = set()
+    deduped = []
+    for r in result:
+        if r['id'] in seen:
+            continue
+        seen.add(r['id'])
+        deduped.append(r)
+    deduped.sort(key=lambda x: x.get('startTime') or '', reverse=True)
+
+    return jsonify({'code': 200, 'data': deduped, 'total': len(deduped), 'message': 'OK'})
 
 
 # ==================== Email 配置 ====================
