@@ -584,7 +584,29 @@ def get_realtime_metrics():
                 collected = [crawl_map.get(l, 0) for l in labels]
                 analyzed = [ana_map.get(l, 0) for l in labels]
 
-                # 6) 情感分布
+                # 6) 最新 5 条真实微博 (JOIN 情感)
+                cur.execute("""
+                    SELECT w.created_at, w.crawled_at, w.content,
+                           w.attitudes_count, w.reposts_count, w.comments_count,
+                           s.sentiment_class
+                    FROM weibo_core_data w
+                    LEFT JOIN sentiment_analysis_results s ON s.weibo_id = w.weibo_id
+                    ORDER BY w.crawled_at DESC, w.id DESC
+                    LIMIT 5
+                """)
+                cls_map = {'positive': '正面', 'negative': '负面', 'neutral': '中性'}
+                latest_posts = []
+                for rr in (cur.fetchall() or []):
+                    ts = rr.get('crawled_at') or rr.get('created_at')
+                    latest_posts.append({
+                        'time': ts.strftime('%m-%d %H:%M') if ts else '',
+                        'content': (rr.get('content') or '')[:120],
+                        'sentiment': cls_map.get(rr.get('sentiment_class'), '中性'),
+                        'likes': int(rr.get('attitudes_count') or 0),
+                        'reposts': int(rr.get('reposts_count') or 0),
+                    })
+
+                # 7) 情感分布
                 cur.execute("""
                     SELECT sentiment_class, COUNT(*) AS n
                     FROM sentiment_analysis_results GROUP BY sentiment_class
@@ -616,6 +638,7 @@ def get_realtime_metrics():
                     'analyzed': analyzed,
                 },
                 'sentiment': sentiment_dist,
+                'latestPosts': latest_posts,
             },
             'source': 'mysql',
         })

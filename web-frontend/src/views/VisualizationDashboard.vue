@@ -658,13 +658,7 @@ const realtimeData = ref({
   alertCount: 3,
 });
 
-const latestPosts = ref([
-  { time: '10:32:15', content: '今天天气真好，心情也很棒！#美好生活#', sentiment: '正面', likes: 128, reposts: 23 },
-  { time: '10:31:58', content: '这个产品质量太差了，完全不值这个价格', sentiment: '负面', likes: 56, reposts: 12 },
-  { time: '10:31:42', content: '刚看完这部电影，剧情一般般吧', sentiment: '中性', likes: 34, reposts: 5 },
-  { time: '10:31:25', content: '强烈推荐这家餐厅，味道超级棒！', sentiment: '正面', likes: 89, reposts: 18 },
-  { time: '10:31:08', content: '等了一个小时还没送到，差评！', sentiment: '负面', likes: 45, reposts: 8 },
-]);
+const latestPosts = ref<{ time: string; content: string; sentiment: string; likes: number; reposts: number }[]>([]);
 
 // 日期快捷选项
 const dateShortcuts = [
@@ -1316,7 +1310,7 @@ const fetchBackendData = async () => {
       backendExtras.value = extrasRes.value.data.data || null;
     }
 
-    // 实时监控 4 指标 + 时序 + 情感
+    // 实时监控 4 指标 + 时序 + 情感 + 最新微博动态
     if (realtimeRes.status === 'fulfilled' && realtimeRes.value.data?.code === 200) {
       backendRealtime.value = realtimeRes.value.data.data || null;
       const m = backendRealtime.value?.metrics;
@@ -1326,6 +1320,8 @@ const fetchBackendData = async () => {
         realtimeData.value.analyzedCount = m.analyzedTotal;
         realtimeData.value.alertCount    = m.alertCount;
       }
+      const lp: any[] = (realtimeRes.value.data.data as any)?.latestPosts || [];
+      if (lp.length) latestPosts.value = lp;
     }
   } catch (e) {
     console.warn('[Viz] 后端数据拉取失败', e);
@@ -1644,6 +1640,8 @@ onMounted(async () => {
           realtimeData.value.todayTotal    = m.todayTotal;
           realtimeData.value.analyzedCount = m.analyzedTotal;
           realtimeData.value.alertCount    = m.alertCount;
+          const lp: any[] = (res.data.data as any)?.latestPosts || [];
+          if (lp.length) latestPosts.value = lp;
           initRealtimeCharts();
         }
       } catch {}
