@@ -631,6 +631,13 @@ const overviewData = ref({
 const backendTrend = ref<{ dates: string[]; positive: number[]; neutral: number[]; negative: number[] } | null>(null);
 const backendHotTopics = ref<{ name: string; heat: number; trend: string }[]>([]);
 const backendSentiment = ref<{ positive: number; neutral: number; negative: number; raw_counts: any; total_records: number } | null>(null);
+const backendUserProfile = ref<{
+  activity: { name: string; value: number }[];
+  verifiedType: { name: string; value: number }[];
+  fansDistribution: { labels: string[]; values: number[] };
+  postHours: { labels: string[]; values: number[] };
+  influence: { indicators: { name: string; max: number }[]; values: number[] };
+} | null>(null);
 
 const realtimeData = ref({
   currentRate: 156,
@@ -917,19 +924,21 @@ const initTopicsCharts = () => {
     })),
   });
 
-  // 话题情感构成
+  // 话题情感构成 — 优先后端真实分布
+  const bs = backendSentiment.value;
+  const sentData = bs ? [
+    { value: bs.positive || 0, name: '正面', itemStyle: { color: SUCCESS } },
+    { value: bs.neutral  || 0, name: '中性', itemStyle: { color: INFO } },
+    { value: bs.negative || 0, name: '负面', itemStyle: { color: DANGER } },
+  ] : [
+    { value: 52, name: '正面', itemStyle: { color: SUCCESS } },
+    { value: 28, name: '中性', itemStyle: { color: INFO } },
+    { value: 20, name: '负面', itemStyle: { color: DANGER } },
+  ];
   initChart(topicSentimentRef.value, {
-    tooltip: { trigger: 'item' },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
     legend: { orient: 'vertical', left: 'left' },
-    series: [{
-      type: 'pie',
-      radius: '60%',
-      data: [
-        { value: 52, name: '正面', itemStyle: { color: SUCCESS } },
-        { value: 28, name: '中性', itemStyle: { color: INFO } },
-        { value: 20, name: '负面', itemStyle: { color: DANGER } },
-      ],
-    }],
+    series: [{ type: 'pie', radius: '60%', data: sentData }],
   });
 
   // 话题传播时间线
@@ -950,64 +959,87 @@ const initTopicsCharts = () => {
 };
 
 const initUsersCharts = () => {
-  // 用户活跃度分布
-  initChart(userActivityRef.value, {
-    tooltip: { trigger: 'item' },
-    legend: { orient: 'vertical', left: 'left' },
-    series: [{
-      type: 'pie',
-      radius: ['40%', '70%'],
-      data: [
+  const up = backendUserProfile.value;
+
+  // 用户活跃度分布 (后端真实)
+  const actData = up?.activity?.length
+    ? up.activity.map((it, i) => ({
+        value: it.value,
+        name: it.name,
+        itemStyle: { color: [SUCCESS, PRIMARY, INFO][i] || PRIMARY },
+      }))
+    : [
         { value: 35, name: '高活跃', itemStyle: { color: SUCCESS } },
         { value: 45, name: '中活跃', itemStyle: { color: PRIMARY } },
         { value: 20, name: '低活跃', itemStyle: { color: INFO } },
-      ],
-    }],
+      ];
+  initChart(userActivityRef.value, {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { orient: 'vertical', left: 'left' },
+    series: [{ type: 'pie', radius: ['40%', '70%'], data: actData }],
   });
 
-  // 用户认证类型
-  initChart(userVerifyRef.value, {
-    tooltip: { trigger: 'item' },
-    legend: { orient: 'vertical', left: 'left' },
-    series: [{
-      type: 'pie',
-      radius: '60%',
-      data: [
+  // 用户认证类型 (后端: 认证/普通)
+  const vtData = up?.verifiedType?.length
+    ? up.verifiedType.map((it, i) => ({
+        value: it.value,
+        name: it.name,
+        itemStyle: { color: [PRIMARY, INFO][i] || INFO },
+      }))
+    : [
         { value: 15, name: '蓝V认证', itemStyle: { color: PRIMARY } },
         { value: 8, name: '黄V认证', itemStyle: { color: WARNING } },
         { value: 77, name: '普通用户', itemStyle: { color: INFO } },
-      ],
-    }],
+      ];
+  initChart(userVerifyRef.value, {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { orient: 'vertical', left: 'left' },
+    series: [{ type: 'pie', radius: '60%', data: vtData }],
   });
 
-  // 粉丝数分布
+  // 粉丝数分布 (后端真实分桶)
+  const fans = up?.fansDistribution;
   initChart(userFollowersRef.value, {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: ['<100', '100-1k', '1k-10k', '10k-100k', '100k-1M', '>1M'] },
+    xAxis: { type: 'category', data: fans?.labels || ['<100', '100-1k', '1k-10k', '10k-100k', '100k-1M', '>1M'] },
     yAxis: { type: 'value', name: '用户数' },
     series: [{
       type: 'bar',
-      data: [12500, 35600, 28900, 15200, 5800, 1200],
+      data: fans?.values || [12500, 35600, 28900, 15200, 5800, 1200],
       itemStyle: { color: PRIMARY, borderRadius: [4, 4, 0, 0] },
     }],
   });
 
-  // 用户发布时段热力图
+  // 用户发布时段 (后端 24h bar)
+  const ph = up?.postHours;
   initChart(userTimeHeatmapRef.value, {
-    tooltip: { position: 'top', formatter: (params: any) => `${params.value[1]}:00 周${['日', '一', '二', '三', '四', '五', '六'][params.value[0]]}: ${params.value[2]}条` },
-    grid: { height: '70%', top: '10%' },
-    xAxis: { type: 'category', data: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'], splitArea: { show: true } },
-    yAxis: { type: 'category', data: ['0', '3', '6', '9', '12', '15', '18', '21'], splitArea: { show: true } },
-    visualMap: { min: 0, max: 500, calculable: true, orient: 'horizontal', left: 'center', bottom: '0%', inRange: { color: ['#f5f5f5', PRIMARY] } },
-    series: [{ type: 'heatmap', data: generateHeatmapData(), label: { show: false } }],
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: '3%', right: '4%', bottom: '8%', top: '8%', containLabel: true },
+    xAxis: { type: 'category', data: ph?.labels || Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`), axisLabel: { interval: 1 } },
+    yAxis: { type: 'value', name: '发帖量' },
+    series: [{
+      type: 'bar',
+      data: ph?.values || Array.from({ length: 24 }, () => Math.floor(Math.random() * 500)),
+      itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: PRIMARY }, { offset: 1, color: SUCCESS }]), borderRadius: [4, 4, 0, 0] },
+    }],
   });
 
-  // 用户影响力雷达图
+  // 用户影响力雷达图 (后端真实, 已归一到 0-100)
+  const inf = up?.influence;
   initChart(userInfluenceRef.value, {
     tooltip: {},
-    radar: { indicator: [{ name: '发帖量', max: 100 }, { name: '互动率', max: 100 }, { name: '粉丝数', max: 100 }, { name: '转发量', max: 100 }, { name: '评论量', max: 100 }, { name: '点赞量', max: 100 }] },
-    series: [{ type: 'radar', data: [{ value: [85, 72, 68, 78, 82, 90], name: '平均影响力', areaStyle: { color: 'rgba(22, 93, 255, 0.3)' }, lineStyle: { color: PRIMARY }, itemStyle: { color: PRIMARY } }] }],
+    radar: { indicator: inf?.indicators || [{ name: '发帖量', max: 100 }, { name: '互动率', max: 100 }, { name: '粉丝数', max: 100 }, { name: '转发量', max: 100 }, { name: '评论量', max: 100 }, { name: '点赞量', max: 100 }] },
+    series: [{
+      type: 'radar',
+      data: [{
+        value: inf?.values || [85, 72, 68, 78, 82, 90],
+        name: '平均影响力',
+        areaStyle: { color: 'rgba(22, 93, 255, 0.3)' },
+        lineStyle: { color: PRIMARY },
+        itemStyle: { color: PRIMARY },
+      }],
+    }],
   });
 
   // 用户地域分布
@@ -1192,11 +1224,12 @@ const handleDateChange = () => {
 const fetchBackendData = async () => {
   const period = dateRange.value?.length === 2 ? 'all' : 'all';
   try {
-    const [overviewRes, sentimentRes, trendRes, topicsRes] = await Promise.allSettled([
+    const [overviewRes, sentimentRes, trendRes, topicsRes, userProfileRes] = await Promise.allSettled([
       apiClient.get('/dashboard/overview'),
       apiClient.get('/dashboard/sentiment-distribution', { params: { period } }),
       apiClient.get('/dashboard/trend'),
       apiClient.get('/dashboard/hot-topics'),
+      apiClient.get('/dashboard/user-profile'),
     ]);
 
     // 概览
@@ -1226,6 +1259,11 @@ const fetchBackendData = async () => {
       backendHotTopics.value = topicsRes.value.data.data || [];
       overviewData.value.hotTopics = backendHotTopics.value.length;
       overviewData.value.topicsTrend = backendHotTopics.value.filter(t => t.trend === 'up').length * 10;
+    }
+
+    // 用户画像
+    if (userProfileRes.status === 'fulfilled' && userProfileRes.value.data?.code === 200) {
+      backendUserProfile.value = userProfileRes.value.data.data || null;
     }
   } catch (e) {
     console.warn('[Viz] 后端数据拉取失败', e);

@@ -395,6 +395,146 @@ def get_hot_topics():
         'source': source,
     })
 
+@dashboard_bp.route('/user-profile', methods=['GET'])
+@redis_cache('dashboard:user_profile', ttl=120)
+def get_user_profile():
+    """用户画像聚合 - 从 weibo_core_data 聚合用户图像 tab 所需 5 张图数据"""
+    try:
+        from services.database_service import get_db_service
+        db = get_db_service()
+        if db is None:
+            raise RuntimeError("database unavailable")
+
+        with db.get_connection() as conn:
+            with conn.cursor() as cur:
+                # 1) 活跃度分布: 按 user_id 分组统计每个用户的微博数
+                cur.execute("""
+                    SELECT
+                      SUM(CASE WHEN cnt >= 5 THEN 1 ELSE 0 END) AS high_active,
+                      SUM(CASE WHEN cnt BETWEEN 2 AND 4 THEN 1 ELSE 0 END) AS mid_active,
+                      SUM(CASE WHEN cnt = 1 THEN 1 ELSE 0 END) AS low_active
+                    FROM (
+                      SELECT user_id, COUNT(*) AS cnt
+                      FROM weibo_core_data
+                      WHERE user_id IS NOT NULL AND user_id > 0
+                      GROUP BY user_id
+                    ) t
+                """)
+                act = cur.fetchone() or {}
+                activity = [
+                    {'name': '高活跃', 'value': int(act.get('high_active') or 0)},
+                    {'name': '中活跃', 'value': int(act.get('mid_active') or 0)},
+                    {'name': '低活跃', 'value': int(act.get('low_active') or 0)},
+                ]
+
+                # 2) 认证类型: verified=1 认证, =0 普通 (无法细分蓝/黄V, 字段不足)
+                cur.execute("""
+                    SELECT verified, COUNT(DISTINCT user_id) AS n
+                    FROM weibo_core_data
+                    WHERE user_id IS NOT NULL AND user_id > 0
+                    GROUP BY verified
+                """)
+                rows = cur.fetchall() or []
+                verified_n = sum(int(r['n']) for r in rows if r.get('verified') in (1, True))
+                normal_n = sum(int(r['n']) for r in rows if r.get('verified') in (0, False, None))
+                verified_type = [
+                    {'name': '认证用户', 'value': verified_n},
+                    {'name': '普通用户', 'value': normal_n},
+                ]
+
+                # 3) 粉丝数分布
+                cur.execute("""
+                    SELECT
+                      SUM(CASE WHEN max_f <  100      THEN 1 ELSE 0 END) AS b1,
+                      SUM(CASE WHEN max_f >= 100      AND max_f < 1000    THEN 1 ELSE 0 END) AS b2,
+                      SUM(CASE WHEN max_f >= 1000     AND max_f < 10000   THEN 1 ELSE 0 END) AS b3,
+                      SUM(CASE WHEN max_f >= 10000    AND max_f < 100000  THEN 1 ELSE 0 END) AS b4,
+                      SUM(CASE WHEN max_f >= 100000   AND max_f < 1000000 THEN 1 ELSE 0 END) AS b5,
+                      SUM(CASE WHEN max_f >= 1000000  THEN 1 ELSE 0 END) AS b6
+                    FROM (
+                      SELECT user_id, MAX(followers_count) AS max_f
+                      FROM weibo_core_data
+                      WHERE user_id IS NOT NULL AND user_id > 0
+                      GROUP BY user_id
+                    ) t
+                """)
+                f = cur.fetchone() or {}
+                fans = {
+                    'labels': ['<100', '100-1k', '1k-10k', '10k-100k', '100k-1M', '>1M'],
+                    'values': [int(f.get(k) or 0) for k in ('b1', 'b2', 'b3', 'b4', 'b5', 'b6')],
+                }
+
+                # 4) 发布时段 (按小时)
+                cur.execute("""
+                    SELECT HOUR(created_at) AS h, COUNT(*) AS n
+                    FROM weibo_core_data
+                    WHERE created_at IS NOT NULL
+                    GROUP BY HOUR(created_at)
+                """)
+                hour_map = {int(r['h']): int(r['n']) for r in (cur.fetchall() or []) if r.get('h') is not None}
+                post_hours = {
+                    'labels': [f"{h:02d}:00" for h in range(24)],
+                    'values': [hour_map.get(h, 0) for h in range(24)],
+                }
+
+                # 5) 影响力雷达 (整体平均, 标准化到 0-100)
+                cur.execute("""
+                    SELECT
+                      AVG(followers_count)  AS avg_fol,
+                      AVG(reposts_count)    AS avg_rep,
+                      AVG(comments_count)   AS avg_com,
+                      AVG(attitudes_count)  AS avg_att,
+                      COUNT(*)              AS post_n,
+                      MAX(followers_count)  AS max_fol,
+                      MAX(reposts_count)    AS max_rep,
+                      MAX(comments_count)   AS max_com,
+                      MAX(attitudes_count)  AS max_att
+                    FROM weibo_core_data
+                """)
+                r = cur.fetchone() or {}
+                def _scale(v, mx):
+                    try:
+                        return round(float(v) / float(mx) * 100, 1) if v and mx else 0.0
+                    except Exception:
+                        return 0.0
+                influence = {
+                    'indicators': [
+                        {'name': '粉丝量', 'max': 100},
+                        {'name': '转发量', 'max': 100},
+                        {'name': '评论量', 'max': 100},
+                        {'name': '点赞量', 'max': 100},
+                        {'name': '发帖量', 'max': 100},
+                    ],
+                    'values': [
+                        _scale(r.get('avg_fol'), r.get('max_fol')),
+                        _scale(r.get('avg_rep'), r.get('max_rep')),
+                        _scale(r.get('avg_com'), r.get('max_com')),
+                        _scale(r.get('avg_att'), r.get('max_att')),
+                        min(100.0, round((int(r.get('post_n') or 0)) / 10.0, 1)),
+                    ],
+                }
+
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'activity': activity,
+                'verifiedType': verified_type,
+                'fansDistribution': fans,
+                'postHours': post_hours,
+                'influence': influence,
+            },
+            'source': 'weibo_core_data',
+        })
+    except Exception as e:
+        logger.error(f"get_user_profile failed: {e}", exc_info=True)
+        return jsonify({
+            'code': 500,
+            'message': str(e),
+            'data': None,
+        }), 500
+
+
 @dashboard_bp.route('/alerts', methods=['GET'])
 def get_alerts():
     """获取预警信息"""
