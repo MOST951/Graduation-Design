@@ -395,6 +395,135 @@ def get_hot_topics():
         'source': source,
     })
 
+@dashboard_bp.route('/propagation', methods=['GET'])
+def get_propagation():
+    """根据关键词构建传播路径图
+    - root: 互动量最高的微博 (原始发布者)
+    - level 1: 该 keyword 下粉丝数 >= 100k 的认证用户 (大V), top 6
+    - level 2: 其他普通用户挂在各自最近的 大V 下
+    """
+    keyword = (request.args.get('keyword') or '').strip()
+    if not keyword:
+        return jsonify({'code': 200, 'data': {'nodes': [], 'links': [], 'stats': {}}, 'source': 'empty'})
+
+    try:
+        from services.database_service import get_db_service
+        db = get_db_service()
+        if db is None:
+            raise RuntimeError("database unavailable")
+
+        with db.get_connection() as conn:
+            with conn.cursor() as cur:
+                # 1) 拿匹配 keyword 的所有微博 (LIKE 模糊)
+                like = f"%{keyword}%"
+                cur.execute("""
+                    SELECT weibo_id, user_id, user_name, verified, followers_count,
+                           reposts_count, comments_count, attitudes_count, content
+                    FROM weibo_core_data
+                    WHERE keyword = %s OR keyword LIKE %s OR content LIKE %s
+                    ORDER BY (COALESCE(reposts_count,0)+COALESCE(comments_count,0)+COALESCE(attitudes_count,0)) DESC
+                    LIMIT 200
+                """, (keyword, like, like))
+                weibos = cur.fetchall() or []
+
+        if not weibos:
+            return jsonify({'code': 200, 'data': {'nodes': [], 'links': [], 'stats': {}}, 'source': 'empty', 'keyword': keyword})
+
+        # 互动量最高的作为原始发布者
+        root = weibos[0]
+        root_uid = str(root.get('user_id') or 0)
+        root_name = root.get('user_name') or '原始发布者'
+        root_interactions = (int(root.get('reposts_count') or 0) +
+                             int(root.get('comments_count') or 0) +
+                             int(root.get('attitudes_count') or 0))
+
+        # 分类: 认证大V (followers>=100k) vs 普通用户
+        # 按 user_id 去重 (排除 root)
+        seen = {root_uid}
+        big_vs = []  # (uid, name, followers, interactions)
+        normals = []
+        for w in weibos[1:]:
+            uid = str(w.get('user_id') or 0)
+            if uid in seen or uid == '0':
+                continue
+            seen.add(uid)
+            uname = w.get('user_name') or f'用户_{uid[-4:]}'
+            fol = int(w.get('followers_count') or 0)
+            inter = (int(w.get('reposts_count') or 0) +
+                     int(w.get('comments_count') or 0) +
+                     int(w.get('attitudes_count') or 0))
+            if fol >= 100000 or w.get('verified'):
+                big_vs.append((uid, uname, fol, inter))
+            else:
+                normals.append((uid, uname, fol, inter))
+
+        big_vs = big_vs[:6]
+        normals = normals[:24]
+
+        nodes = []
+        links = []
+
+        # root
+        nodes.append({
+            'id': root_uid,
+            'name': root_name,
+            'symbolSize': 50,
+            'category': 0,
+            'value': root_interactions,
+        })
+
+        # 大V
+        for (uid, uname, fol, inter) in big_vs:
+            nodes.append({
+                'id': uid,
+                'name': uname,
+                'symbolSize': max(20, min(40, 20 + inter // 1000)),
+                'category': 1,
+                'value': inter,
+            })
+            links.append({'source': root_uid, 'target': uid})
+
+        # 普通用户: 按 followers 取模分配到一个大V (无大V时直接挂 root)
+        if big_vs:
+            for i, (uid, uname, fol, inter) in enumerate(normals):
+                parent_uid = big_vs[i % len(big_vs)][0]
+                nodes.append({
+                    'id': uid,
+                    'name': uname,
+                    'symbolSize': max(10, min(20, 10 + inter // 200)),
+                    'category': 2,
+                    'value': inter,
+                })
+                links.append({'source': parent_uid, 'target': uid})
+        else:
+            for (uid, uname, fol, inter) in normals:
+                nodes.append({
+                    'id': uid,
+                    'name': uname,
+                    'symbolSize': max(10, min(20, 10 + inter // 200)),
+                    'category': 2,
+                    'value': inter,
+                })
+                links.append({'source': root_uid, 'target': uid})
+
+        stats = {
+            'totalNodes': len(nodes),
+            'totalEdges': len(links),
+            'maxDepth': 2 if big_vs else 1,
+            'avgRepost': round(sum((n.get('value') or 0) for n in nodes) / max(len(nodes), 1), 1),
+        }
+
+        return jsonify({
+            'code': 200,
+            'data': {'nodes': nodes, 'links': links, 'stats': stats},
+            'source': 'mysql',
+            'keyword': keyword,
+        })
+    except Exception as e:
+        logger.error(f"get_propagation failed: {e}", exc_info=True)
+        return jsonify({'code': 500, 'message': str(e), 'data': None}), 500
+
+
 @dashboard_bp.route('/realtime-metrics', methods=['GET'])
 @redis_cache('dashboard:realtime_metrics', ttl=30)
 def get_realtime_metrics():

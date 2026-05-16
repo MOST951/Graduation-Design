@@ -1099,31 +1099,33 @@ const initRealtimeCharts = () => {
 };
 
 // ==================== 传播路径图 ====================
+// 三个分类的颜色 (categories 与图例一致)
+const PROP_CATEGORIES = [
+  { name: '原始发布', itemStyle: { color: DANGER } },
+  { name: '认证用户', itemStyle: { color: WARNING } },
+  { name: '普通用户', itemStyle: { color: PRIMARY } },
+];
+
 const generatePropagationData = () => {
+  // mock fallback: 无真实数据时使用
   const nodes: any[] = [];
   const links: any[] = [];
-  const categories = ['原始发布', '认证用户', '普通用户'];
 
-  // Root node
-  nodes.push({ id: '0', name: '原始发布者', symbolSize: 50, category: 0, itemStyle: { color: DANGER } });
+  nodes.push({ id: '0', name: '原始发布者', symbolSize: 50, category: 0 });
   let nodeId = 1;
-
-  // Level 1: verified users
   const l1Count = 3 + Math.floor(Math.random() * 3);
   for (let i = 0; i < l1Count; i++) {
     const id = String(nodeId++);
-    nodes.push({ id, name: `大V_${i + 1}`, symbolSize: 35, category: 1, itemStyle: { color: WARNING } });
+    nodes.push({ id, name: `大V_${i + 1}`, symbolSize: 35, category: 1 });
     links.push({ source: '0', target: id });
-    // Level 2: regular users from each verified
     const l2Count = 2 + Math.floor(Math.random() * 5);
     for (let j = 0; j < l2Count; j++) {
       const id2 = String(nodeId++);
-      nodes.push({ id: id2, name: `用户_${nodeId}`, symbolSize: 15 + Math.floor(Math.random() * 15), category: 2, itemStyle: { color: PRIMARY } });
+      nodes.push({ id: id2, name: `用户_${nodeId}`, symbolSize: 15 + Math.floor(Math.random() * 15), category: 2 });
       links.push({ source: id, target: id2 });
-      // Level 3: occasional deeper
       if (Math.random() > 0.6) {
         const id3 = String(nodeId++);
-        nodes.push({ id: id3, name: `用户_${nodeId}`, symbolSize: 10 + Math.floor(Math.random() * 10), category: 2, itemStyle: { color: PRIMARY_LIGHT } });
+        nodes.push({ id: id3, name: `用户_${nodeId}`, symbolSize: 10 + Math.floor(Math.random() * 10), category: 2 });
         links.push({ source: id2, target: id3 });
       }
     }
@@ -1135,15 +1137,34 @@ const generatePropagationData = () => {
     maxDepth: 4,
     avgRepost: Number((links.length / l1Count).toFixed(1)),
   };
-
-  return { nodes, links, categories: categories.map(c => ({ name: c })) };
+  return { nodes, links, categories: PROP_CATEGORIES };
 };
 
-const initPropagationChart = () => {
-  const { nodes, links, categories } = generatePropagationData();
+// 从后端拉取真实传播图; 没有数据返回 null
+const fetchRealPropagation = async (keyword: string): Promise<{nodes:any[],links:any[],categories:any[]} | null> => {
+  try {
+    const res = await apiClient.get('/dashboard/propagation', { params: { keyword } });
+    const d = res.data?.data;
+    if (!d || !d.nodes || d.nodes.length === 0) return null;
+    propagationStats.value = {
+      totalNodes: d.stats?.totalNodes ?? d.nodes.length,
+      totalEdges: d.stats?.totalEdges ?? d.links.length,
+      maxDepth: d.stats?.maxDepth ?? 2,
+      avgRepost: d.stats?.avgRepost ?? 0,
+    };
+    return { nodes: d.nodes, links: d.links, categories: PROP_CATEGORIES };
+  } catch (e) {
+    return null;
+  }
+};
+
+const renderPropagationChart = (data: {nodes:any[],links:any[],categories:any[]}, source: 'real' | 'mock') => {
+  const { nodes, links, categories } = data;
   initChart(propagationGraphRef.value, {
-    tooltip: { formatter: (params: any) => params.dataType === 'node' ? `${params.data.name}<br/>影响力: ${params.data.symbolSize}` : `${params.data.source} → ${params.data.target}` },
+    tooltip: { formatter: (params: any) => params.dataType === 'node' ? `${params.data.name}<br/>影响力: ${params.data.value ?? params.data.symbolSize}` : `${params.data.source} → ${params.data.target}` },
+    title: source === 'mock' ? { text: '演示数据 (未在采集任务中找到该关键词)', left: 'center', top: 8, textStyle: { fontSize: 12, color: '#909399', fontWeight: 'normal' } } : undefined,
     legend: [{ data: categories.map((c: any) => c.name), orient: 'vertical', right: 10, top: 20 }],
+    color: categories.map((c: any) => c.itemStyle?.color),
     series: [{
       type: 'graph',
       layout: 'force',
@@ -1159,16 +1180,26 @@ const initPropagationChart = () => {
   });
 };
 
-const updatePropagationChart = () => {
-  // Re-init with new random data for selected topic
+const initPropagationChart = async () => {
+  const kw = propagationTopic.value?.trim();
+  let data: any = null;
+  let source: 'real' | 'mock' = 'mock';
+  if (kw) {
+    data = await fetchRealPropagation(kw);
+    if (data) source = 'real';
+  }
+  if (!data) data = generatePropagationData();
+  renderPropagationChart(data, source);
+};
+
+const updatePropagationChart = async () => {
   if (propagationGraphRef.value) {
     const existing = echarts.getInstanceByDom(propagationGraphRef.value);
     if (existing) existing.dispose();
-    // Remove from charts array
     const idx = charts.findIndex(c => c === existing);
     if (idx !== -1) charts.splice(idx, 1);
   }
-  initPropagationChart();
+  await initPropagationChart();
 };
 
 // ==================== 辅助函数 ====================
