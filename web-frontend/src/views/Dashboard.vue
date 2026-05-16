@@ -44,29 +44,32 @@
             实时
           </span>
         </div>
-        <div class="realtime-stream">
-          <transition-group name="stream-list" tag="div">
-            <div v-for="item in realtimeData" :key="item.id" class="stream-item">
-              <div class="stream-author" v-if="item.author">
-                <el-icon :size="12"><User /></el-icon>
-                <span>{{ item.author }}</span>
+        <div class="weibo-feed">
+          <el-empty v-if="!feedItems.length" description="暂无微博数据" :image-size="60" />
+          <transition-group v-else name="stream-list" tag="div">
+            <article v-for="item in feedItems" :key="item.id" class="wb-card">
+              <header class="wb-head">
+                <el-avatar :size="40" class="wb-avatar">{{ (item.user_name || 'U').charAt(0) }}</el-avatar>
+                <div class="wb-meta">
+                  <div class="wb-name">
+                    {{ item.user_name }}
+                    <el-icon v-if="item.verified" class="wb-verified" :size="13"><CircleCheck /></el-icon>
+                  </div>
+                  <div class="wb-sub">{{ item.relative_time }}<span v-if="item.location"> · {{ item.location }}</span></div>
+                </div>
+                <el-tag :type="sentimentTagType(item.sentiment_class)" size="small" effect="light" round>{{ item.sentiment }}</el-tag>
+              </header>
+              <p class="wb-text">{{ item.content }}</p>
+              <div v-if="item.images?.length" class="wb-images" :class="`grid-${Math.min(item.images.length, 3)}`">
+                <div v-for="(url, idx) in item.images.slice(0, 9)" :key="idx" class="wb-img" :style="{ backgroundImage: `url(${url})` }" />
+                <div v-if="item.images.length > 9" class="wb-img-more">+{{ item.images.length - 9 }}</div>
               </div>
-              <div class="stream-content">
-                <span class="stream-text">{{ item.content }}</span>
-                <el-tag
-                  :type="getSentimentTagType(item.sentiment)"
-                  size="small"
-                  effect="light"
-                  round
-                >
-                  {{ formatSentiment(item.sentiment) }}
-                </el-tag>
-              </div>
-              <div class="stream-meta">
-                <span class="stream-time">{{ formatTime(item.time) }}</span>
-                <span class="stream-source">{{ item.source }}</span>
-              </div>
-            </div>
+              <footer class="wb-actions">
+                <span><el-icon><Share /></el-icon> {{ item.reposts }}</span>
+                <span><el-icon><ChatDotRound /></el-icon> {{ item.comments }}</span>
+                <span><el-icon><Star /></el-icon> {{ item.likes }}</span>
+              </footer>
+            </article>
           </transition-group>
         </div>
       </div>
@@ -95,7 +98,8 @@ import { ref, onMounted, onUnmounted, watch } from 'vue';
 import * as echarts from 'echarts';
 import { getDashboardData } from '@/api/dashboard';
 import { formatTime, formatNumber } from '@/utils/formatter';
-import { User } from '@element-plus/icons-vue';
+import { User, CircleCheck, Share, ChatDotRound, Star } from '@element-plus/icons-vue';
+import apiClient from '@/api/index';
 
 // --- 类型定义 ---
 interface OverviewCard {
@@ -117,6 +121,24 @@ interface RealtimeItem {
   author: string;
 }
 
+interface FeedItem {
+  id: string | number;
+  user_id?: number | string;
+  user_name: string;
+  verified: boolean;
+  content: string;
+  images: string[];
+  location: string;
+  source: string;
+  relative_time: string;
+  created_at: string;
+  likes: number;
+  reposts: number;
+  comments: number;
+  sentiment: string;
+  sentiment_class: string;
+}
+
 // --- Refs ---
 const sentimentChartRef = ref<HTMLElement | null>(null);
 const trendChartRef = ref<HTMLElement | null>(null);
@@ -124,6 +146,9 @@ const overviewCards = ref<OverviewCard[]>([]);
 const sentimentPeriod = ref('today');
 const trendDateRange = ref<[Date, Date]>([new Date(Date.now() - 7 * 24 * 3600 * 1000), new Date()]);
 const realtimeData = ref<RealtimeItem[]>([]);
+const feedItems = ref<FeedItem[]>([]);
+
+const sentimentTagType = (c: string) => c === 'positive' ? 'success' : c === 'negative' ? 'danger' : 'info';
 
 let sentimentChart: echarts.ECharts | null = null;
 let trendChart: echarts.ECharts | null = null;
@@ -298,22 +323,12 @@ async function startRealtimeConnection() {
 
 async function fetchRealtimeData() {
   try {
-    const response = await fetch('/api/dashboard/realtime');
-    const result = await response.json();
-    
-    if (result.code === 200 && result.data) {
-      // 清空旧数据，使用新数据
-      realtimeData.value = result.data.map((item: any) => ({
-        id: item.id || Date.now() + Math.random(),
-        content: item.content || '',
-        sentiment: item.sentiment || 0,
-        time: item.time || new Date().toISOString(),
-        source: item.source || '微博',
-        author: item.author || '',
-      }));
+    const res = await apiClient.get('/dashboard/realtime-feed', { params: { limit: 10 } });
+    if (res.data?.code === 200 && Array.isArray(res.data.data)) {
+      feedItems.value = res.data.data as FeedItem[];
     }
   } catch (error) {
-    console.error('获取实时数据失败:', error);
+    console.error('获取微博 feed 失败:', error);
   }
 }
 
@@ -583,5 +598,97 @@ watch(trendDateRange, loadDashboardData);
 }
 .stream-list-move {
   transition: transform 0.3s $ease-smooth;
+}
+
+// ==================== 微博 feed 卡片 ====================
+.weibo-feed {
+  max-height: 460px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.wb-card {
+  padding: 14px 0;
+  border-bottom: 1px solid $border-lighter;
+  &:last-child { border-bottom: none; }
+}
+.wb-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.wb-avatar {
+  background: linear-gradient(135deg, #ff6b9d, #ff9559);
+  color: #fff;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.wb-meta {
+  flex: 1;
+  min-width: 0;
+}
+.wb-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ff8200;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.3;
+}
+.wb-verified { color: #ffcc00; }
+.wb-sub {
+  font-size: 12px;
+  color: $text-placeholder;
+  margin-top: 2px;
+}
+.wb-text {
+  margin: 4px 0 8px 50px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: $text-primary;
+  word-break: break-word;
+}
+.wb-images {
+  margin: 8px 0 8px 50px;
+  display: grid;
+  gap: 4px;
+  position: relative;
+  &.grid-1 { grid-template-columns: minmax(0, 240px); }
+  &.grid-2 { grid-template-columns: repeat(2, 1fr); max-width: 360px; }
+  &.grid-3 { grid-template-columns: repeat(3, 1fr); max-width: 400px; }
+}
+.wb-img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background-size: cover;
+  background-position: center;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+}
+.wb-img-more {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.wb-actions {
+  margin: 4px 0 0 50px;
+  display: flex;
+  gap: 24px;
+  font-size: 12px;
+  color: $text-secondary;
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .el-icon {
+    font-size: 14px;
+  }
 }
 </style>

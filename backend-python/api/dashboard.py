@@ -395,6 +395,85 @@ def get_hot_topics():
         'source': source,
     })
 
+@dashboard_bp.route('/realtime-feed', methods=['GET'])
+@redis_cache('dashboard:realtime_feed', ttl=30)
+def get_realtime_feed():
+    """仪表盘 实时数据流: 返回类微博 feed (用户/内容/图片/位置/互动数/情感)"""
+    try:
+        from services.database_service import get_db_service
+        import json as _json
+        from datetime import datetime as _dt
+        db = get_db_service()
+        if db is None:
+            raise RuntimeError("database unavailable")
+
+        limit = max(1, min(int(request.args.get('limit', 10)), 30))
+
+        with db.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT w.weibo_id, w.user_id, w.user_name, w.verified,
+                           w.content, w.image_urls, w.location, w.source,
+                           w.created_at, w.crawled_at,
+                           w.attitudes_count, w.reposts_count, w.comments_count,
+                           s.sentiment_class
+                    FROM weibo_core_data w
+                    LEFT JOIN sentiment_analysis_results s ON s.weibo_id = w.weibo_id
+                    ORDER BY w.crawled_at DESC, w.id DESC
+                    LIMIT %s
+                """, (limit,))
+                rows = cur.fetchall() or []
+
+        def _relative(ts):
+            if not ts:
+                return ''
+            try:
+                diff = (_dt.now() - ts).total_seconds()
+                if diff < 60: return f"{int(diff)}秒前"
+                if diff < 3600: return f"{int(diff // 60)}分钟前"
+                if diff < 86400: return f"{int(diff // 3600)}小时前"
+                if diff < 30 * 86400: return f"{int(diff // 86400)}天前"
+                return ts.strftime('%Y-%m-%d')
+            except Exception:
+                return ''
+
+        cls_map = {'positive': '正面', 'negative': '负面', 'neutral': '中性'}
+        feed = []
+        for r in rows:
+            # image_urls is JSON in DB; some drivers return str some list
+            imgs = r.get('image_urls')
+            if isinstance(imgs, str):
+                try:
+                    imgs = _json.loads(imgs)
+                except Exception:
+                    imgs = []
+            if not isinstance(imgs, list):
+                imgs = []
+
+            feed.append({
+                'id': r.get('weibo_id'),
+                'user_id': r.get('user_id'),
+                'user_name': r.get('user_name') or '匿名用户',
+                'verified': bool(r.get('verified')),
+                'content': r.get('content') or '',
+                'images': [str(u) for u in imgs if u][:9],
+                'location': r.get('location') or '',
+                'source': r.get('source') or '微博',
+                'relative_time': _relative(r.get('crawled_at') or r.get('created_at')),
+                'created_at': (r.get('created_at') or r.get('crawled_at') or _dt.now()).strftime('%Y-%m-%d %H:%M'),
+                'likes': int(r.get('attitudes_count') or 0),
+                'reposts': int(r.get('reposts_count') or 0),
+                'comments': int(r.get('comments_count') or 0),
+                'sentiment': cls_map.get(r.get('sentiment_class'), '中性'),
+                'sentiment_class': r.get('sentiment_class') or 'neutral',
+            })
+
+        return jsonify({'code': 200, 'data': feed, 'source': 'mysql'})
+    except Exception as e:
+        logger.error(f"get_realtime_feed failed: {e}", exc_info=True)
+        return jsonify({'code': 500, 'message': str(e), 'data': []}), 500
+
+
 @dashboard_bp.route('/propagation', methods=['GET'])
 def get_propagation():
     """根据关键词构建传播路径图
