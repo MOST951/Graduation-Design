@@ -395,6 +395,16 @@ def get_hot_topics():
         'source': source,
     })
 
+@dashboard_bp.route('/realtime-feed/status', methods=['GET'])
+def get_realtime_feed_status():
+    """实时 Feed 后台爬虫状态"""
+    try:
+        from services import realtime_feed_crawler
+        return jsonify({'code': 200, 'data': realtime_feed_crawler.get_status()})
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
 @dashboard_bp.route('/realtime-feed', methods=['GET'])
 @redis_cache('dashboard:realtime_feed', ttl=30)
 def get_realtime_feed():

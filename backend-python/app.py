@@ -448,6 +448,14 @@ def _start_background_services():
     except Exception as e:
         logger.warning(f"热搜后台爬虫启动失败（不影响其他功能）: {e}")
 
+    # 实时 Feed 爬虫: 30s 抓取微博官方"实时"流入库, 供仪表盘使用
+    try:
+        from services import realtime_feed_crawler
+        realtime_feed_crawler.start(interval=30)
+        logger.info("实时 Feed 后台爬虫已启动 (interval=30s)")
+    except Exception as e:
+        logger.warning(f"实时 Feed 爬虫启动失败（不影响其他功能）: {e}")
+
 
 # 延迟到第一个请求时在 worker 进程中启动后台爬虫
 # (gunicorn --preload 在 master 进程执行模块级代码, fork 后 worker 不继承线程)
