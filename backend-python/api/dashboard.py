@@ -395,6 +395,106 @@ def get_hot_topics():
         'source': source,
     })
 
+@dashboard_bp.route('/realtime-metrics', methods=['GET'])
+@redis_cache('dashboard:realtime_metrics', ttl=30)
+def get_realtime_metrics():
+    """实时监控 tab 真实指标聚合
+    - 4 个核心指标卡 + 最近 20 分钟时序 (按分钟桶) + 情感分布
+    """
+    try:
+        from services.database_service import get_db_service
+        db = get_db_service()
+        if db is None:
+            raise RuntimeError("database unavailable")
+
+        from datetime import datetime, timedelta
+        with db.get_connection() as conn:
+            with conn.cursor() as cur:
+                # 1) 今日采集总量
+                cur.execute("SELECT COUNT(*) AS n FROM weibo_core_data WHERE DATE(crawled_at) = CURDATE()")
+                today_total = int((cur.fetchone() or {}).get('n') or 0)
+
+                # 2) 已分析总量
+                cur.execute("SELECT COUNT(*) AS n FROM sentiment_analysis_results")
+                analyzed_total = int((cur.fetchone() or {}).get('n') or 0)
+
+                # 3) 当前采集速率/分钟 (最近 5 分钟采集量平均)
+                cur.execute("""
+                    SELECT COUNT(*) AS n FROM weibo_core_data
+                    WHERE crawled_at >= (NOW() - INTERVAL 5 MINUTE)
+                """)
+                last_5min = int((cur.fetchone() or {}).get('n') or 0)
+                rate_per_min = round(last_5min / 5.0, 1)
+
+                # 4) 预警数量 (负面情感占比 > 阈值的话题数量, 简化用 negative 总数)
+                cur.execute("SELECT COUNT(*) AS n FROM sentiment_analysis_results WHERE sentiment_class='negative'")
+                alert_count = int((cur.fetchone() or {}).get('n') or 0)
+
+                # 5) 最近 20 分钟时序: 按分钟桶聚合采集量 + 分析量
+                cur.execute("""
+                    SELECT DATE_FORMAT(crawled_at, '%H:%i') AS bucket, COUNT(*) AS n
+                    FROM weibo_core_data
+                    WHERE crawled_at >= (NOW() - INTERVAL 20 MINUTE)
+                    GROUP BY bucket ORDER BY bucket
+                """)
+                crawl_map = {r['bucket']: int(r['n']) for r in (cur.fetchall() or []) if r.get('bucket')}
+
+                cur.execute("""
+                    SELECT DATE_FORMAT(analysis_time, '%H:%i') AS bucket, COUNT(*) AS n
+                    FROM sentiment_analysis_results
+                    WHERE analysis_time >= (NOW() - INTERVAL 20 MINUTE)
+                    GROUP BY bucket ORDER BY bucket
+                """)
+                ana_map = {r['bucket']: int(r['n']) for r in (cur.fetchall() or []) if r.get('bucket')}
+
+                now = datetime.now()
+                labels = []
+                for i in range(19, -1, -1):
+                    t = now - timedelta(minutes=i)
+                    labels.append(t.strftime('%H:%M'))
+                collected = [crawl_map.get(l, 0) for l in labels]
+                analyzed = [ana_map.get(l, 0) for l in labels]
+
+                # 6) 情感分布
+                cur.execute("""
+                    SELECT sentiment_class, COUNT(*) AS n
+                    FROM sentiment_analysis_results GROUP BY sentiment_class
+                """)
+                sent = {r['sentiment_class']: int(r['n']) for r in (cur.fetchall() or [])}
+                total_sent = max(sum(sent.values()), 1)
+                sentiment_dist = {
+                    'positive': sent.get('positive', 0),
+                    'neutral':  sent.get('neutral', 0),
+                    'negative': sent.get('negative', 0),
+                    'positive_pct': round(sent.get('positive', 0) * 100 / total_sent, 1),
+                    'neutral_pct':  round(sent.get('neutral', 0) * 100 / total_sent, 1),
+                    'negative_pct': round(sent.get('negative', 0) * 100 / total_sent, 1),
+                }
+
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'metrics': {
+                    'ratePerMin': rate_per_min,
+                    'todayTotal': today_total,
+                    'analyzedTotal': analyzed_total,
+                    'alertCount': alert_count,
+                },
+                'timeline': {
+                    'labels': labels,
+                    'collected': collected,
+                    'analyzed': analyzed,
+                },
+                'sentiment': sentiment_dist,
+            },
+            'source': 'mysql',
+        })
+    except Exception as e:
+        logger.error(f"get_realtime_metrics failed: {e}", exc_info=True)
+        return jsonify({'code': 500, 'message': str(e), 'data': None}), 500
+
+
 @dashboard_bp.route('/extras', methods=['GET'])
 @redis_cache('dashboard:extras', ttl=120)
 def get_dashboard_extras():

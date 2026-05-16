@@ -645,6 +645,11 @@ const backendExtras = ref<{
   topicDailyTrend: { dates: string[]; series: { name: string; data: number[] }[] };
   keywordSentiment: { name: string; value: number; sentiment: string }[];
 } | null>(null);
+const backendRealtime = ref<{
+  metrics: { ratePerMin: number; todayTotal: number; analyzedTotal: number; alertCount: number };
+  timeline: { labels: string[]; collected: number[]; analyzed: number[] };
+  sentiment: { positive: number; neutral: number; negative: number; positive_pct: number; neutral_pct: number; negative_pct: number };
+} | null>(null);
 
 const realtimeData = ref({
   currentRate: 156,
@@ -1058,27 +1063,33 @@ const initUsersCharts = () => {
 };
 
 const initRealtimeCharts = () => {
-  // 实时数据流
+  const rt = backendRealtime.value;
+  // 实时数据流 (后端近 20 分钟 分钟桶)
   initChart(realtimeLineRef.value, {
     tooltip: { trigger: 'axis' },
     legend: { data: ['采集量', '分析量'], top: 0 },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', boundaryGap: false, data: generateTimeLabels(20) },
+    xAxis: { type: 'category', boundaryGap: false, data: rt?.timeline?.labels || generateTimeLabels(20) },
     yAxis: { type: 'value' },
     series: [
-      { name: '采集量', type: 'line', smooth: true, data: generateRandomData(20, 100, 200), areaStyle: { opacity: 0.3 }, lineStyle: { color: PRIMARY }, itemStyle: { color: PRIMARY } },
-      { name: '分析量', type: 'line', smooth: true, data: generateRandomData(20, 90, 180), areaStyle: { opacity: 0.3 }, lineStyle: { color: SUCCESS }, itemStyle: { color: SUCCESS } },
+      { name: '采集量', type: 'line', smooth: true, data: rt?.timeline?.collected || generateRandomData(20, 0, 5), areaStyle: { opacity: 0.3 }, lineStyle: { color: PRIMARY }, itemStyle: { color: PRIMARY } },
+      { name: '分析量', type: 'line', smooth: true, data: rt?.timeline?.analyzed  || generateRandomData(20, 0, 5), areaStyle: { opacity: 0.3 }, lineStyle: { color: SUCCESS }, itemStyle: { color: SUCCESS } },
     ],
   });
 
-  // 实时情感分布
+  // 实时情感分布 (后端 sentiment_analysis_results)
+  const sd = rt?.sentiment;
   initChart(realtimePieRef.value, {
-    tooltip: { trigger: 'item' },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
     legend: { orient: 'vertical', left: 'left' },
     series: [{
       type: 'pie',
       radius: ['40%', '70%'],
-      data: [
+      data: sd ? [
+        { value: sd.positive, name: '正面', itemStyle: { color: SUCCESS } },
+        { value: sd.neutral,  name: '中性', itemStyle: { color: INFO } },
+        { value: sd.negative, name: '负面', itemStyle: { color: DANGER } },
+      ] : [
         { value: 48, name: '正面', itemStyle: { color: SUCCESS } },
         { value: 32, name: '中性', itemStyle: { color: INFO } },
         { value: 20, name: '负面', itemStyle: { color: DANGER } },
@@ -1225,13 +1236,14 @@ const handleDateChange = () => {
 const fetchBackendData = async () => {
   const period = dateRange.value?.length === 2 ? 'all' : 'all';
   try {
-    const [overviewRes, sentimentRes, trendRes, topicsRes, userProfileRes, extrasRes] = await Promise.allSettled([
+    const [overviewRes, sentimentRes, trendRes, topicsRes, userProfileRes, extrasRes, realtimeRes] = await Promise.allSettled([
       apiClient.get('/dashboard/overview'),
       apiClient.get('/dashboard/sentiment-distribution', { params: { period } }),
       apiClient.get('/dashboard/trend'),
       apiClient.get('/dashboard/hot-topics'),
       apiClient.get('/dashboard/user-profile'),
       apiClient.get('/dashboard/extras'),
+      apiClient.get('/dashboard/realtime-metrics'),
     ]);
 
     // 概览
@@ -1271,6 +1283,18 @@ const fetchBackendData = async () => {
     // 补全聚合 (关键词分布/情感强度/散点/时段/话题趋势)
     if (extrasRes.status === 'fulfilled' && extrasRes.value.data?.code === 200) {
       backendExtras.value = extrasRes.value.data.data || null;
+    }
+
+    // 实时监控 4 指标 + 时序 + 情感
+    if (realtimeRes.status === 'fulfilled' && realtimeRes.value.data?.code === 200) {
+      backendRealtime.value = realtimeRes.value.data.data || null;
+      const m = backendRealtime.value?.metrics;
+      if (m) {
+        realtimeData.value.currentRate   = m.ratePerMin;
+        realtimeData.value.todayTotal    = m.todayTotal;
+        realtimeData.value.analyzedCount = m.analyzedTotal;
+        realtimeData.value.alertCount    = m.alertCount;
+      }
     }
   } catch (e) {
     console.warn('[Viz] 后端数据拉取失败', e);
@@ -1577,13 +1601,23 @@ onMounted(async () => {
   
   setupChartLinkage();
   
-  realtimeTimer = window.setInterval(() => {
+  // 实时 tab 下每 15 秒拉一次真实后端数据 (取代之前随机增量)
+  realtimeTimer = window.setInterval(async () => {
     if (currentDashboard.value === 'realtime' && isStreaming.value) {
-      realtimeData.value.currentRate = Math.floor(Math.random() * 50 + 130);
-      realtimeData.value.todayTotal += Math.floor(Math.random() * 10);
-      realtimeData.value.analyzedCount += Math.floor(Math.random() * 8);
+      try {
+        const res = await apiClient.get('/dashboard/realtime-metrics');
+        if (res.data?.code === 200 && res.data.data) {
+          backendRealtime.value = res.data.data;
+          const m = res.data.data.metrics;
+          realtimeData.value.currentRate   = m.ratePerMin;
+          realtimeData.value.todayTotal    = m.todayTotal;
+          realtimeData.value.analyzedCount = m.analyzedTotal;
+          realtimeData.value.alertCount    = m.alertCount;
+          initRealtimeCharts();
+        }
+      } catch {}
     }
-  }, 3000);
+  }, 15000);
 });
 
 onUnmounted(() => {
