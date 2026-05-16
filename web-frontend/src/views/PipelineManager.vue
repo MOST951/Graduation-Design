@@ -65,15 +65,30 @@
        <div class="sidebar-sticky">
         <el-card header="执行参数" shadow="hover" class="config-card">
           <el-form label-position="top" size="default">
+            <el-form-item label="采集关键词">
+              <div style="margin-bottom: 6px">
+                <el-tag
+                  v-for="(kw, idx) in pipelineConfig.keywords"
+                  :key="idx"
+                  closable
+                  size="small"
+                  style="margin: 2px"
+                  @close="removePipelineKeyword(idx)"
+                >{{ kw }}</el-tag>
+              </div>
+              <div style="display: flex; gap: 4px">
+                <el-input v-model="newKeyword" placeholder="输入关键词" size="small" @keyup.enter="addPipelineKeyword" />
+                <el-button size="small" type="primary" @click="addPipelineKeyword">添加</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item label="爬取热搜话题">
+              <el-switch v-model="pipelineConfig.crawl_hot" active-text="开启" inactive-text="关闭" />
+            </el-form-item>
+            <el-form-item label="每词爬取页数">
+              <el-input-number v-model="pipelineConfig.pages" :min="1" :max="10" :step="1" style="width: 100%" />
+            </el-form-item>
             <el-form-item label="最大处理条数">
               <el-input-number v-model="pipelineConfig.limit" :min="10" :max="5000" :step="50" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="关键词预设">
-              <el-select v-model="pipelineConfig.preset" placeholder="选择预设" style="width: 100%">
-                <el-option label="默认配置" value="default" />
-                <el-option label="情感优先" value="sentiment_first" />
-                <el-option label="热度优先" value="heat_first" />
-              </el-select>
             </el-form-item>
             <el-form-item label="断点续跑">
               <el-switch v-model="pipelineConfig.resume" active-text="启用" inactive-text="禁用" />
@@ -414,7 +429,20 @@ const pipelineConfig = reactive({
   limit: 500,
   preset: 'default',
   resume: false,
+  keywords: ['微博热搜'] as string[],
+  crawl_hot: true,
+  pages: 50,
 });
+const newKeyword = ref('');
+const addPipelineKeyword = () => {
+  const kw = newKeyword.value.trim();
+  if (kw && !pipelineConfig.keywords.includes(kw)) {
+    pipelineConfig.keywords.push(kw);
+    newKeyword.value = '';
+  }
+};
+const removePipelineKeyword = (idx: number) => pipelineConfig.keywords.splice(idx, 1);
+let collectTaskId = '';
 
 const pipelineStatus = reactive({
   running: false,
@@ -511,36 +539,86 @@ const runPipeline = async (mode: 'sync' | 'async', resumeOpts?: { resume_from?: 
   }
 
   try {
-    const url = mode === 'sync' ? '/pipeline/run' : '/pipeline/run-async';
-    const response = await apiClient.post(url, {
-      limit: pipelineConfig.limit,
-      preset: pipelineConfig.preset,
-      resume_from: resumeOpts?.resume_from,
-      batch_id: resumeOpts?.batch_id,
+    // 使用 /api/weibo/collect 启动完整流水线（采集→清洗→分析→排序→入库）
+    const response = await apiClient.post('/weibo/collect', {
+      keywords: pipelineConfig.keywords,
+      pages: pipelineConfig.pages,
+      crawl_hot: pipelineConfig.crawl_hot,
+      auto_process: true,
     });
 
     if (response.data.code === 200) {
       const data = response.data.data;
+      collectTaskId = data.task_id;
       lastResult.value = data;
-
-      if (mode === 'async') {
-        ElMessage.success('流水线已在后台启动');
-        startPolling();
-      } else {
-        ElMessage.success(`流水线执行完成，处理 ${data.total_processed ?? 0} 条`);
-        updateStagesFromResult(data);
-        await loadDatabaseStats();
-        await loadRanking();
-        addHistoryRecord(data);
-      }
+      pipelineStatus.batch_id = data.task_id;
+      ElMessage.success(mode === 'async' ? '流水线已在后台启动' : '流水线已启动');
+      stages.value[0].status = 'running';
+      startCollectPolling();
     } else {
       ElMessage.warning(response.data.message || '执行失败');
+      running.value = false;
     }
   } catch (error: any) {
     ElMessage.warning(error.response?.data?.message || '流水线执行失败');
-  } finally {
-    if (!pollTimer) running.value = false;
+    running.value = false;
   }
+};
+
+// 轮询 /api/weibo/collect/status 获取各阶段进度
+const startCollectPolling = () => {
+  stopPolling();
+  pollTimer = window.setInterval(async () => {
+    if (!collectTaskId) return;
+    try {
+      const res = await apiClient.get(`/weibo/collect/status/${collectTaskId}`);
+      if (res.data?.code !== 200) return;
+      const task = res.data.data;
+
+      // 映射 phases → stages UI
+      const phaseMap: Record<string, number> = { crawl: 0, hdfs: 0, clean: 1, analyze: 2, rank: 3 };
+      const phases = task.phases || {};
+      for (const [pKey, idx] of Object.entries(phaseMap)) {
+        const p = phases[pKey];
+        if (!p) continue;
+        if (p.status === 'completed') {
+          stages.value[idx].status = 'completed';
+        } else if (p.status === 'running') {
+          stages.value[idx].status = 'running';
+        } else if (p.status === 'failed') {
+          stages.value[idx].status = 'failed';
+        }
+      }
+      // 入库阶段跟随 rank
+      if (phases.rank?.status === 'completed') {
+        stages.value[4].status = 'completed';
+      } else if (phases.rank?.status === 'running') {
+        stages.value[4].status = 'running';
+      }
+
+      pipelineStatus.running = task.status === 'crawling' || task.status === 'processing';
+      pipelineStatus.current_stage = task.phase || '';
+      pipelineStatus.processed_count = task.collected || 0;
+
+      if (task.status === 'completed' || task.status === 'done') {
+        stages.value.forEach(s => s.status = 'completed');
+        stages.value[0].count = task.collected;
+        running.value = false;
+        pipelineStatus.running = false;
+        stopPolling();
+        addHistoryRecord({ batch_id: collectTaskId, total_processed: task.collected, status: 'completed' });
+        await loadDatabaseStats();
+        await loadRanking();
+        ElMessage.success(`流水线完成，共处理 ${task.collected} 条`);
+      } else if (task.status === 'failed') {
+        running.value = false;
+        pipelineStatus.running = false;
+        stopPolling();
+        addHistoryRecord({ batch_id: collectTaskId, total_processed: task.collected, status: 'failed', failed_stage: task.phase });
+        ElMessage.error(`流水线失败: ${task.error || '未知错误'}`);
+      }
+    } catch { /* silent */ }
+  }, 3000);
 };
 
 // 刷新状态

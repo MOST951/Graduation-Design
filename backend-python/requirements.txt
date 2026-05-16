@@ -48,5 +48,5 @@ redis>=5.0.0
 # happybase>=1.2.0  # HBase Thrift客户端(可选)
 
 # --- 网页爬虫 (可选) ---
-# selenium>=4.15.0
+selenium>=4.15.0
 # webdriver-manager>=4.0.0

@@ -22,7 +22,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/monitor")
+@RequestMapping("/api/monitor")
 public class MonitorController {
 
     @Autowired

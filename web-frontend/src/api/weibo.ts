@@ -412,6 +412,58 @@ export async function getTopicWeibo(
   };
 }
 
+/**
+ * 验证Cookie是否有效
+ */
+export async function validateCookie(cookie: string): Promise<{ valid: boolean; message: string }> {
+  try {
+    const response = await apiClient.post('/weibo/crawl/validate-cookie', { cookie });
+    return response.data;
+  } catch {
+    return { valid: false, message: '验证请求失败' };
+  }
+}
+
+/**
+ * 获取Cookie状态
+ */
+export async function getCookieStatus(): Promise<any> {
+  const response = await apiClient.get('/weibo/crawl/cookie/status');
+  return response.data;
+}
+
+/**
+ * 阶段1: 启动Selenium扫码，返回session_id和二维码
+ */
+export async function startQRSession(timeout: number = 120): Promise<any> {
+  const response = await apiClient.post('/weibo/crawl/cookie/grab', { timeout }, { timeout: 30000 });
+  return response.data;
+}
+
+/**
+ * 阶段2: 轮询扫码状态
+ */
+export async function pollQRSession(sessionId: string): Promise<any> {
+  const response = await apiClient.get('/weibo/crawl/cookie/poll', { params: { session_id: sessionId } });
+  return response.data;
+}
+
+/**
+ * 保存手动粘贴的Cookie
+ */
+export async function saveCookie(cookie: string): Promise<any> {
+  const response = await apiClient.post('/weibo/crawl/cookie/save', { cookie });
+  return response.data;
+}
+
+/**
+ * 刷新已有Cookie
+ */
+export async function refreshCookie(): Promise<any> {
+  const response = await apiClient.post('/weibo/crawl/cookie/refresh', {}, { timeout: 30000 });
+  return response.data;
+}
+
 // 模拟任务存储
 const mockTasks: Map<string, CrawlTask> = new Map();
 
@@ -420,9 +472,10 @@ const mockTasks: Map<string, CrawlTask> = new Map();
  */
 export async function startCrawlTask(
   keywords: string[],
-  pages: number = 3,
+  pages: number = 50,
   crawlHot: boolean = true,
-  dateRange?: [string, string] | null
+  dateRange?: [string, string] | null,
+  cookie?: string
 ): Promise<CrawlTask> {
   try {
     const response = await apiClient.post('/weibo/crawl/start', {
@@ -430,6 +483,7 @@ export async function startCrawlTask(
       pages,
       crawl_hot: crawlHot,
       ...(dateRange ? { start_date: dateRange[0], end_date: dateRange[1] } : {}),
+      ...(cookie ? { cookie } : {}),
     });
     return response.data.data;
   } catch (error) {
@@ -479,18 +533,9 @@ export async function getCrawlTaskStatus(taskId: string): Promise<CrawlTask> {
     const response = await apiClient.get(`/weibo/crawl/status/${taskId}`);
     return response.data.data;
   } catch (error) {
-    // 如果后端不可用，返回模拟完成状态
-    return {
-      id: taskId,
-      status: 'completed',
-      keywords: [],
-      pages: 3,
-      crawl_hot: true,
-      progress: 100,
-      collected: 50,
-      start_time: new Date().toISOString(),
-      end_time: new Date().toISOString(),
-    };
+    // 后端不可用时抛出错误，让调用方处理，而非伪造"已完成"
+    console.warn('getCrawlTaskStatus 请求失败:', error);
+    throw error;
   }
 }
 
@@ -607,15 +652,17 @@ export async function getAnalysisResult(analysisId: string): Promise<AnalysisRes
 /**
  * 实时分析单条文本
  * @param text 要分析的文本
+ * @param method 分析方法 (lexicon/bert/cascade)
  */
-export async function realtimeAnalyze(text: string): Promise<{
-  text: string;
-  sentiment: 'positive' | 'neutral' | 'negative';
-  sentiment_score: number;
-  analysis_time: string;
-}> {
-  const response = await apiClient.post('/weibo/realtime/analyze', { text });
-  return response.data.data;
+export async function realtimeAnalyze(text: string, method: string = 'cascade', threshold: number = 0.9): Promise<any> {
+  try {
+    const response = await apiClient.post('/sentiment/analyze', { text, method, threshold });
+    return response.data.data;
+  } catch {
+    // 回退到旧接口
+    const response = await apiClient.post('/weibo/realtime/analyze', { text });
+    return response.data.data;
+  }
 }
 
 /**
@@ -651,26 +698,28 @@ export interface CollectionTask {
 
 /**
  * 获取所有采集任务列表
- * 同时从 /collection/tasks 和 /weibo/crawl/tasks 获取任务
+ * 并行请求 /collection/tasks 和 /weibo/crawl/tasks，2秒超时
  */
 export async function getCollectionTasks(): Promise<CollectionTask[]> {
+  const TIMEOUT = 2000;
   const allTasks: CollectionTask[] = [];
-  
-  // 尝试从 collection API 获取
-  try {
-    const response = await apiClient.get('/collection/tasks');
-    if (response.data.code === 200 && Array.isArray(response.data.data)) {
-      allTasks.push(...response.data.data);
-    }
-  } catch (e) {
-    console.warn('获取collection任务失败:', e);
+
+  const [collectionRes, crawlRes] = await Promise.allSettled([
+    apiClient.get('/collection/tasks', { timeout: TIMEOUT }).catch(() => null),
+    apiClient.get('/weibo/crawl/tasks', { timeout: TIMEOUT }).catch(() => null),
+  ]);
+
+  // 解析 collection 结果
+  if (collectionRes.status === 'fulfilled' && collectionRes.value?.data?.code === 200) {
+    const data = collectionRes.value.data.data;
+    if (Array.isArray(data)) allTasks.push(...data);
   }
-  
-  // 尝试从 weibo/crawl API 获取
-  try {
-    const response = await apiClient.get('/weibo/crawl/tasks');
-    if (response.data.code === 200 && response.data.data?.tasks) {
-      const crawlTasks = response.data.data.tasks.map((t: CrawlTask) => ({
+
+  // 解析 crawl 结果
+  if (crawlRes.status === 'fulfilled' && crawlRes.value?.data?.code === 200) {
+    const tasks = crawlRes.value.data.data?.tasks;
+    if (Array.isArray(tasks)) {
+      const crawlTasks = tasks.map((t: CrawlTask) => ({
         id: t.id,
         name: t.keywords?.join(', ') || '采集任务',
         keywords: (t.keywords || []).map((k: string) => ({ word: k })),
@@ -681,13 +730,10 @@ export async function getCollectionTasks(): Promise<CollectionTask[]> {
       }));
       allTasks.push(...crawlTasks);
     }
-  } catch (e) {
-    console.warn('获取crawl任务失败:', e);
   }
-  
+
   // 按时间倒序排列
   allTasks.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  
   return allTasks;
 }
 
@@ -703,42 +749,32 @@ export async function getTaskData(taskId: string, page: number = 1, pageSize: nu
   page: number;
   pageSize: number;
 }> {
-  // 先尝试从 collection API 获取
-  try {
-    const response = await apiClient.get(`/collection/tasks/${taskId}/data`, {
-      params: { page, pageSize }
-    });
-    if (response.data.code === 200) {
-      const data = response.data.data;
-      return {
-        list: data.items || data.list || [],
-        total: data.total || 0,
-        page: data.page || page,
-        pageSize: data.pageSize || pageSize,
-      };
+  const TIMEOUT = 3000;
+
+  // 并行请求两个来源，取第一个成功的
+  const [collectionRes, crawlRes] = await Promise.allSettled([
+    apiClient.get(`/collection/tasks/${taskId}/data`, { params: { page, pageSize }, timeout: TIMEOUT }).catch(() => null),
+    apiClient.get(`/weibo/crawl/data/${taskId}`, { params: { page, page_size: pageSize }, timeout: TIMEOUT }).catch(() => null),
+  ]);
+
+  // 解析 collection 结果
+  if (collectionRes.status === 'fulfilled' && collectionRes.value?.data?.code === 200) {
+    const data = collectionRes.value.data.data;
+    const list = data.items || data.list || [];
+    if (list.length > 0) {
+      return { list, total: data.total || list.length, page: data.page || page, pageSize: data.pageSize || pageSize };
     }
-  } catch (e) {
-    console.warn('从collection获取数据失败，尝试crawl API');
   }
-  
-  // 尝试从 weibo/crawl API 获取
-  try {
-    const response = await apiClient.get(`/weibo/crawl/data/${taskId}`, {
-      params: { page, page_size: pageSize }
-    });
-    if (response.data.code === 200) {
-      const data = response.data.data;
-      return {
-        list: data.items || [],
-        total: data.total || 0,
-        page: data.page || page,
-        pageSize: data.page_size || pageSize,
-      };
+
+  // 解析 crawl 结果
+  if (crawlRes.status === 'fulfilled' && crawlRes.value?.data?.code === 200) {
+    const data = crawlRes.value.data.data;
+    const list = data.items || [];
+    if (list.length > 0) {
+      return { list, total: data.total || list.length, page: data.page || page, pageSize: data.page_size || pageSize };
     }
-  } catch (e) {
-    console.warn('从crawl获取数据失败');
   }
-  
+
   throw new Error('获取任务数据失败');
 }
 
@@ -777,18 +813,34 @@ export interface PreprocessedItem {
  * 获取所有预处理任务列表
  */
 export async function getPreprocessTasks(): Promise<PreprocessTask[]> {
-  // 添加时间戳防止缓存
   const response = await apiClient.get('/preprocess/tasks', {
-    params: { _t: Date.now() }
+    params: { _t: Date.now() },
+    timeout: 3000,
   });
   if (response.data.code === 200) {
-    const tasks = response.data.data || [];
-    // 确保返回数组
-    if (Array.isArray(tasks)) {
-      return tasks;
-    }
-    // 如果是对象，转换为数组
-    return Object.values(tasks);
+    const raw = response.data.data || [];
+    const arr: any[] = Array.isArray(raw) ? raw : Object.values(raw);
+    // 归一化：新旧两种后端格式统一
+    return arr.map((t: any, idx: number) => {
+      const count = t.processedCount ?? t.processed_count ?? t.data_count ?? 0;
+      const created = t.createdAt || t.created_at || '';
+      let name = t.name;
+      if (!name || name === '????' || name === 'undefined') {
+        // 用日期 + 数量生成可读名称
+        const d = created ? new Date(created) : null;
+        const dateStr = d ? `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` : `#${idx + 1}`;
+        name = `预处理任务 ${dateStr}`;
+      }
+      return {
+        ...t,
+        name,
+        processedCount: count,
+        totalCount: t.totalCount ?? t.data_count ?? count,
+        createdAt: created,
+        cleanRules: t.cleanRules || [],
+        segmentTool: t.segmentTool || '',
+      } as PreprocessTask;
+    });
   }
   throw new Error(response.data.message || '获取预处理任务列表失败');
 }
@@ -963,7 +1015,7 @@ export async function startDataflowTask(params: {
   try {
     const response = await apiClient.post('/weibo/collect', {
       keywords: params.keywords || [],
-      pages: params.pages || 3,
+      pages: params.pages || 50,
       crawl_hot: params.crawl_hot !== false,
       auto_process: params.auto_process !== false,
     });

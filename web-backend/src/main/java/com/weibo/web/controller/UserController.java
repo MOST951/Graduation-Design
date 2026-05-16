@@ -20,7 +20,7 @@ import java.util.Optional;
  * 与 admin-side 的 /admin/users/* 区分开 (后者由 AdminController 负责).
  */
 @RestController
-@RequestMapping("/users")
+@RequestMapping("/api/users")
 public class UserController {
 
     @Autowired

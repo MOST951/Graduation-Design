@@ -100,6 +100,25 @@ def save_metadata():
     except Exception as e:
         logger.error(f"保存元数据失败: {e}")
 
+def _sync_metadata_to_memory():
+    """将磁盘上已持久化但内存中缺失的任务合并回 crawl_tasks。
+    仅添加缺失的 key，不覆盖正在运行的任务的内存状态。"""
+    try:
+        if not os.path.exists(METADATA_FILE):
+            return
+        with open(METADATA_FILE, 'r', encoding='utf-8') as f:
+            disk_tasks = json.load(f)
+        merged = 0
+        with task_lock:
+            for tid, tinfo in disk_tasks.items():
+                if tid not in crawl_tasks:
+                    crawl_tasks[tid] = tinfo
+                    merged += 1
+        if merged:
+            logger.info(f"从磁盘合并了 {merged} 个缺失任务到内存")
+    except Exception as e:
+        logger.warning(f"_sync_metadata_to_memory 失败: {e}")
+
 # 初始化时加载元数据
 load_metadata()
 
@@ -275,7 +294,7 @@ def _validate_crawl_params(data: dict):
         return None, '请求体必须是 JSON 对象'
 
     keywords = data.get('keywords', [])
-    pages = data.get('pages', 3)
+    pages = data.get('pages', 50)
     crawl_hot = bool(data.get('crawl_hot', True))
     max_count = data.get('max_count', 0)
     mode = (data.get('mode') or 'auto').lower()
@@ -344,6 +363,130 @@ def _classify_data_source(rows: list) -> dict:
     return {'data_source': source, 'real_count': real, 'synthetic_count': syn}
 
 
+@weibo_bp.route('/crawl/cookie/status', methods=['GET'])
+def cookie_status():
+    """获取当前Cookie状态"""
+    try:
+        from crawler.cookie_grabber import get_cookie_status
+        status = get_cookie_status()
+        return jsonify({'code': 200, **status})
+    except Exception as e:
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
+@weibo_bp.route('/crawl/cookie/grab', methods=['POST'])
+def cookie_grab():
+    """阶段1: 启动Selenium扫码，返回session_id和二维码"""
+    try:
+        data = request.json or {}
+        timeout = min(int(data.get('timeout', 120)), 180)
+
+        from crawler.cookie_grabber import start_qr_session
+        result = start_qr_session(timeout=timeout)
+        return jsonify({'code': 200, **result})
+    except Exception as e:
+        logger.error(f"Cookie抓取异常: {e}", exc_info=True)
+        return jsonify({'code': 500, 'status': 'error', 'message': str(e)}), 500
+
+
+@weibo_bp.route('/crawl/cookie/poll', methods=['GET'])
+def cookie_poll():
+    """阶段2: 前端轮询扫码状态"""
+    session_id = request.args.get('session_id', '')
+    if not session_id:
+        return jsonify({'code': 400, 'status': 'error', 'message': '缺少session_id'}), 400
+
+    from crawler.cookie_grabber import poll_qr_session
+    result = poll_qr_session(session_id)
+    return jsonify({'code': 200, **result})
+
+
+@weibo_bp.route('/crawl/cookie/refresh', methods=['POST'])
+def cookie_refresh():
+    """用已有Cookie刷新/续期"""
+    try:
+        from crawler.cookie_grabber import refresh_cookies
+        result = refresh_cookies()
+        code = 200 if result['success'] else 400
+        return jsonify({'code': code, **result}), 200
+    except Exception as e:
+        return jsonify({'code': 500, 'success': False, 'message': str(e)}), 500
+
+
+@weibo_bp.route('/crawl/cookie/save', methods=['POST'])
+def cookie_save():
+    """手动保存用户粘贴的Cookie字符串"""
+    try:
+        data = request.json or {}
+        cookie_str = data.get('cookie', '').strip()
+        if not cookie_str:
+            return jsonify({'code': 400, 'success': False, 'message': 'Cookie为空'}), 400
+
+        # 解析 "key=value; key2=value2" 格式
+        cookie_dict = {}
+        for part in cookie_str.split(';'):
+            part = part.strip()
+            if '=' in part:
+                k, v = part.split('=', 1)
+                cookie_dict[k.strip()] = v.strip()
+
+        if 'SUB' not in cookie_dict:
+            return jsonify({'code': 400, 'success': False,
+                            'message': 'Cookie缺少SUB字段，请确保复制了完整的微博Cookie'})
+
+        from crawler.cookie_grabber import save_cookies
+        save_cookies(cookie_dict)
+        return jsonify({
+            'code': 200, 'success': True,
+            'message': f'Cookie已保存（{len(cookie_dict)}个字段）',
+            'fields': list(cookie_dict.keys()),
+        })
+    except Exception as e:
+        return jsonify({'code': 500, 'success': False, 'message': str(e)}), 500
+
+
+@weibo_bp.route('/crawl/validate-cookie', methods=['POST'])
+def validate_cookie():
+    """验证Cookie是否有效（含SUB且未过期）"""
+    try:
+        data = request.json or {}
+        cookie = data.get('cookie', '').strip()
+        if not cookie:
+            return jsonify({'code': 400, 'valid': False, 'message': 'Cookie为空'}), 400
+        if 'SUB=' not in cookie:
+            return jsonify({'code': 200, 'valid': False,
+                            'message': 'Cookie缺少SUB字段，请从weibo.com完整复制Cookie'})
+
+        # 用该Cookie请求一个轻量API验证是否过期
+        import requests as req
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+            'Referer': 'https://weibo.com/',
+            'Cookie': cookie,
+        }
+        xsrf = ''
+        for part in cookie.split(';'):
+            p = part.strip()
+            if p.startswith('XSRF-TOKEN='):
+                xsrf = p.split('=', 1)[1]
+                break
+        if xsrf:
+            headers['X-XSRF-TOKEN'] = xsrf
+
+        resp = req.get('https://weibo.com/ajax/side/hotSearch', headers=headers, timeout=10)
+        rdata = resp.json()
+        if 'data' in rdata and 'realtime' in rdata.get('data', {}):
+            count = len(rdata['data']['realtime'])
+            return jsonify({'code': 200, 'valid': True,
+                            'message': f'Cookie有效，热搜API返回{count}条结果'})
+        else:
+            return jsonify({'code': 200, 'valid': False,
+                            'message': 'Cookie已失效，请重新登录weibo.com获取'})
+    except Exception as e:
+        return jsonify({'code': 500, 'valid': False, 'message': f'验证异常: {str(e)}'}), 500
+
+
 @weibo_bp.route('/crawl/start', methods=['POST'])
 def start_crawl_task():
     """
@@ -366,6 +509,7 @@ def start_crawl_task():
         crawl_hot = cleaned['crawl_hot']
         max_count = cleaned['max_count']
         mode      = cleaned['mode']
+        cookie    = (request.json or {}).get('cookie', '').strip() or None
 
         # 创建任务ID
         task_id = f"crawl_{int(time.time() * 1000)}"
@@ -396,8 +540,9 @@ def start_crawl_task():
         
         # 在后台线程执行爬取
         def run_crawl():
+            crawler_task = None
             try:
-                crawler_task = WeiboCrawlerTask(os.path.join(DATA_DIR, 'weibo_raw'))
+                crawler_task = WeiboCrawlerTask(os.path.join(DATA_DIR, 'weibo_raw'), cookie=cookie)
                 all_data = []
 
                 # ---- mode='synthetic': 跳过网络, 直接生成模板数据 (演示场景, 论文 2.2.1) ----
@@ -500,6 +645,13 @@ def start_crawl_task():
                 task_info['error'] = str(e)
                 task_info['end_time'] = datetime.now().isoformat()
                 save_metadata()  # 任务失败保存状态
+            finally:
+                # 释放 Selenium 浏览器等资源
+                if crawler_task:
+                    try:
+                        crawler_task.close()
+                    except Exception:
+                        pass
         
         thread = threading.Thread(target=run_crawl)
         thread.daemon = True
@@ -524,6 +676,8 @@ def get_crawl_status(task_id: str):
     """获取采集任务状态"""
     try:
         if task_id not in crawl_tasks:
+            _sync_metadata_to_memory()   # 尝试从磁盘恢复
+        if task_id not in crawl_tasks:
             return jsonify({
                 'code': 404,
                 'message': '任务不存在'
@@ -547,6 +701,10 @@ def get_crawl_status(task_id: str):
 def get_crawl_tasks():
     """获取所有采集任务列表"""
     try:
+        # 安全网: 将磁盘上已持久化但内存中缺失的任务合并回来
+        # (解决 gunicorn 多 worker / 服务重启后内存丢失问题)
+        _sync_metadata_to_memory()
+
         # 获取任务列表，按时间倒序
         tasks_list = list(crawl_tasks.values())
         tasks_list.sort(key=lambda x: x.get('start_time', ''), reverse=True)
@@ -897,6 +1055,15 @@ def tri_dimension_rank():
                 sentiment, score = SentimentLexicon.analyze(text)
                 item['sentiment_score'] = score
                 item['sentiment_label'] = sentiment
+            # 将 interactions 展开为顶层字段供 rank_weibo_data 使用
+            interactions = item.get('interactions', {})
+            if interactions:
+                if 'reposts_count' not in item:
+                    item['reposts_count'] = interactions.get('reposts', 0)
+                if 'comments_count' not in item:
+                    item['comments_count'] = interactions.get('comments', 0)
+                if 'attitudes_count' not in item:
+                    item['attitudes_count'] = interactions.get('likes', 0)
         
         # 执行三维度排序
         ranked_data = rank_weibo_data(
@@ -1265,9 +1432,10 @@ def collect_and_process():
     try:
         data = request.json or {}
         keywords = data.get('keywords', [])
-        pages = data.get('pages', 3)
+        pages = data.get('pages', 50)
         crawl_hot = data.get('crawl_hot', True)
         auto_process = data.get('auto_process', True)
+        pipeline_cookie = data.get('cookie', '').strip() or None
         
         # 参数校验
         if not isinstance(keywords, list):
@@ -1320,6 +1488,7 @@ def collect_and_process():
         
         # 在后台线程执行完整流程
         def run_full_pipeline():
+            crawler_task = None
             try:
                 # ========== 阶段1: 数据采集 ==========
                 logger.info(f"[{task_id}] 阶段1: 开始数据采集...")
@@ -1327,7 +1496,7 @@ def collect_and_process():
                 task_info['phases']['crawl']['progress'] = 5
                 task_info['progress'] = 2
                 
-                crawler_task = WeiboCrawlerTask(os.path.join(DATA_DIR, 'weibo_raw'))
+                crawler_task = WeiboCrawlerTask(os.path.join(DATA_DIR, 'weibo_raw'), cookie=pipeline_cookie)
                 all_data = []
                 
                 # 计算总步骤用于进度
@@ -1392,6 +1561,17 @@ def collect_and_process():
                 logger.info(f"[{task_id}] 采集完成，共 {len(all_data)} 条数据")
                 
                 if not auto_process:
+                    # 即使不走后续处理流程，也要上传 HDFS 保存原始数据
+                    try:
+                        from utils.hdfs_client import upload_raw_to_hdfs_partitioned
+                        hdfs_path = upload_raw_to_hdfs_partitioned(result_file, task_id)
+                        if hdfs_path:
+                            task_info['hdfs_path'] = hdfs_path
+                            logger.info(f"[{task_id}] HDFS 同步成功: {hdfs_path}")
+                        else:
+                            logger.warning(f"[{task_id}] HDFS 同步失败/跳过")
+                    except Exception as e:
+                        logger.warning(f"[{task_id}] HDFS 同步异常: {e}")
                     task_info['status'] = 'crawl_completed'
                     task_info['phase'] = 'crawl_done'
                     save_metadata()
@@ -1406,27 +1586,18 @@ def collect_and_process():
                 task_info['progress'] = 21
                 spark_input_path = result_file  # 默认本地, 上传成功后切到 HDFS URI
                 try:
-                    from hdfs import InsecureClient
-                    hdfs_http = os.environ.get('HDFS_HTTP_URL', 'http://namenode:50070')
-                    hdfs_rpc = os.environ.get('HDFS_DEFAULT_FS', 'hdfs://namenode:9000')
-                    hdfs_user = os.environ.get('HDFS_USER', 'root')
-                    client = InsecureClient(hdfs_http, user=hdfs_user, timeout=20)
-                    date_part = datetime.now().strftime('%Y-%m-%d')
-                    hdfs_dir = f'/weibo/raw/dt={date_part}'
-                    hdfs_path = f'{hdfs_dir}/{task_id}.json'
-                    client.makedirs(hdfs_dir)
-                    client.upload(hdfs_path, result_file, overwrite=True)
-                    uploaded_status = client.status(hdfs_path)
-                    task_info['hdfs_path'] = f'{hdfs_rpc}{hdfs_path}'
-                    task_info['hdfs_bytes'] = uploaded_status.get('length', 0)
-                    task_info['phases']['hdfs']['progress'] = 100
-                    task_info['phases']['hdfs']['status'] = 'completed'
-                    task_info['progress'] = 24
-                    spark_input_path = task_info['hdfs_path']
-                    logger.info(
-                        f"[{task_id}] HDFS 上传成功: {task_info['hdfs_path']} "
-                        f"({task_info['hdfs_bytes']} bytes)"
-                    )
+                    from utils.hdfs_client import upload_raw_to_hdfs_partitioned, get_hdfs_url
+                    hdfs_path = upload_raw_to_hdfs_partitioned(result_file, task_id)
+                    if hdfs_path:
+                        hdfs_rpc = get_hdfs_url() or 'hdfs://namenode:9000'
+                        task_info['hdfs_path'] = f'{hdfs_rpc}{hdfs_path}'
+                        task_info['phases']['hdfs']['progress'] = 100
+                        task_info['phases']['hdfs']['status'] = 'completed'
+                        task_info['progress'] = 24
+                        spark_input_path = task_info['hdfs_path']
+                        logger.info(f"[{task_id}] HDFS 上传成功: {task_info['hdfs_path']}")
+                    else:
+                        raise RuntimeError("upload_raw_to_hdfs_partitioned returned None")
                 except Exception as hdfs_err:
                     logger.warning(
                         f"[{task_id}] HDFS 上传失败, 降级使用本地路径继续: {hdfs_err}"
@@ -1590,6 +1761,13 @@ def collect_and_process():
                 task_info['error'] = str(e)
                 task_info['end_time'] = datetime.now().isoformat()
                 save_metadata()
+            finally:
+                # 释放 Selenium 浏览器等资源
+                if crawler_task:
+                    try:
+                        crawler_task.close()
+                    except Exception:
+                        pass
         
         thread = threading.Thread(target=run_full_pipeline)
         thread.daemon = True

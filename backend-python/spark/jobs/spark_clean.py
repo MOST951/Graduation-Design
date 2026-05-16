@@ -30,56 +30,54 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import StringType
 
 
-# ==================== Python UDF: 表情 / 繁简 ====================
-# 作为 PySpark UDF 在 Executor 进程里被调用; 各 partition 并行执行.
+# ==================== 表情 / 繁简: Spark SQL + Python UDF 混合策略 ====================
+# 论文 6.3.2: 较复杂的清洗如(表情、繁简)等用 Python UDF 实现.
+# 实现策略:
+#   - Unicode 表情 / 微博方括号表情: 使用 regexp_replace (Catalyst 优化, 无需 Python 参与)
+#   - 繁简转换: 在 Driver 端通过 mapInPandas / collect 方式处理, 或使用 pandas_udf
+#   - 多余空白压缩: regexp_replace
 
-_EMOJI_RE = re.compile(
-    "["                          # 表情 unicode 范围 (论文 6.3.2 "表情") 
-    "\U0001F600-\U0001F64F"      # emoticons
-    "\U0001F300-\U0001F5FF"      # symbols & pictographs
-    "\U0001F680-\U0001F6FF"      # transport & map
-    "\U0001F1E0-\U0001F1FF"      # flags
-    "\U00002600-\U000027BF"      # misc symbols
-    "\U0001F900-\U0001F9FF"      # supplemental symbols
-    "]+",
-    flags=re.UNICODE,
+# Spark SQL regexp 可匹配的 emoji 范围 (Java regex 语法)
+_EMOJI_JAVA_REGEX = (
+    "[\\x{1F600}-\\x{1F64F}"
+    "\\x{1F300}-\\x{1F5FF}"
+    "\\x{1F680}-\\x{1F6FF}"
+    "\\x{1F1E0}-\\x{1F1FF}"
+    "\\x{2600}-\\x{27BF}"
+    "\\x{1F900}-\\x{1F9FF}"
+    "\\x{FE00}-\\x{FE0F}"
+    "\\x{200D}]+"
 )
-# 微博特色表情: [笑] [哈哈] [doge] 等方括号 emoji
-_WEIBO_EMOJI_RE = re.compile(r"\[[^\[\]]{1,8}\]")
+# 微博方括号表情: [笑] [哈哈] [doge]
+_WEIBO_EMOJI_REGEX = r"\[[^\[\]]{1,8}\]"
 
 
-def _udf_clean_text(text):
-    """Python UDF: 清洗微博正文中无法用 regexp_replace 一次搞定的复杂部分.
-
-    论文 6.3.2 明确说: 较复杂的清洗如(表情、繁简)等用 Python UDF 实现.
-    步骤:
-      1) 去 unicode emoji
-      2) 去微博方括号表情 [笑] [doge]
-      3) 繁体 -> 简体 (OpenCC, 可选; 无 opencc 时跳过)
-      4) 多余空白压缩
+def _apply_t2s_udf(spark, df, col_name):
+    """繁体转简体: 在 Driver 端用 pandas_udf (Arrow) 或 Python UDF 实现.
+    
+    论文 6.3.2: 繁简转换用 Python UDF 实现.
+    这里使用 pandas_udf(Arrow 序列化) 避免 Python 版本不匹配问题.
+    如果 OpenCC 不可用则跳过.
     """
-    if text is None:
-        return None
-    t = _EMOJI_RE.sub("", text)
-    t = _WEIBO_EMOJI_RE.sub("", t)
-    # 繁简转换 (opencc 存在才做, Executor 首次调用会懒加载)
     try:
-        global _OPENCC
-        try:
-            _OPENCC  # type: ignore
-        except NameError:
-            try:
-                from opencc import OpenCC  # opencc-python-reimplemented
-                _OPENCC = OpenCC("t2s")   # 繁 -> 简
-            except Exception:
-                _OPENCC = None
-        if _OPENCC is not None:
-            t = _OPENCC.convert(t)
-    except Exception:
-        pass
-    # 压缩空白
-    t = re.sub(r"\s+", " ", t).strip()
-    return t
+        from opencc import OpenCC
+        converter = OpenCC("t2s")
+        
+        # 使用 pandas_udf (基于 Arrow, 不受 Python 版本差异影响)
+        from pyspark.sql.functions import pandas_udf
+        import pandas as pd
+        
+        @pandas_udf(StringType())
+        def t2s_pandas_udf(texts: pd.Series) -> pd.Series:
+            return texts.apply(lambda t: converter.convert(t) if t else t)
+        
+        df = df.withColumn(col_name, t2s_pandas_udf(F.col(col_name)))
+        print("[spark_clean] 繁简转换: 已启用 (OpenCC + pandas_udf)")
+    except ImportError:
+        print("[spark_clean] 繁简转换: OpenCC 未安装, 跳过")
+    except Exception as e:
+        print(f"[spark_clean] 繁简转换: 回退跳过 ({e})")
+    return df
 
 
 # ==================== 主流程 ====================
@@ -148,10 +146,21 @@ def main():
         .drop("_url_stripped", "_mention_stripped")
     )
 
-    # ---- Python UDF: 表情 / 繁简 ----
+    # ---- 表情清洗 (Spark SQL 内置函数, 论文 6.3.2) ----
+    # 去 Unicode 表情 (regexp_replace, Catalyst 优化)
+    df = df.withColumn("_emoji_stripped",
+        F.regexp_replace(F.col("_topic_stripped"), _EMOJI_JAVA_REGEX, ""))
+    # 去微博方括号表情 [笑] [doge] (regexp_replace)
+    df = df.withColumn("_weibo_emoji_stripped",
+        F.regexp_replace(F.col("_emoji_stripped"), _WEIBO_EMOJI_REGEX, ""))
+    # 压缩多余空白
+    df = df.withColumn("clean",
+        F.trim(F.regexp_replace(F.col("_weibo_emoji_stripped"), r"\s+", " ")))
+    df = df.drop("_topic_stripped", "_emoji_stripped", "_weibo_emoji_stripped")
+
+    # ---- 繁简转换 (Python UDF, 论文 6.3.2) ----
     # 论文核心代码: df = df.withColumn("clean", clean_udf(df.content))
-    clean_udf = F.udf(_udf_clean_text, StringType())
-    df = df.withColumn("clean", clean_udf(F.col("_topic_stripped"))).drop("_topic_stripped")
+    df = _apply_t2s_udf(spark, df, "clean")
 
     # ---- 去空 & 去重 ----
     df = df.filter(F.length(F.col("clean")) >= 2)

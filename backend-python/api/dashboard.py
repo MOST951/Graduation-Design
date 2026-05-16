@@ -385,6 +385,93 @@ def get_alerts():
         'data': alerts
     })
 
+@dashboard_bp.route('/weibo-detail', methods=['GET'])
+def get_weibo_detail_list():
+    """
+    微观层面：获取单条微博及其情感分析 + 排序结果
+    支持分页和情感类别过滤
+    """
+    page = int(request.args.get('page', 1))
+    page_size = int(request.args.get('page_size', 20))
+    sentiment_filter = request.args.get('sentiment', '')  # positive/negative/neutral
+    keyword = request.args.get('keyword', '')
+    offset = (page - 1) * page_size
+
+    connection = None
+    try:
+        connection = pymysql.connect(
+            host=config.database.host,
+            port=config.database.port,
+            user=config.database.username,
+            password=config.database.password,
+            database=config.database.database,
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
+        )
+        with connection.cursor() as cursor:
+            where_clauses = ["1=1"]
+            params = []
+
+            if sentiment_filter:
+                where_clauses.append("s.sentiment_class = %s")
+                params.append(sentiment_filter)
+            if keyword:
+                where_clauses.append("w.content LIKE %s")
+                params.append(f"%{keyword}%")
+
+            where_sql = " AND ".join(where_clauses)
+
+            # 总数
+            cursor.execute(
+                f"SELECT COUNT(*) AS cnt FROM weibo_core_data w "
+                f"LEFT JOIN sentiment_analysis_results s ON w.weibo_id = s.weibo_id "
+                f"WHERE {where_sql}", params
+            )
+            total = cursor.fetchone()['cnt']
+
+            # 数据
+            cursor.execute(
+                f"""SELECT w.weibo_id, w.content, w.user_name, w.reposts_count,
+                       w.comments_count, w.attitudes_count, w.created_at,
+                       s.sentiment_class, s.hybrid_score, s.confidence,
+                       s.analysis_method, s.processing_time_ms,
+                       r.composite_score, r.ranking_position,
+                       r.popularity_score, r.time_decay
+                FROM weibo_core_data w
+                LEFT JOIN sentiment_analysis_results s ON w.weibo_id = s.weibo_id
+                LEFT JOIN tri_dimension_ranking r ON w.weibo_id = r.weibo_id
+                WHERE {where_sql}
+                ORDER BY w.created_at DESC
+                LIMIT %s OFFSET %s""",
+                params + [page_size, offset]
+            )
+            rows = cursor.fetchall()
+
+            for row in rows:
+                for key, val in row.items():
+                    if hasattr(val, 'isoformat'):
+                        row[key] = val.isoformat()
+                    elif isinstance(val, bytes):
+                        row[key] = val.decode('utf-8', errors='replace')
+
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'total': total,
+                'page': page,
+                'page_size': page_size,
+                'items': rows,
+            }
+        })
+    except Exception as e:
+        logger.error(f"weibo-detail query failed: {e}", exc_info=True)
+        return jsonify({'code': 500, 'message': str(e)}), 500
+    finally:
+        if connection:
+            connection.close()
+
+
 @dashboard_bp.route('/health', methods=['GET'])
 def health_check():
     return jsonify({'code': 200, 'message': 'Dashboard service is running'})

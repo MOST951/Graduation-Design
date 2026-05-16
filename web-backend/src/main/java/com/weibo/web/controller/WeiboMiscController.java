@@ -32,7 +32,7 @@ public class WeiboMiscController {
      * 三维度热点排序. 前端 {@code views/TriDimensionAnalysis.vue} 在用户调整权重后调用此接口,
      * 把传入的若干条候选数据按 {@code α·sentiment + β·heat + γ·timeliness} 重排返回.
      */
-    @PostMapping("/weibo/rank/tri")
+    @PostMapping("/api/weibo/rank/tri")
     public ResponseResult<Map<String, Object>> rankTri(@RequestBody Map<String, Object> req) {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = req.get("data") instanceof List
@@ -71,7 +71,7 @@ public class WeiboMiscController {
      * 传播网络. 用 {@code weibo_core_data} 中按转发热度构造一个简化的星型/层级图,
      * 满足前端 {@code components/PropagationNetwork.vue} 的可视化需要.
      */
-    @GetMapping("/propagation/network")
+    @GetMapping("/api/propagation/network")
     public ResponseResult<Map<String, Object>> propagationNetwork(
             @RequestParam(defaultValue = "30") int max_nodes) {
         List<Map<String, Object>> nodes = new ArrayList<>();

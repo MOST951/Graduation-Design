@@ -477,6 +477,66 @@ REAL_HOT_TOPICS = [
     '乡村振兴战略推进',
 ]
 
+def _populate_cache_from_hot_search():
+    """从 LiveHotSearchService 填充监控缓存，实现数据连通"""
+    global _realtime_cache
+    try:
+        from services.live_hot_search_service import get_live_hot_search_service
+        service = get_live_hot_search_service()
+        hot_data = service.get_hot_search_with_sentiment()
+        hot_list = hot_data.get('hot_list', [])
+        if not hot_list:
+            return
+
+        items = []
+        for h in hot_list:
+            title = h.get('title', '')
+            if not title:
+                continue
+
+            # 对热搜标题做词典情感分析
+            sentiment_score = 0.0
+            if SENTIMENT_AVAILABLE:
+                _, sentiment_score = SentimentLexicon.analyze(title)
+
+            sentiment_label = _get_sentiment_label(sentiment_score)
+            # 如果 LiveHotSearchService 已有情感结果则优先使用
+            if h.get('sentiment') and h['sentiment'] != 'neutral':
+                sentiment_label = h['sentiment']
+                sentiment_score = h.get('sentiment_score', sentiment_score)
+
+            hot_value = h.get('hot_value', 0)
+            user = random.choice(REAL_WEIBO_USERS)
+
+            items.append({
+                'id': str(h.get('rank', len(items) + 1)),
+                'time': h.get('crawl_time', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+                'username': user['name'],
+                'content': f'#{title}# 该话题登上热搜榜，热度 {hot_value}，网友热议中。',
+                'sentiment': sentiment_label,
+                'sentimentScore': sentiment_score,
+                'keyword': title,
+                'views': hot_value if hot_value else random.randint(10000, 500000),
+                'comments': random.randint(100, 5000),
+                'likes': random.randint(500, 20000),
+                'reposts': random.randint(50, 3000),
+                'verified': user['verified'],
+                'location': user['location'],
+                'isReal': False,
+            })
+
+        if items:
+            _realtime_cache['data'] = items
+            _realtime_cache['last_update'] = datetime.now()
+            # 运行预警检查
+            alerts = _check_alerts(items)
+            if alerts:
+                _broadcast_sse('alert', {'alerts': alerts})
+            logger.info(f'从热搜服务填充监控缓存: {len(items)} 条')
+    except Exception as e:
+        logger.warning(f'从热搜服务填充缓存失败: {e}')
+
+
 def _fetch_real_weibo_data(limit: int = 10) -> list:
     """从微博爬取真实数据（包含真实用户昵称）"""
     result = []
@@ -855,6 +915,12 @@ def get_statistics():
     - system_status: 系统状态（采集任务、Spark 作业、未处理数据量、SSE 客户端数）
     - alert_history: 最近 20 条预警历史（用于预警表格）
     """
+    # 缓存为空或超过60秒未更新时，从 LiveHotSearchService 获取数据
+    _last = _realtime_cache.get('last_update')
+    _stale = _last is None or (datetime.now() - _last).total_seconds() > 60
+    if not _realtime_cache.get('data') or _stale:
+        _populate_cache_from_hot_search()
+
     cache_data = _realtime_cache.get('data') or []
 
     # 1. 情感分布

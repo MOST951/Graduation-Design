@@ -28,16 +28,6 @@
       <!-- 左侧：三维权重配置面板 -->
       <el-col :span="6" class="sidebar-col">
        <div class="sidebar-sticky">
-        <!-- 论文公式卡片 -->
-        <el-card shadow="hover" class="formula-card">
-          <template #header>
-            <div class="card-hdr"><span>热点话题综合排序公式</span><el-tag size="small" type="warning">公式4-7</el-tag></div>
-          </template>
-          <div class="formula-display">
-            <div class="formula-tex">Score = ω₁·N(S) + ω₂·H<sub>norm</sub> + ω₃·γ(t)</div>
-            <div class="formula-sub">γ(t) = 2<sup>-Δt/H</sup> , H = {{ config.decay_half_life_hours }}h</div>
-          </div>
-        </el-card>
 
         <el-card shadow="hover" class="config-card" style="margin-top: 12px">
           <template #header>
@@ -92,7 +82,7 @@
 
         <el-card shadow="hover" class="config-card" style="margin-top: 12px">
           <template #header>
-            <div class="card-hdr"><span>时间衰减 γ(t)</span><el-tag size="small" type="info">公式4-6</el-tag></div>
+            <div class="card-hdr"><span>时间衰减</span></div>
           </template>
           <el-form label-position="left" label-width="100px" size="small">
             <el-form-item label="启用衰减">
@@ -182,9 +172,13 @@
             </div>
           </template>
           
+          <div class="keyword-search" style="margin-bottom:10px;display:flex;gap:6px">
+            <el-input v-model="searchKeyword" placeholder="搜索关键词" size="small" clearable @keyup.enter="selectedKeyword = searchKeyword" @clear="selectedKeyword = ''" />
+            <el-button size="small" type="primary" @click="selectedKeyword = searchKeyword">搜索</el-button>
+          </div>
           <div v-if="selectedKeyword" class="keyword-filter">
             <span>关键词筛选：</span>
-            <el-tag closable type="primary" @close="selectedKeyword = ''">{{ selectedKeyword }}</el-tag>
+            <el-tag closable type="primary" @close="selectedKeyword = ''; searchKeyword = ''">{{ selectedKeyword }}</el-tag>
           </div>
           <div class="rank-list">
             <div 
@@ -307,17 +301,6 @@
           <el-slider v-model="config.heat_weight" :min="0" :max="1" :step="0.05" show-input />
         </el-form-item>
         
-        <el-divider>论文公式 (4-3 ~ 4-7)</el-divider>
-        <div class="formula-box">
-          <p><strong>公式4-3 情感归一化：</strong></p>
-          <code>N(S) = (|S| + 1) / 2</code>
-          <p style="margin-top: 8px"><strong>公式4-4 热度得分：</strong></p>
-          <code>H_raw = log₁₀(1 + λ_r·R + λ_c·C + λ_l·L)</code>
-          <p style="margin-top: 8px"><strong>公式4-6 时间衰减：</strong></p>
-          <code>γ(t) = 2^(-Δt / H),  H = 12h</code>
-          <p style="margin-top: 8px"><strong>公式4-7 综合得分：</strong></p>
-          <code>Score = ω₁·N(S) + ω₂·H_norm + ω₃·γ(t)</code>
-        </div>
       </el-form>
       
       <template #footer>
@@ -351,6 +334,7 @@ const selectedConfig = ref('default');
 const chartMode = ref('wordcloud');
 const rankFilter = ref('all');
 const selectedKeyword = ref('');
+const searchKeyword = ref('');
 const configName = ref('');
 const selectedItem = ref<any>(null);
 
@@ -445,6 +429,8 @@ const onTriWeightChange = (changed: string) => {
   config.timeliness_weight = Number(
     Math.max(0, 1 - config.sentiment_weight - config.heat_weight).toFixed(2)
   );
+  // 权重变化时实时重新计算排序
+  recalculateTriScores();
 };
 
 // 加载预设配置 (论文 ω₁=0.4, ω₂=0.4, ω₃=0.2)
@@ -458,6 +444,7 @@ const loadPresetConfig = () => {
   const preset = presets[selectedConfig.value];
   if (preset) {
     Object.assign(config, preset);
+    recalculateTriScores();
     ElMessage.success(`已加载 ${selectedConfig.value} 配置`);
   }
 };
@@ -504,11 +491,11 @@ const runAnalysis = async () => {
     ElMessage.info(`获取到 ${analysisData.length} 条热搜，开始热点话题分析...`);
 
     // 3. 调用后端热点话题分析接口
-    const response = await apiClient.post('/weibo/rank/tri', {
+    const response = await apiClient.post('/weibo/rank/tri-dimension', {
       data: analysisData,
       sentiment_weight: config.sentiment_weight,
       heat_weight: config.heat_weight,
-      timeliness_weight: config.decay_half_life_hours ? 0.2 : 0, // 简化参数映射
+      timeliness_weight: config.timeliness_weight,
       top_k: 50
     });
     
@@ -517,16 +504,8 @@ const runAnalysis = async () => {
     if (result.code === 200) {
       rankList.value = result.data.ranked_items;
       
-      // 生成散点图数据
-      scatterData.value = result.data.ranked_items.map((item: any) => ({
-        id: item.id,
-        // 映射得分到 0-100 区间用于展示
-        x: Math.min(100, Math.max(0, item.heat.score * 100)), 
-        y: Math.min(100, Math.max(0, (parseFloat(item.sentiment.score) + 1) * 50)),
-        value: parseFloat(item.tri_score) * 100,
-        quadrant: item.quadrant,
-        text: item.text
-      }));
+      // 生成散点图数据 — 相对归一化到 0-100 以充分利用图表空间
+      buildScatterDataFromRanked(result.data.ranked_items);
       
       // 重新计算统计信息
       calculateQuadrantStats();
@@ -555,9 +534,9 @@ const runAnalysis = async () => {
       errorMsg += `: ${error.message}`;
     }
     
-    ElMessage.warning(errorMsg + '，正在加载模拟数据用于展示');
-    // 降级：使用模拟数据
-    loadMockResults();
+    ElMessage.warning(errorMsg + '，正在尝试从数据库加载真实微博数据');
+    // 降级：从数据库加载已采集的真实微博数据
+    await loadRealWeiboFallback();
   } finally {
     analyzing.value = false;
   }
@@ -595,62 +574,74 @@ const generateMockData = () => {
   return data;
 };
 
-// 加载模拟结果
-const loadMockResults = () => {
-  const mockResults = [];
-  for (let i = 0; i < 50; i++) {
-    const sentimentScore = Math.random() * 2 - 1;
-    const heatScore = Math.random();
-    const quadrant = getQuadrant(sentimentScore, heatScore);
-    
-    mockResults.push({
-      id: `${i + 1}`,
-      text: `这是第${i + 1}条微博，情感${sentimentScore > 0 ? '正面' : '负面'}，热度${heatScore > 0.5 ? '高' : '低'}`,
-      rank: i + 1,
-      tri_score: (0.5 * Math.abs(sentimentScore) + 0.5 * heatScore).toFixed(4),
-      sentiment: {
-        polarity: sentimentScore > 0.2 ? 'positive' : sentimentScore < -0.2 ? 'negative' : 'neutral',
-        score: sentimentScore.toFixed(4),
-        intensity: (Math.abs(sentimentScore) * 100).toFixed(2),
-      },
-      heat: {
-        score: (heatScore * 10).toFixed(4),
-        time_decay: (0.5 + Math.random() * 0.5).toFixed(4),
-        influence: (0.5 + Math.random() * 2).toFixed(4),
-      },
-      quadrant,
-      interactions: {
-        reposts: Math.floor(Math.random() * 10000),
-        comments: Math.floor(Math.random() * 5000),
-        likes: Math.floor(Math.random() * 20000),
-      },
-    });
-  }
-  
-  rankList.value = mockResults;
-  
-  // 生成散点图数据
-  scatterData.value = mockResults.map(item => ({
+// 将 ranked_items 转换为 scatter 坐标，基于数据集自身 min/max 归一化
+const buildScatterDataFromRanked = (items: any[]) => {
+  if (!items || items.length === 0) { scatterData.value = []; return; }
+
+  // 提取原始值
+  const rawX = items.map(i => parseFloat(i.heat?.score ?? 0));
+  const rawY = items.map(i => parseFloat(i.sentiment?.score ?? 0));
+
+  const minX = Math.min(...rawX), maxX = Math.max(...rawX);
+  const minY = Math.min(...rawY), maxY = Math.max(...rawY);
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+
+  // 留 5% 边距，映射到 5-95 让数据不紧贴边缘
+  scatterData.value = items.map((item: any, idx: number) => ({
     id: item.id,
-    x: parseFloat(item.heat.score) * 10,
-    y: (parseFloat(item.sentiment.score) + 1) * 50,
+    x: 5 + ((rawX[idx] - minX) / rangeX) * 90,
+    y: 5 + ((rawY[idx] - minY) / rangeY) * 90,
+    rawHeat: rawX[idx],
+    rawSentiment: rawY[idx],
     value: parseFloat(item.tri_score) * 100,
     quadrant: item.quadrant,
-    text: item.text.slice(0, 30),
+    text: (item.text || '').slice(0, 30),
   }));
-  
-  // 统计四象限
-  const stats: Record<string, any> = {};
-  for (const q of Object.keys(quadrantInfo)) {
-    const items = mockResults.filter(r => r.quadrant === q);
-    stats[q] = {
-      count: items.length,
-      ratio: items.length / mockResults.length,
-    };
+};
+
+// 从数据库加载真实微博数据作为降级方案
+const loadRealWeiboFallback = async () => {
+  try {
+    ElMessage.info('正在从数据库加载已采集的微博数据...');
+    const resp = await apiClient.get('/dashboard/weibo-detail', { params: { page: 1, page_size: 50 } });
+    const items = resp.data?.data?.items;
+    if (!items || items.length === 0) throw new Error('数据库无数据');
+
+    // 转换为三维度排序所需格式并调用后端排序
+    const weibos = items.map((w: any) => ({
+      id: w.weibo_id,
+      text: w.content || '',
+      reposts_count: w.reposts_count || 0,
+      comments_count: w.comments_count || 0,
+      attitudes_count: w.attitudes_count || 0,
+      created_at: w.created_at || new Date().toISOString(),
+      sentiment_score: w.hybrid_score ?? 0,
+      sentiment_label: w.sentiment_class || 'neutral',
+    }));
+
+    const rankResp = await apiClient.post('/weibo/rank/tri-dimension', {
+      data: weibos,
+      sentiment_weight: config.sentiment_weight,
+      heat_weight: config.heat_weight,
+      timeliness_weight: config.timeliness_weight,
+      top_k: 50,
+    });
+
+    if (rankResp.data?.code === 200) {
+      rankList.value = rankResp.data.data.ranked_items;
+      buildScatterDataFromRanked(rankResp.data.data.ranked_items);
+      calculateQuadrantStats();
+      updateScatterChart();
+      ElMessage.success(`已加载 ${rankList.value.length} 条真实微博数据`);
+      return;
+    }
+  } catch (e: any) {
+    console.warn('从数据库加载也失败:', e.message);
   }
-  quadrantStats.value = stats;
-  
-  updateScatterChart();
+
+  // 最终降级：极简提示
+  ElMessage.error('暂无可用数据，请先采集微博数据后再进行分析');
 };
 
 // 获取象限
@@ -708,57 +699,178 @@ const tokenize = (text: string): string[] => {
   return tokens.filter(t => !CN_STOPWORDS.has(t) && t.length >= 2);
 };
 
-const updateWordcloudChart = () => {
-  if (!scatterChart) return;
-  // 词频统计 + 情感倾向加权
-  const wordStats: Record<string, { freq: number; sentSum: number; sentCount: number }> = {};
-  for (const item of rankList.value) {
-    const tokens = tokenize(item.text || '');
-    const sentScore = parseFloat(item.sentiment?.score ?? '0') || 0;
-    for (const w of tokens) {
-      if (!wordStats[w]) wordStats[w] = { freq: 0, sentSum: 0, sentCount: 0 };
-      wordStats[w].freq++;
-      wordStats[w].sentSum += sentScore;
-      wordStats[w].sentCount++;
+// 从话题标题中提取短关键词（去掉常见停用词和标点，保留2-6字核心词）
+const extractKeywords = (text: string): string[] => {
+  if (!text) return [];
+  // 按标点、空格、逗号等拆分
+  const parts = text.split(/[，。！？、；：""''（）\s,.:;!?()\[\]{}·\-—]+/).filter(Boolean);
+  const keywords: string[] = [];
+  for (const part of parts) {
+    const clean = part.replace(/[的了是在和与也就都而及或以对中为上下并等一个些这那有到被把给从向你我他她它们]/g, '');
+    if (clean.length >= 2 && clean.length <= 8) {
+      keywords.push(clean);
+    } else if (clean.length > 8) {
+      // 长段取前6字
+      keywords.push(clean.slice(0, 6));
     }
   }
+  return keywords;
+};
+
+// 中文短语分词：将短语切分为 2-4 字的词
+const SEGMENT_STOPWORDS = new Set(['的','了','是','在','和','与','也','就','都','而','及','或','以','对','中','为','上','下','并','等','有','到','被','把','给','从','向','你','我','他','她','它','们','还','又','只','要','会','能','不','没']);
+
+const segmentPhrase = (phrase: string): string[] => {
+  if (!phrase) return [];
+  // 英文/数字词直接保留
+  if (/^[A-Za-z0-9]+$/.test(phrase)) {
+    return phrase.length >= 2 ? [phrase.toLowerCase()] : [];
+  }
+  // 2-4字直接作为一个词
+  if (phrase.length <= 4 && phrase.length >= 2) {
+    // 过滤纯停用词组合
+    const hasContent = [...phrase].some(c => !SEGMENT_STOPWORDS.has(c));
+    return hasContent ? [phrase] : [];
+  }
+  // >4字：尝试按常见模式切分
+  const words: string[] = [];
+  let remaining = phrase;
+
+  // 先提取英文和数字段
+  remaining = remaining.replace(/[A-Za-z0-9]+/g, (match) => {
+    if (match.length >= 2) words.push(match.toLowerCase());
+    return '\x00';
+  });
+
+  // 对纯中文部分，用正向最大匹配（窗口3-4-2字）
+  const parts = remaining.split('\x00').filter(Boolean);
+  for (const part of parts) {
+    let i = 0;
+    while (i < part.length) {
+      // 跳过单个停用词
+      if (SEGMENT_STOPWORDS.has(part[i])) { i++; continue; }
+      // 尝试取4字、3字、2字
+      let matched = false;
+      for (const len of [4, 3, 2]) {
+        if (i + len <= part.length) {
+          const candidate = part.slice(i, i + len);
+          const hasContent = [...candidate].filter(c => !SEGMENT_STOPWORDS.has(c)).length >= 2;
+          if (hasContent) {
+            words.push(candidate);
+            i += len;
+            matched = true;
+            break;
+          }
+        }
+      }
+      if (!matched) i++;
+    }
+  }
+  return words;
+};
+
+const updateWordcloudChart = () => {
+  if (!scatterChart) return;
+
+  // 对所有话题标题进行分词，生成真正的"词"云
+  const wordStats: Record<string, { freq: number; sentSum: number; sentCount: number; maxTri: number }> = {};
+
+  for (const item of rankList.value) {
+    const text = item.text || '';
+    if (!text) continue;
+
+    const sentScore = parseFloat(item.sentiment?.score ?? '0') || 0;
+    const triScore = parseFloat(item.tri_score ?? '0') || 0;
+
+    // 先按空格、标点拆分为短语
+    const phrases = text.split(/[\s，。！？、；：""''（）,.:;!?()\[\]{}·\-—#]+/).filter(Boolean);
+
+    for (const phrase of phrases) {
+      // 对每个短语进行分词：2-4字的直接保留，更长的用滑窗切分
+      const words = segmentPhrase(phrase);
+      for (const w of words) {
+        if (!wordStats[w]) wordStats[w] = { freq: 0, sentSum: 0, sentCount: 0, maxTri: 0 };
+        wordStats[w].freq++;
+        wordStats[w].sentSum += sentScore;
+        wordStats[w].sentCount++;
+        wordStats[w].maxTri = Math.max(wordStats[w].maxTri, triScore);
+      }
+    }
+  }
+
+  // 多彩配色方案：正面用暖色系，负面用冷色系，中性用多种中间色
+  const POSITIVE_COLORS = ['#67c23a', '#2ecc71', '#27ae60', '#1abc9c', '#16a085', '#3498db', '#2980b9', '#8e44ad', '#f39c12', '#e67e22'];
+  const NEGATIVE_COLORS = ['#f56c6c', '#e74c3c', '#c0392b', '#d35400', '#e91e63', '#9b59b6'];
+  const NEUTRAL_COLORS = ['#3498db', '#1abc9c', '#9b59b6', '#34495e', '#f39c12', '#e67e22', '#2ecc71', '#e74c3c'];
+
+  let colorIdx = 0;
   const data = Object.entries(wordStats)
+    .filter(([name]) => name.length >= 2)
     .map(([name, s]) => {
       const avgSent = s.sentCount > 0 ? s.sentSum / s.sentCount : 0;
-      // 红负面 / 灰中性 / 绿正面
-      let color = '#909399';
-      if (avgSent > 0.2) color = '#67c23a';
-      else if (avgSent < -0.2) color = '#f56c6c';
-      return { name, value: s.freq, textStyle: { color } };
+      let color: string;
+      if (avgSent > 0.2) {
+        color = POSITIVE_COLORS[colorIdx % POSITIVE_COLORS.length];
+      } else if (avgSent < -0.2) {
+        color = NEGATIVE_COLORS[colorIdx % NEGATIVE_COLORS.length];
+      } else {
+        color = NEUTRAL_COLORS[colorIdx % NEUTRAL_COLORS.length];
+      }
+      colorIdx++;
+      // 权重 = 频率 * 最大三维度得分加权
+      const value = Math.max(10, Math.round(s.freq * 20 + s.maxTri * 80));
+      return { name, value, textStyle: { color } };
     })
     .sort((a, b) => b.value - a.value)
-    .slice(0, 100);
+    .slice(0, 80);
+
+  setWordcloudOption(data);
+};
+
+const setWordcloudOption = (data: any[]) => {
+  if (!scatterChart) return;
 
   scatterChart.setOption({
     tooltip: {
       show: true,
-      formatter: (p: any) => `<b>${p.name}</b><br/>词频: ${p.value}`,
+      formatter: (p: any) => `<b>${p.name}</b><br/>权重: ${p.value}`,
     },
     series: [{
       type: 'wordCloud',
       shape: 'circle',
-      sizeRange: [14, 60],
-      rotationRange: [-30, 30],
-      gridSize: 8,
+      sizeRange: [12, 64],
+      rotationRange: [-90, 90],
+      rotationStep: 45,
+      gridSize: 4,
       drawOutOfBound: false,
+      layoutAnimation: true,
       left: 'center',
       top: 'center',
-      width: '95%',
-      height: '95%',
+      width: '85%',
+      height: '85%',
+      textStyle: {
+        fontFamily: 'Microsoft YaHei, PingFang SC, sans-serif',
+        fontWeight: 'bold',
+        color: () => {
+          const palette = [
+            '#5470c6','#91cc75','#fac858','#ee6666','#73c0de',
+            '#3ba272','#fc8452','#9a60b4','#ea7ccc','#48b8d0',
+            '#ff7c7c','#67c23a','#409eff','#e6a23c','#f56c6c',
+          ];
+          return palette[Math.floor(Math.random() * palette.length)];
+        },
+      },
       data,
     }],
   }, { notMerge: true });
+
   // 点击词云关键词 → 筛选列表
   scatterChart.off('click');
   scatterChart.on('click', (params: any) => {
     if (params?.name) {
+      searchKeyword.value = params.name;
       selectedKeyword.value = params.name;
-      ElMessage.success(`已按关键词「${params.name}」筛选热门微博`);
+      ElMessage.success(`已按关键词「${params.name}」筛选列表`);
     }
   });
 };
@@ -775,11 +887,11 @@ const updateScatterMode = () => {
   
   for (const item of scatterData.value) {
     if (seriesData[item.quadrant]) {
-      seriesData[item.quadrant].push([item.x, item.y, item.value, item.text, item.id]);
+      seriesData[item.quadrant].push([item.x, item.y, item.value, item.text, item.id, item.rawHeat, item.rawSentiment]);
     }
   }
   
-  const series = Object.entries(quadrantInfo).map(([key, info]) => ({
+  const series: any[] = Object.entries(quadrantInfo).map(([key, info]) => ({
     name: info.label,
     type: 'scatter',
     symbolSize: (data: any) => Math.max(10, Math.min(30, data[2] / 3)),
@@ -790,18 +902,35 @@ const updateScatterMode = () => {
       itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' },
     },
   }));
+
+  // 用 markLine 在数据坐标 50 处画四象限分界线
+  if (series.length > 0) {
+    series[0].markLine = {
+      silent: true,
+      lineStyle: { type: 'dashed', color: '#999', width: 1 },
+      symbol: 'none',
+      data: [
+        { xAxis: 50 },
+        { yAxis: 50 },
+      ],
+      label: { show: false },
+    };
+  }
   
   scatterChart.setOption({
     tooltip: {
       trigger: 'item',
       formatter: (params: any) => {
         const data = params.data;
+        if (!data || data.length < 5) return '';
+        const heatVal = data[5] != null ? Number(data[5]).toFixed(4) : data[0].toFixed(1);
+        const sentVal = data[6] != null ? Number(data[6]).toFixed(4) : data[1].toFixed(1);
         return `
           <div style="padding: 8px">
             <div style="font-weight: bold; margin-bottom: 4px">${data[3]}</div>
-            <div>热度: ${data[0].toFixed(2)}</div>
-            <div>情感: ${data[1].toFixed(2)}</div>
-            <div>综合得分: ${data[2].toFixed(2)}</div>
+            <div>热度: ${heatVal}</div>
+            <div>情感: ${sentVal}</div>
+            <div>综合得分: ${data[2].toFixed(1)}</div>
           </div>
         `;
       },
@@ -812,6 +941,7 @@ const updateScatterMode = () => {
     },
     grid: { left: '10%', right: '10%', top: '10%', bottom: '15%' },
     xAxis: {
+      type: 'value',
       name: '热度',
       nameLocation: 'middle',
       nameGap: 30,
@@ -820,6 +950,7 @@ const updateScatterMode = () => {
       splitLine: { show: true, lineStyle: { type: 'dashed' } },
     },
     yAxis: {
+      type: 'value',
       name: '情感强度',
       nameLocation: 'middle',
       nameGap: 40,
@@ -827,21 +958,12 @@ const updateScatterMode = () => {
       max: 100,
       splitLine: { show: true, lineStyle: { type: 'dashed' } },
     },
-    series,
-    // 添加四象限分界线
-    graphic: [
-      {
-        type: 'line',
-        shape: { x1: '50%', y1: '10%', x2: '50%', y2: '85%' },
-        style: { stroke: '#999', lineDash: [5, 5] },
-      },
-      {
-        type: 'line',
-        shape: { x1: '10%', y1: '50%', x2: '90%', y2: '50%' },
-        style: { stroke: '#999', lineDash: [5, 5] },
-      },
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+      { type: 'inside', yAxisIndex: 0, filterMode: 'none' },
     ],
-  });
+    series,
+  }, { notMerge: true });
 };
 
 // 热力图模式
@@ -852,75 +974,58 @@ const updateHeatmapChart = () => {
   const gridSize = 10;
   const heatmapData: number[][] = [];
   
-  // 初始化网格
-  for (let i = 0; i < gridSize; i++) {
-    for (let j = 0; j < gridSize; j++) {
-      heatmapData.push([i, j, 0]);
-    }
-  }
-  
-  // 统计每个网格中的数据点数量和平均得分
-  const gridCounts: Record<string, { count: number; totalScore: number }> = {};
+  // 统计每个网格中的数据点数量
+  const gridCounts: Record<string, number> = {};
   
   for (const item of scatterData.value) {
-    const gridX = Math.min(Math.floor(item.x / 10), gridSize - 1);
-    const gridY = Math.min(Math.floor(item.y / 10), gridSize - 1);
+    const gridX = Math.min(Math.floor(item.x / (100 / gridSize)), gridSize - 1);
+    const gridY = Math.min(Math.floor(item.y / (100 / gridSize)), gridSize - 1);
     const key = `${gridX}-${gridY}`;
-    
-    if (!gridCounts[key]) {
-      gridCounts[key] = { count: 0, totalScore: 0 };
-    }
-    gridCounts[key].count++;
-    gridCounts[key].totalScore += item.value;
+    gridCounts[key] = (gridCounts[key] || 0) + 1;
   }
   
-  // 更新热力图数据
+  // 构建 [x, y, count] 数据
   for (let i = 0; i < gridSize; i++) {
     for (let j = 0; j < gridSize; j++) {
-      const key = `${i}-${j}`;
-      const idx = i * gridSize + j;
-      if (gridCounts[key]) {
-        // 使用数量和平均得分的组合作为热力值
-        heatmapData[idx][2] = gridCounts[key].count * (gridCounts[key].totalScore / gridCounts[key].count);
-      }
+      heatmapData.push([i, j, gridCounts[`${i}-${j}`] || 0]);
     }
   }
   
-  // 找出最大值用于归一化
   const maxValue = Math.max(...heatmapData.map(d => d[2]), 1);
+  
+  const xLabels = Array.from({ length: gridSize }, (_, i) => `${i * 10}-${(i + 1) * 10}`);
+  const yLabels = Array.from({ length: gridSize }, (_, i) => `${i * 10}-${(i + 1) * 10}`);
   
   scatterChart.setOption({
     tooltip: {
       position: 'top',
       formatter: (params: any) => {
-        const data = params.data;
-        const xRange = `${data[0] * 10}-${(data[0] + 1) * 10}`;
-        const yRange = `${data[1] * 10}-${(data[1] + 1) * 10}`;
-        return `
-          <div style="padding: 8px">
-            <div>热度范围: ${xRange}</div>
-            <div>情感范围: ${yRange}</div>
-            <div>热力值: ${data[2].toFixed(2)}</div>
-          </div>
-        `;
+        const d = params.data;
+        return `<div style="padding:6px">
+          <div>热度: ${xLabels[d[0]]}</div>
+          <div>情感: ${yLabels[d[1]]}</div>
+          <div>数量: <b>${d[2]}</b></div>
+        </div>`;
       },
     },
-    grid: { left: '10%', right: '15%', top: '10%', bottom: '15%' },
+    grid: { left: '12%', right: '15%', top: '8%', bottom: '12%' },
     xAxis: {
       type: 'category',
       name: '热度',
       nameLocation: 'middle',
       nameGap: 30,
-      data: ['0-10', '10-20', '20-30', '30-40', '40-50', '50-60', '60-70', '70-80', '80-90', '90-100'],
+      data: xLabels,
       splitArea: { show: true },
+      axisLabel: { fontSize: 10 },
     },
     yAxis: {
       type: 'category',
       name: '情感强度',
       nameLocation: 'middle',
       nameGap: 50,
-      data: ['0-10', '10-20', '20-30', '30-40', '40-50', '50-60', '60-70', '70-80', '80-90', '90-100'],
+      data: yLabels,
       splitArea: { show: true },
+      axisLabel: { fontSize: 10 },
     },
     visualMap: {
       min: 0,
@@ -939,18 +1044,41 @@ const updateHeatmapChart = () => {
       data: heatmapData,
       label: {
         show: true,
-        formatter: (params: any) => {
-          return params.data[2] > 0 ? Math.round(params.data[2]).toString() : '';
-        },
+        formatter: (params: any) => params.data[2] > 0 ? String(params.data[2]) : '',
       },
       emphasis: {
-        itemStyle: {
-          shadowBlur: 10,
-          shadowColor: 'rgba(0, 0, 0, 0.5)',
-        },
+        itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' },
       },
     }],
+  }, { notMerge: true });
+};
+
+// 权重变化时实时重新计算综合得分并重新排序
+const recalculateTriScores = () => {
+  if (rankList.value.length === 0) return;
+
+  rankList.value.forEach(item => {
+    const sentimentNormalized = (Math.abs(parseFloat(item.sentiment?.score || 0)) + 1) / 2;
+    const heatNormalized = parseFloat(item.heat?.score || 0);
+    const timeDecay = parseFloat(item.heat?.time_decay || 0.5);
+
+    item.tri_score = (
+      config.sentiment_weight * sentimentNormalized +
+      config.heat_weight * heatNormalized +
+      config.timeliness_weight * timeDecay
+    ).toFixed(4);
   });
+
+  // 按新得分重排
+  rankList.value.sort((a: any, b: any) => parseFloat(b.tri_score) - parseFloat(a.tri_score));
+  rankList.value.forEach((item: any, index: number) => {
+    item.rank = index + 1;
+  });
+
+  // 重建散点数据 + 刷新四象限 + 图表
+  buildScatterDataFromRanked(rankList.value);
+  calculateQuadrantStats();
+  updateScatterChart();
 };
 
 // 
@@ -1245,7 +1373,8 @@ const initChart = () => {
 // 生命周期
 onMounted(() => {
   initChart();
-  loadMockResults();
+  // 自动获取实时热搜数据进行分析
+  runAnalysis();
   
   window.addEventListener('resize', () => {
     scatterChart?.resize();

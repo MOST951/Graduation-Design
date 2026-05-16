@@ -9,6 +9,9 @@
 #   ./docker-cluster.sh restart-spark # 仅重启Spark服务（核心参数变更后）
 #   ./docker-cluster.sh status       # 查看状态
 #   ./docker-cluster.sh logs         # 实时日志
+#   ./docker-cluster.sh rebuild     # 重建镜像（代码更新后）
+#   ./docker-cluster.sh restart-web  # 仅重启Flask后端
+#   ./docker-cluster.sh restart-fe   # 仅重启前端
 #   ./docker-cluster.sh down         # 销毁容器（数据卷保留）
 #   ./docker-cluster.sh health       # 健康自检
 #
@@ -562,11 +565,26 @@ ensure_images() {
 
 # ==================== 核心操作 ====================
 
+# 检查模型权重目录
+check_model_weights() {
+    step "检查模型权重目录..."
+    local model_dir="${SCRIPT_DIR}/backend-python/models/chinese-bert-wwm-ext"
+    if [[ -d "${model_dir}" ]] && [[ -f "${model_dir}/pytorch_model.bin" || -f "${model_dir}/model.safetensors" ]]; then
+        info "模型权重已就位: $(du -sh "${model_dir}" | cut -f1)"
+    else
+        warn "模型权重目录不存在或不完整: ${model_dir}"
+        echo "  Flask 后端情感分析功能需要此模型"
+        echo "  如无需情感分析可继续，否则请先放置模型文件"
+    fi
+}
+
 # 首次部署 (带重试)
 do_first_deploy() {
     echo ""
     info "检测到首次运行，正在部署完整集群 (Spark + HDFS + HBase + 前后端)，这可能需要几分钟..."
     echo ""
+
+    check_model_weights
 
     # 预拉取所有镜像 (自动国内代理回退)
     ensure_images
@@ -576,7 +594,7 @@ do_first_deploy() {
         attempt=$((attempt + 1))
         step "[${attempt}/${MAX_RETRY}] 构建并启动服务..."
 
-        if run_compose up -d 2>&1 | tee -a "${LOG_FILE}"; then
+        if run_compose up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
             echo ""
             info "首次部署完成！"
             wait_for_healthy
@@ -724,6 +742,9 @@ do_stop() {
     echo "    - weibo_sentiment_zk_data       (ZooKeeper 数据)"
     echo "    - weibo_sentiment_app_logs      (应用日志)"
     echo "    - weibo_sentiment_model_cache   (模型缓存)"
+    echo ""
+    echo "  模型权重 (bind mount):"
+    echo "    - backend-python/models/chinese-bert-wwm-ext  (BERT 情感模型)"
     echo ""
     echo "  再次运行 ./docker-cluster.sh 即可恢复全部服务和数据。"
 }
@@ -928,10 +949,13 @@ show_access_info() {
     echo "  HBase Web UI     http://${host_ip}:${hbase_webui_port}"
     echo "=========================================="
     echo "  管理命令:"
-    echo "    ./docker-cluster.sh status   查看状态"
-    echo "    ./docker-cluster.sh logs     查看日志"
-    echo "    ./docker-cluster.sh health   健康检查"
-    echo "    ./docker-cluster.sh stop     停止集群"
+    echo "    ./docker-cluster.sh status        查看状态"
+    echo "    ./docker-cluster.sh logs          查看日志"
+    echo "    ./docker-cluster.sh health        健康检查"
+    echo "    ./docker-cluster.sh stop          停止集群"
+    echo "    ./docker-cluster.sh rebuild       重建镜像"
+    echo "    ./docker-cluster.sh restart-web   重启后端"
+    echo "    ./docker-cluster.sh restart-fe    重启前端"
     echo "=========================================="
     echo ""
 }
@@ -1020,20 +1044,80 @@ main() {
             fi
             info "Spark 核心参数变更已生效"
             ;;
+        rebuild|build)
+            echo ""
+            check_model_weights
+            step "重建 Docker 镜像 (保留缓存加速)..."
+            echo ""
+            run_compose build 2>&1 | tee -a "${LOG_FILE}"
+            echo ""
+            info "镜像重建完成"
+            step "重新创建容器..."
+            run_compose up -d 2>&1 | tee -a "${LOG_FILE}"
+            echo ""
+            wait_for_healthy
+            show_access_info
+            info "重建部署完成！"
+            ;;
+        restart-web)
+            echo ""
+            step "仅重启 Flask 后端..."
+            run_compose restart web 2>&1
+            echo ""
+            local flask_port
+            flask_port=$(get_env_val "WEB_PORT" "5000")
+            local waited=0
+            while [[ ${waited} -lt 60 ]]; do
+                if curl -sf "http://localhost:${flask_port}/api/v2/health" &>/dev/null; then
+                    break
+                fi
+                sleep 3
+                waited=$((waited + 3))
+            done
+            if [[ ${waited} -lt 60 ]]; then
+                info "Flask 后端已重启并就绪 (http://$(get_host_ip):${flask_port})"
+            else
+                warn "Flask 后端可能仍在启动中"
+            fi
+            ;;
+        restart-fe|restart-frontend)
+            echo ""
+            step "仅重启前端服务..."
+            run_compose restart frontend 2>&1
+            echo ""
+            local fe_port
+            fe_port=$(get_env_val "FRONTEND_PORT" "3001")
+            local waited=0
+            while [[ ${waited} -lt 30 ]]; do
+                if curl -sf "http://localhost:${fe_port}/" &>/dev/null; then
+                    break
+                fi
+                sleep 2
+                waited=$((waited + 2))
+            done
+            if [[ ${waited} -lt 30 ]]; then
+                info "前端已重启并就绪 (http://$(get_host_ip):${fe_port})"
+            else
+                warn "前端可能仍在启动中"
+            fi
+            ;;
         health|check)
             do_health
             ;;
         *)
             echo "用法: $0 [start|stop|status|logs|down|restart|restart-spark|health]"
             echo ""
-            echo "  start          启动集群（默认，首次自动部署，后续仅启动已有容器）"
-            echo "  stop           停止集群（保留所有数据）"
-            echo "  restart        重启集群"
-            echo "  restart-spark  仅重启Spark服务（核心参数变更后使用）"
-            echo "  status         查看集群状态"
-            echo "  logs           查看实时日志"
-            echo "  down           销毁容器（数据卷保留）"
-            echo "  health         服务健康检查"
+            echo "  start            启动集群（默认，首次自动部署，后续仅启动已有容器）"
+            echo "  stop             停止集群（保留所有数据）"
+            echo "  restart          重启集群"
+            echo "  rebuild          重建镜像（代码更新后使用）"
+            echo "  restart-spark    仅重启Spark服务（核心参数变更后）"
+            echo "  restart-web      仅重启Flask后端"
+            echo "  restart-fe       仅重启前端"
+            echo "  status           查看集群状态"
+            echo "  logs             查看实时日志"
+            echo "  down             销毁容器（数据卷保留）"
+            echo "  health           服务健康检查"
             exit 1
             ;;
     esac

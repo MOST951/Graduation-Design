@@ -1,45 +1,19 @@
 <template>
   <div class="data-collection-module">
-    <!-- 数据流可视化 -->
-    <div class="dataflow-pipeline">
-      <div class="pipeline-title">
-        <el-icon><Connection /></el-icon>
-        <span>数据处理流水线</span>
-        <el-tag v-if="currentPhase !== 'idle'" :type="getPhaseTagType(currentPhase)" size="small">
-          {{ getPhaseLabel(currentPhase) }}
-        </el-tag>
-      </div>
-      <div class="pipeline-stages">
-        <div 
-          v-for="(stage, index) in pipelineStages" 
-          :key="stage.key"
-          class="pipeline-stage"
-          :class="{ active: stage.status === 'running', completed: stage.status === 'completed', failed: stage.status === 'failed' }"
-        >
-          <div class="stage-icon">
-            <el-icon v-if="stage.status === 'completed'" :color="SUCCESS"><CircleCheck /></el-icon>
-            <el-icon v-else-if="stage.status === 'running'" class="rotating" :color="PRIMARY"><Loading /></el-icon>
-            <el-icon v-else-if="stage.status === 'failed'" :color="DANGER"><CircleClose /></el-icon>
-            <el-icon v-else :color="INFO"><component :is="stage.icon" /></el-icon>
-          </div>
-          <div class="stage-name">{{ stage.name }}</div>
-          <div class="stage-progress" v-if="stage.status === 'running'">
-            <el-progress :percentage="stage.progress" :show-text="false" :stroke-width="4" />
-          </div>
-          <div class="stage-count" v-if="stage.count > 0">{{ stage.count }}</div>
-          <div class="stage-arrow" v-if="index < pipelineStages.length - 1">→</div>
-        </div>
-      </div>
-    </div>
+    <!-- 顶部提示：完整流水线已移至流水线管理 -->
+    <el-alert type="info" :closable="false" style="margin-bottom: 12px" show-icon>
+      <template #title>
+        完整数据处理流水线（采集→清洗→分析→排序→入库）请前往
+        <router-link to="/pipeline" style="color: var(--el-color-primary); font-weight: 600">流水线管理</router-link>
+        模块执行，本页面仅负责数据采集。
+      </template>
+    </el-alert>
 
     <!-- 顶部操作栏 -->
     <div class="action-bar">
       <el-button-group>
-        <el-button type="primary" :icon="VideoPlay" @click="startFullPipeline" :loading="crawlLoading" :disabled="isRunning">
-          启动完整流水线
-        </el-button>
         <el-button type="success" :icon="VideoPlay" @click="startCrawl" :loading="crawlLoading" :disabled="isRunning">
-          仅采集数据
+          采集数据
         </el-button>
         <el-button v-if="isRunning && !isPaused" type="warning" @click="pauseCrawl">
           <el-icon><VideoPause /></el-icon>
@@ -169,8 +143,17 @@
                 v-model="config.cookie"
                 type="textarea"
                 :rows="3"
-                placeholder="粘贴微博登录Cookie（可选）"
+                placeholder="粘贴微博登录Cookie（必须包含SUB字段）&#10;获取方式：登录weibo.com → F12 → Application → Cookies → 复制全部Cookie&#10;或点击下方「自动获取」按钮通过扫码自动获取"
               />
+              <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
+                <el-button size="small" type="primary" :loading="cookieGrabbing" @click="handleGrabCookie">🔄 自动获取(扫码)</el-button>
+                <el-button size="small" :loading="cookieValidating" @click="handleValidateCookie">验证Cookie</el-button>
+                <el-button size="small" @click="handleSaveCookie" :disabled="!config.cookie.trim()">保存到服务器</el-button>
+                <span v-if="cookieStatus" :style="{ fontSize: '12px', color: cookieValid ? '#67c23a' : '#f56c6c' }">{{ cookieStatus }}</span>
+              </div>
+              <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+                关键词搜索需要有效Cookie（含SUB、XSRF-TOKEN等字段），热搜列表无需Cookie
+              </div>
             </el-form-item>
           </el-form>
         </el-card>
@@ -383,6 +366,20 @@
         <el-button type="primary" @click="saveAdvancedConfig">保存配置</el-button>
       </template>
     </el-dialog>
+    <!-- 扫码弹窗（独立于表单） -->
+    <el-dialog v-model="qrDialogVisible" title="扫码登录微博" width="400px" :close-on-click-modal="false" append-to-body>
+      <div style="text-align: center;">
+        <div v-if="qrCodeBase64">
+          <p style="margin-bottom: 12px; color: #606266;">请使用微博APP扫描下方二维码登录</p>
+          <img :src="'data:image/png;base64,' + qrCodeBase64" style="max-width: 300px; border: 1px solid #eee; border-radius: 8px;" />
+          <p style="margin-top: 12px; font-size: 13px; color: #909399;">等待扫码中...（{{ qrCountdown }}秒后超时）</p>
+        </div>
+        <div v-else>
+          <el-icon class="is-loading" :size="40"><Loading /></el-icon>
+          <p style="margin-top: 12px; color: #606266;">正在启动浏览器，请稍候...</p>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -399,6 +396,11 @@ import { SUCCESS, PRIMARY, DANGER, INFO, WARNING } from '@/styles/colors';
 import { 
   getDataflowTaskStatus,
   getCrawlTaskStatus,
+  validateCookie,
+  startQRSession,
+  pollQRSession,
+  saveCookie,
+  getCookieStatus,
   type DataflowTask
 } from '@/api/weibo';
 
@@ -434,7 +436,7 @@ const config = reactive({
   keywords: ['人工智能', '新能源'],
   dateRange: null as any,
   dataSources: ['weibo'],
-  crawlHotSearch: true,
+  crawlHotSearch: false,
   maxCount: 10000,
   requestInterval: 3,
   useProxy: false,
@@ -451,6 +453,15 @@ const advancedConfig = reactive({
 });
 
 const defaultKeywords = ['人工智能', '新能源', '科技', '经济', '教育', '健康', '环保'];
+
+// Cookie验证与管理
+const cookieValidating = ref(false);
+const cookieValid = ref(false);
+const cookieStatus = ref('');
+const cookieGrabbing = ref(false);
+const qrDialogVisible = ref(false);
+const qrCodeBase64 = ref('');
+const qrCountdown = ref(120);
 
 const inputVisible = ref(false);
 const inputValue = ref('');
@@ -520,7 +531,7 @@ const startFullPipeline = async () => {
     // 通过store启动数据流任务
     const result = await weiboStore.startDataflow({
       keywords: config.keywords,
-      pages: 3,
+      pages: 50,
       crawlHot: config.crawlHotSearch,
       autoProcess: true,
     });
@@ -678,6 +689,127 @@ const stopDataflowPolling = () => {
   }
 };
 
+// 自动获取Cookie（两阶段：启动→轮询）
+const handleGrabCookie = async () => {
+  cookieGrabbing.value = true;
+  qrDialogVisible.value = true;
+  qrCodeBase64.value = '';
+  qrCountdown.value = 120;
+  cookieStatus.value = '';
+
+  try {
+    // 阶段1: 启动浏览器，获取二维码
+    const startResult = await startQRSession(120);
+    const sessionId = startResult.session_id;
+
+    if (startResult.qrcode_base64) {
+      qrCodeBase64.value = startResult.qrcode_base64;
+    }
+    if (startResult.status === 'error') {
+      throw new Error(startResult.message);
+    }
+
+    // 启动倒计时
+    const countdownTimer = setInterval(() => {
+      qrCountdown.value--;
+      if (qrCountdown.value <= 0) clearInterval(countdownTimer);
+    }, 1000);
+
+    // 阶段2: 轮询等待扫码结果
+    const pollInterval = setInterval(async () => {
+      try {
+        const pollResult = await pollQRSession(sessionId);
+
+        if (pollResult.qrcode_base64 && !qrCodeBase64.value) {
+          qrCodeBase64.value = pollResult.qrcode_base64;
+        }
+
+        if (pollResult.status === 'success') {
+          clearInterval(pollInterval);
+          clearInterval(countdownTimer);
+          config.cookie = pollResult.cookie_string || '';
+          cookieValid.value = true;
+          cookieStatus.value = pollResult.message;
+          cookieGrabbing.value = false;
+          qrDialogVisible.value = false;
+          ElMessage.success('Cookie获取成功！');
+          // 扫码获取的Cookie自动保存到服务器
+          if (config.cookie.trim()) {
+            saveCookie(config.cookie).then(() => {
+              cookieStatus.value = '扫码Cookie已自动保存';
+            }).catch(() => {});
+          }
+        } else if (pollResult.status === 'timeout' || pollResult.status === 'error' || pollResult.status === 'not_found') {
+          clearInterval(pollInterval);
+          clearInterval(countdownTimer);
+          cookieValid.value = false;
+          cookieStatus.value = pollResult.message;
+          cookieGrabbing.value = false;
+          ElMessage.warning(pollResult.message);
+        }
+      } catch {
+        // 轮询出错，继续等待
+      }
+    }, 2000);
+
+    // 安全超时：130秒后强制停止
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      clearInterval(countdownTimer);
+      if (cookieGrabbing.value) {
+        cookieGrabbing.value = false;
+        cookieStatus.value = '扫码超时';
+        ElMessage.warning('扫码超时，请重试');
+      }
+    }, 130000);
+
+  } catch (e: any) {
+    cookieStatus.value = '获取失败';
+    cookieGrabbing.value = false;
+    ElMessage.error('Cookie获取失败: ' + (e.message || ''));
+  }
+};
+
+// 保存Cookie到服务器
+const handleSaveCookie = async () => {
+  if (!config.cookie.trim()) return;
+  try {
+    const result = await saveCookie(config.cookie);
+    if (result.success) {
+      ElMessage.success(result.message);
+      cookieStatus.value = result.message;
+      cookieValid.value = true;
+    } else {
+      ElMessage.warning(result.message);
+      cookieStatus.value = result.message;
+      cookieValid.value = false;
+    }
+  } catch {
+    ElMessage.error('保存失败');
+  }
+};
+
+// 验证Cookie
+const handleValidateCookie = async () => {
+  if (!config.cookie.trim()) {
+    cookieStatus.value = 'Cookie为空';
+    cookieValid.value = false;
+    return;
+  }
+  cookieValidating.value = true;
+  cookieStatus.value = '验证中...';
+  try {
+    const result = await validateCookie(config.cookie);
+    cookieValid.value = result.valid;
+    cookieStatus.value = result.message;
+  } catch {
+    cookieValid.value = false;
+    cookieStatus.value = '验证失败';
+  } finally {
+    cookieValidating.value = false;
+  }
+};
+
 // 开始采集（仅采集，不触发后续处理）- 使用Store
 const startCrawl = async () => {
   if (config.keywords.length === 0 && !config.crawlHotSearch) {
@@ -702,9 +834,10 @@ const startCrawl = async () => {
     // 通过store启动采集任务
     const result = await weiboStore.startCollection({
       keywords: config.keywords,
-      pages: 3,
+      pages: 50,
       crawlHot: config.crawlHotSearch,
       dateRange: config.dateRange ? [config.dateRange[0], config.dateRange[1]] : null,
+      cookie: config.cookie || undefined,
     });
     crawlTaskId = result.task_id;
     addLog('success', `任务创建成功: ${result.task_id}`);
@@ -1062,6 +1195,18 @@ onMounted(async () => {
     startRateTracking();
   });
   window.addEventListener('resize', () => rateChart?.resize());
+  
+  // 页面加载时自动从服务器读取已保存的Cookie
+  try {
+    const status = await getCookieStatus();
+    if (status.cookie_string && status.has_cookie) {
+      config.cookie = status.cookie_string;
+      cookieValid.value = status.valid || false;
+      cookieStatus.value = status.valid ? 'Cookie已加载(服务器保存)' : 'Cookie已过期，请重新扫码';
+    }
+  } catch {
+    // 加载失败不影响正常使用
+  }
   
   // 从后端加载历史任务（持久化数据，跨登录保留）
   await weiboStore.loadTaskHistory();

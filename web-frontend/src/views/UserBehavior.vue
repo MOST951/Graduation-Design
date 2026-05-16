@@ -320,46 +320,6 @@
     </div>
 
     <!-- 算法说明 -->
-    <el-card class="algorithm-card">
-      <template #header>
-        <div class="card-header">
-          <span><el-icon><InfoFilled /></el-icon> 标签体系算法说明</span>
-        </div>
-      </template>
-      <div class="algorithm-content">
-        <div class="formula-section">
-          <h4>身份类型判定</h4>
-          <div class="formula">
-            <code>KOL: 粉丝数 > 10000 且 认证状态 = true</code>
-          </div>
-          <div class="params">
-            <span class="param">机构号: verified_type = 2</span>
-            <span class="param">营销号: 发博频率高 + 广告内容占比 > 30%</span>
-          </div>
-        </div>
-        <div class="formula-section">
-          <h4>内容倾向分析</h4>
-          <div class="formula">
-            <code>LDA主题模型: K=6, α=0.1, β=0.01</code>
-          </div>
-          <div class="params">
-            <span class="param">主题分布: P(topic|user) = Σ P(topic|doc) × P(doc|user)</span>
-          </div>
-        </div>
-        <div class="formula-section">
-          <h4>社交网络分析</h4>
-          <div class="formula">
-            <code>PageRank: PR(u) = (1-d)/N + d × Σ PR(v)/L(v)</code>
-          </div>
-          <div class="method-tags">
-            <el-tag>GraphX</el-tag>
-            <el-tag type="success">PageRank</el-tag>
-            <el-tag type="warning">社区发现</el-tag>
-            <el-tag type="info">每日更新</el-tag>
-          </div>
-        </div>
-      </div>
-    </el-card>
   </div>
 </template>
 

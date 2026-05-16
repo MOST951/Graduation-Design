@@ -60,8 +60,11 @@ services:
     volumes:
       - app_logs:/app/logs
       - model_cache:/app/model_cache
+      - ../backend-python/models/chinese-bert-wwm-ext:/app/backend/models/chinese-bert-wwm-ext:ro
+      - ../backend-python/models/chinese-bert-wwm-ext-v3:/app/backend/models/chinese-bert-wwm-ext-v3:ro
     networks:
       - weibo-net
+    init: true
     deploy:
       resources:
         limits:

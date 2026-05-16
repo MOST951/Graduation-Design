@@ -255,7 +255,7 @@ chapter_7_2_2() {
 
     local code payload sentiment score
     payload='{"text":"人工智能技术发展迅速，给生活带来了很多便利。"}'
-    code=$(post_json "${BASE_URL}/api/weibo/realtime/analyze" "${payload}")
+    code=$(post_json "${BASE_URL}/api/sentiment/analyze" "${payload}")
     sentiment=$(json_value '.data.sentiment' '')
     score=$(json_value '.data.sentiment_score' '')
     if [[ "${code}" == "200" && -n "${sentiment}" ]]; then

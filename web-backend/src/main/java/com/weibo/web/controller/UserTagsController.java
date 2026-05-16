@@ -22,7 +22,7 @@ import java.util.*;
  */
 @Slf4j
 @RestController
-@RequestMapping("/user-tags")
+@RequestMapping("/api/user-tags")
 public class UserTagsController {
 
     @Autowired

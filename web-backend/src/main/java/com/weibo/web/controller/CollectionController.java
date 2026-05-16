@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @RestController
-@RequestMapping("/collection")
+@RequestMapping("/api/collection")
 public class CollectionController {
 
     private static final String JAR_NAME = "data-collector.jar";

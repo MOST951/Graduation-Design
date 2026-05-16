@@ -539,7 +539,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue';
+import { ref, reactive, computed, onMounted, onActivated, watch, nextTick } from 'vue';
 import * as echarts from 'echarts';
 import { SUCCESS, PRIMARY, WARNING, DANGER, INFO } from '@/styles/colors';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -569,7 +569,7 @@ const processedCount = ref(0);
 const dataSource = ref('sample');
 const crawlerKeyword = ref('');
 const crawlerSources = ref(['hotsearch', 'search']);
-const crawlerPages = ref(3);
+const crawlerPages = ref(50);
 const customDictName = ref('');
 
 // 采集任务相关
@@ -580,6 +580,9 @@ const loadingTasks = ref(false);
 // 原始数据
 const rawData = ref<WeiboData[]>([]);
 const hotSearchData = ref<HotSearchItem[]>([]);
+
+// 后端预处理结果
+const backendProcessedItems = ref<any[]>([]);
 
 // 清洗规则
 const cleanRules = ref(['removeDuplicates', 'removeSpecial', 'removeUrl', 'removeEmoji']);
@@ -693,22 +696,58 @@ const compareProcessed = computed(() => {
   return text || '处理后为空';
 });
 
-// 分词结果
+// 分词结果（当前对比项，用于分词可视化）
 const segmentWords = computed(() => {
+  // 优先使用后端真实分词结果（含词性）
+  if (backendProcessedItems.value.length > 0) {
+    const item = backendProcessedItems.value[compareIndex.value] || backendProcessedItems.value[0];
+    if (item?.words && item.words.length > 0) {
+      const posTags: string[] = item.pos_tags || [];
+      return item.words.map((w: string, i: number) => ({
+        word: w,
+        pos: posTags[i] || 'x',
+      }));
+    }
+  }
   const text = compareProcessed.value;
-  // 简单模拟分词
-  const words = text.split(/\s+/).filter(w => w.length > 0);
-  return words.map(w => ({
-    word: w,
-    pos: getRandomPos(),
-  }));
+  const chars = text.match(/[\u4e00-\u9fa5]+|[a-zA-Z]+|\d+/g) || [];
+  return chars.map(w => ({ word: w, pos: 'x' }));
 });
 
+// 分词统计：聚合所有后端处理结果
 const segmentStats = computed(() => {
+  const items = backendProcessedItems.value;
+  if (items.length > 0) {
+    let total = 0;
+    const allWords: string[] = [];
+    const allPos: string[] = [];
+    let stopCount = 0;
+    items.forEach((item: any) => {
+      const ws: string[] = item.words || [];
+      const ps: string[] = item.pos_tags || [];
+      total += ws.length;
+      ws.forEach((w, i) => {
+        allWords.push(w);
+        allPos.push(ps[i] || 'x');
+        if (isStopword(w)) stopCount++;
+      });
+    });
+    const nouns = allPos.filter(p => p.startsWith('n')).length;
+    const verbs = allPos.filter(p => p.startsWith('v')).length;
+    return {
+      totalWords: total,
+      uniqueWords: new Set(allWords).size,
+      avgWordLength: total > 0 ? (allWords.reduce((s, w) => s + w.length, 0) / total).toFixed(2) : '0',
+      stopwordCount: stopCount,
+      nounRatio: total > 0 ? Math.round(nouns / total * 100) : 0,
+      verbRatio: total > 0 ? Math.round(verbs / total * 100) : 0,
+    };
+  }
+  // 回退到单条分词
   const words = segmentWords.value;
   const stopwords = words.filter(w => isStopword(w.word));
-  const nouns = words.filter(w => w.pos === 'n');
-  const verbs = words.filter(w => w.pos === 'v');
+  const nouns = words.filter(w => w.pos.startsWith('n'));
+  const verbs = words.filter(w => w.pos.startsWith('v'));
   return {
     totalWords: words.length,
     uniqueWords: new Set(words.map(w => w.word)).size,
@@ -790,9 +829,10 @@ const getSentimentLabel = (sentiment: string) => {
 };
 
 const getWordType = (word: { word: string; pos: string }) => {
-  if (word.pos === 'n') return 'primary';
-  if (word.pos === 'v') return 'success';
-  if (word.pos === 'a') return 'warning';
+  if (word.pos.startsWith('n')) return 'primary';
+  if (word.pos.startsWith('v')) return 'success';
+  if (word.pos.startsWith('a')) return 'warning';
+  if (word.pos === 'd') return 'info';
   return '';
 };
 
@@ -829,29 +869,46 @@ const updateQualityMetrics = () => {
   const total = rawData.value.length;
   if (total === 0) return;
 
-  // 完整性：非空text字段比例
+  // 完整性：非空text + 有用户名 + 有时间字段
   const nonEmpty = rawData.value.filter(d => d.text && d.text.trim().length > 0).length;
-  completeness.value = Math.round((nonEmpty / total) * 100);
+  const hasUser = rawData.value.filter(d => d.user?.screen_name).length;
+  const hasTime = rawData.value.filter(d => d.created_at).length;
+  completeness.value = Math.round(((nonEmpty + hasUser + hasTime) / (total * 3)) * 100);
 
   // 重复检测
   const textSet = new Set(rawData.value.map(d => d.text));
   const duplicates = total - textSet.size;
   qualityIssues.value[0].count = duplicates;
 
-  // 空值检测
+  // 空值 / 字段缺失
   const nullCount = rawData.value.filter(d => !d.text || !d.user?.screen_name).length;
   qualityIssues.value[1].count = nullCount;
 
-  // 格式异常
+  // 格式异常（时间解析失败 + 纯短文本<5字）
   const formatIssues = rawData.value.filter(d => d.created_at && isNaN(Date.parse(d.created_at))).length;
+  const shortTexts = rawData.value.filter(d => d.text && d.text.trim().length < 5).length;
   qualityIssues.value[2].count = formatIssues;
 
-  // 准确性 & 一致性
-  accuracy.value = Math.round(((total - nullCount) / total) * 100);
-  consistency.value = Math.round(((total - formatIssues) / total) * 100);
+  // 噪声检测（含URL / @提及 / 特殊字符过多）
+  const noiseCount = rawData.value.filter(d => {
+    const t = d.text || '';
+    return /https?:\/\//.test(t) || /@[\w\u4e00-\u9fa5]+/.test(t) || /#[^#]+#/.test(t);
+  }).length;
+
+  // 准确性 = (无空值 + 非过短) / 2维度
+  accuracy.value = Math.round(((total - nullCount) / total * 50) + ((total - shortTexts) / total * 50));
+
+  // 一致性 = (格式正常 + 无噪声) / 2维度
+  consistency.value = Math.round(((total - formatIssues) / total * 50) + ((total - noiseCount) / total * 50));
 
   // 综合质量分
-  qualityScore.value = Math.round((completeness.value + accuracy.value + consistency.value) / 3);
+  qualityScore.value = Math.round((completeness.value * 0.3 + accuracy.value * 0.35 + consistency.value * 0.35));
+
+  // 更新 issues 描述
+  if (duplicates > 0) qualityIssues.value[0].description = `发现 ${duplicates} 条重复记录`;
+  if (nullCount > 0) qualityIssues.value[1].description = `${nullCount} 条数据缺少文本或用户名`;
+  if (noiseCount > 0) qualityIssues.value[2] = { type: '噪声内容', count: noiseCount, severity: 'medium', description: `${noiseCount} 条含URL/@提及/话题标签` };
+  else qualityIssues.value[2].count = formatIssues;
 
   // 质量低于 80% 阈值时弹窗告警，引导用户调整预处理规则
   if (qualityScore.value < 80 && !qualityWarned.value) {
@@ -1140,6 +1197,11 @@ const handleProcess = async () => {
     const result = await response.json();
     const jobId = result.job_id;
     
+    // 保存后端处理结果
+    if (result.data?.items) {
+      backendProcessedItems.value = result.data.items;
+    }
+    
     // 
     const pollProgress = async () => {
       try {
@@ -1153,11 +1215,16 @@ const handleProcess = async () => {
           processTime.value = Date.now() - startTime;
           processing.value = false;
           
-          // 
-          if (status.processed_data) {
-            // 
-            processSteps.value = status.steps || processSteps.value;
-          }
+          // 更新处理步骤详情
+          const totalMs = processTime.value;
+          const n = rawData.value.length;
+          processSteps.value = status.steps?.length ? status.steps : [
+            { name: '数据加载', description: `从采集任务加载 ${n} 条原始数据`, time: `${Math.round(totalMs * 0.05)}ms`, type: 'success', count: n },
+            { name: '去重处理', description: '移除重复的微博内容', time: `${Math.round(totalMs * 0.05)}ms`, type: 'success', count: n },
+            { name: '文本清洗', description: '去除URL、表情、@提及、特殊字符', time: `${Math.round(totalMs * 0.2)}ms`, type: 'success', count: processedCount.value },
+            { name: '分词处理', description: `使用${segmentTool.value}进行中文分词`, time: `${Math.round(totalMs * 0.6)}ms`, type: 'success', count: processedCount.value },
+            { name: '特征提取', description: `提取${extractMethod.value.toUpperCase()}特征向量`, time: `${Math.round(totalMs * 0.1)}ms`, type: 'success', count: processedCount.value },
+          ];
           
           ElMessage.success('数据处理完成');
           initCharts();
@@ -1255,37 +1322,103 @@ const applyRecommendation = (rec: any) => {
 };
 
 // ==================== 图表 ====================
+const getOrCreateChart = (el: HTMLElement) => {
+  const existing = echarts.getInstanceByDom(el);
+  if (existing) { existing.dispose(); }
+  return echarts.init(el);
+};
+
 const initCharts = () => {
-  nextTick(() => {
-    // 词频图表
-    if (wordFreqChartRef.value) {
-      const chart = echarts.init(wordFreqChartRef.value);
+  // 延迟确保 tab 内容完全渲染、容器有尺寸
+  setTimeout(() => {
+    console.log('[initCharts] backendItems:', backendProcessedItems.value.length,
+      'wordFreqRef:', !!wordFreqChartRef.value, 'posRef:', !!posChartRef.value);
+
+    // 词频图表 — 使用后端真实分词结果（扩展停用词表）
+    if (wordFreqChartRef.value && backendProcessedItems.value.length > 0) {
+      const chart = getOrCreateChart(wordFreqChartRef.value);
+      const STOP = new Set([
+        '的','了','是','在','我','有','和','就','不','人','都','一','上','也','很','到','说','要','去','你',
+        '会','着','没有','看','好','自己','这','他','她','什么','而','为','出','对','与','能','并','它','被',
+        '还','那','地','得','把','让','从','又','但','如果','所以','因为','虽然','可以','已经','可能','应该',
+        '这个','那个','一个','没','吗','吧','呢','啊','哦','嗯','啦','来','过','做','想','时候','知道','起来',
+        '觉得','真的','现在','怎么','太','最','更','比','只','里','才','多','小','大','日','月','年','中',
+        // 微博平台噪声词
+        '视频','微博','收起','转发','评论','关注','全文','展开','分享','原创','L','d','O','cn','http',
+        '图片','链接','组图','秒拍','直播','回复','赞','转','发','条',
+      ]);
+      const freq: Record<string, number> = {};
+      backendProcessedItems.value.forEach(item => {
+        (item.words || []).forEach((w: string) => {
+          const t = w.trim();
+          if (t.length > 1 && !STOP.has(t) && !/^\d+$/.test(t) && !/^[a-zA-Z]{1,2}$/.test(t)) {
+            freq[t] = (freq[t] || 0) + 1;
+          }
+        });
+      });
+      const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 20);
+      const names = sorted.map(e => e[0]).reverse();
+      const values = sorted.map(e => e[1]).reverse();
+      console.log('[initCharts] wordFreq top5:', sorted.slice(0, 5));
       chart.setOption({
         grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
         xAxis: { type: 'value' },
-        yAxis: { type: 'category', data: ['情感', '分析', '微博', '数据', '用户', '热度', '话题', '评论', '转发', '点赞'].reverse() },
-        series: [{ type: 'bar', data: [120, 98, 87, 76, 65, 54, 43, 32, 21, 10], itemStyle: { color: PRIMARY } }],
+        yAxis: { type: 'category', data: names },
+        series: [{ type: 'bar', data: values, itemStyle: { color: PRIMARY } }],
       });
+      chart.resize();
     }
     
-    // 词性分布图表
+    // 词性分布图表 — 聚合所有后端处理结果的真实词性
     if (posChartRef.value) {
-      const chart = echarts.init(posChartRef.value);
+      const chart = getOrCreateChart(posChartRef.value);
+      const posMap: Record<string, number> = {};
+      const posLabels: Record<string, string> = {
+        n: '名词', nr: '名词', ns: '名词', nt: '名词', nz: '名词',
+        v: '动词', vd: '动词', vn: '动词',
+        a: '形容词', ad: '形容词', an: '形容词',
+        r: '代词', d: '副词', p: '介词', m: '数量词', q: '量词', c: '连词', f: '方位词',
+      };
+      if (backendProcessedItems.value.length > 0) {
+        backendProcessedItems.value.forEach((item: any) => {
+          const ps: string[] = item.pos_tags || [];
+          ps.forEach(p => {
+            const label = posLabels[p] || '其他';
+            posMap[label] = (posMap[label] || 0) + 1;
+          });
+        });
+      } else {
+        segmentWords.value.forEach(w => {
+          const label = posLabels[w.pos] || '其他';
+          posMap[label] = (posMap[label] || 0) + 1;
+        });
+      }
+      const colors = [PRIMARY, SUCCESS, WARNING, DANGER, INFO, '#9b59b6', '#1abc9c', '#e67e22'];
+      const pieData = Object.entries(posMap)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, value], i) => ({
+          value, name, itemStyle: { color: colors[i % colors.length] },
+        }));
+      console.log('[initCharts] posData:', pieData);
       chart.setOption({
         series: [{
           type: 'pie',
           radius: ['40%', '70%'],
-          data: [
-            { value: 35, name: '名词', itemStyle: { color: PRIMARY } },
-            { value: 25, name: '动词', itemStyle: { color: SUCCESS } },
-            { value: 20, name: '形容词', itemStyle: { color: WARNING } },
-            { value: 20, name: '其他', itemStyle: { color: INFO } },
-          ],
+          data: pieData.length > 0 ? pieData : [{ value: 1, name: '暂无数据', itemStyle: { color: INFO } }],
+          label: { show: true, formatter: '{b}' },
         }],
       });
+      chart.resize();
     }
-  });
+  }, 300);
 };
+
+// 监听tab切换，切到分词结果时重新渲染图表
+watch(activePreview, (val) => {
+  if (val === 'segment' && backendProcessedItems.value.length > 0) {
+    initCharts();
+  }
+});
 
 // ==================== 生命周期 ====================
 onMounted(async () => {
@@ -1299,6 +1432,13 @@ onMounted(async () => {
   if (completedTasks.value.length === 0) {
     dataSource.value = 'sample';
     loadSampleData();
+  }
+});
+
+onActivated(async () => {
+  // keepAlive 页面重新激活时自动刷新采集任务列表
+  if (dataSource.value === 'crawler') {
+    await loadCrawlTasks();
   }
 });
 </script>

@@ -10,7 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/analysis")
+@RequestMapping("/api/analysis")
 public class AnalysisController {
 
     @Autowired

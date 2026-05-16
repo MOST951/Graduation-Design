@@ -4,6 +4,41 @@
       <!-- 左侧操作面板 -->
       <el-card class="operation-panel" header="数据预处理">
         <el-form label-position="top">
+          <el-form-item label="数据来源">
+            <el-select v-model="dataSource" style="width: 100%" @change="onDataSourceChange">
+              <el-option label="采集任务" value="collection" />
+              <el-option label="数据库微博" value="database" />
+              <el-option label="示例数据" value="sample" />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="dataSource === 'collection'" label="选择采集任务">
+            <el-select
+              v-model="selectedCollectionTaskId"
+              style="width: 100%"
+              placeholder="请选择采集任务"
+              :loading="loadingCollectionTasks"
+              @focus="fetchCollectionTasks"
+            >
+              <el-option
+                v-for="task in collectionTaskList"
+                :key="task.id"
+                :label="`${task.name} (${task.collected}条)`"
+                :value="task.id"
+                :disabled="task.collected === 0"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="loadedDataCount > 0">
+            <el-alert
+              :title="`已加载 ${loadedDataCount} 条数据`"
+              type="success"
+              :closable="false"
+              show-icon
+            />
+          </el-form-item>
+          
+          <el-divider />
+          
           <el-form-item label="清洗规则">
             <el-checkbox-group v-model="cleanRules">
               <el-checkbox label="removeDuplicates">去重</el-checkbox>
@@ -55,7 +90,11 @@
           
           <el-divider />
           
-          <el-button type="primary" :loading="processing" block @click="handleProcess">
+          <el-form-item label="任务名称">
+            <el-input v-model="taskName" placeholder="自动生成" />
+          </el-form-item>
+          
+          <el-button type="primary" :loading="processing" :disabled="dataSource !== 'sample' && loadedDataCount === 0" block @click="handleProcess">
             <el-icon><Operation /></el-icon>
             开始处理
           </el-button>
@@ -178,6 +217,17 @@
           <!-- 质量报告 -->
           <el-tab-pane label="质量报告" name="quality">
             <el-card header="数据质量评估">
+              <el-alert
+                v-if="qualityScore < 80"
+                type="warning"
+                show-icon
+                :closable="false"
+                style="margin-bottom: 16px"
+              >
+                <template #title>
+                  质检评分 {{ qualityScore.toFixed(1) }} 分，低于 80 分阈值，建议优化清洗规则后重新处理
+                </template>
+              </el-alert>
               <el-row :gutter="16">
                 <el-col :span="6">
                   <el-statistic title="质量评分" :value="qualityScore" suffix="分">
@@ -247,12 +297,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import {
   Upload, Operation, TrendCharts, CircleCheck, Select, Connection,
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { createPreprocessTask, getPreprocessTasks, getPreprocessData, type PreprocessTask, type PreprocessedItem } from '@/api/weibo';
+import { createPreprocessTask, getPreprocessTasks, getPreprocessData, getCollectionTasks, getTaskData, type PreprocessTask, type PreprocessedItem, type CollectionTask } from '@/api/weibo';
+import apiClient from '@/api';
 
 const cleanRules = ref(['removeDuplicates', 'removeSpecial']);
 const segmentTool = ref('jieba');
@@ -264,10 +315,19 @@ const progress = ref(0);
 const activePreview = ref('original');
 const taskName = ref('');
 
+// 数据来源
+const dataSource = ref('collection');
+const selectedCollectionTaskId = ref('');
+const loadingCollectionTasks = ref(false);
+const collectionTaskList = ref<CollectionTask[]>([]);
+const loadedRealData = ref<any[]>([]);
+const loadedDataCount = computed(() => loadedRealData.value.length);
+
 // 已创建的预处理任务列表
 const preprocessTaskList = ref<PreprocessTask[]>([]);
 
-const originalTexts = ref([
+// 示例数据
+const sampleTexts = [
   '今天天气真好，心情也很不错！😊',
   '这个产品质量太差了，非常失望...',
   '刚刚看了一部电影，剧情很精彩！',
@@ -278,7 +338,9 @@ const originalTexts = ref([
   '学习新技术真的很有意思',
   '今天加班到很晚，好累',
   '终于完成了这个项目，开心！',
-]);
+];
+
+const originalTexts = ref<string[]>([...sampleTexts]);
 
 const compareOriginal = ref('今天天气真好，心情也很不错！😊 #开心 http://example.com');
 const compareProcessed = ref('今天 天气 真 好 心情 也 很 不错');
@@ -301,23 +363,56 @@ const featureVector = ref({
   sparse: true,
 });
 
-const qualityScore = ref(85.5);
-const completeness = ref(92);
-const accuracy = ref(88);
-const consistency = ref(85);
+const qualityMetrics = reactive({
+  totalCount: 0,
+  emptyCount: 0,
+  duplicateCount: 0,
+  shortCount: 0,
+  cleanedCount: 0,
+});
 
-const qualityIssues = ref([
-  { type: '重复数据', count: 156, severity: 'medium', description: '发现156条重复记录' },
-  { type: '格式不一致', count: 45, severity: 'low', description: '日期格式不统一' },
-  { type: '缺失值', count: 23, severity: 'high', description: '部分字段存在缺失' },
-]);
+const completeness = computed(() => {
+  if (qualityMetrics.totalCount === 0) return 92;
+  return Math.round((1 - qualityMetrics.emptyCount / qualityMetrics.totalCount) * 100);
+});
+const accuracy = computed(() => {
+  if (qualityMetrics.totalCount === 0) return 88;
+  return Math.round((1 - qualityMetrics.shortCount / qualityMetrics.totalCount) * 100);
+});
+const consistency = computed(() => {
+  if (qualityMetrics.totalCount === 0) return 85;
+  return Math.round((1 - qualityMetrics.duplicateCount / qualityMetrics.totalCount) * 100);
+});
+const qualityScore = computed(() => {
+  return Math.round((completeness.value * 0.4 + accuracy.value * 0.35 + consistency.value * 0.25) * 10) / 10;
+});
 
-const recommendations = ref([
-  '建议去除重复数据以提高数据质量',
-  '统一日期格式为 YYYY-MM-DD',
-  '补充缺失字段或删除不完整记录',
-  '增加数据验证规则',
-]);
+const qualityIssues = computed(() => {
+  const issues: { type: string; count: number; severity: string; description: string }[] = [];
+  if (qualityMetrics.duplicateCount > 0) {
+    issues.push({ type: '重复数据', count: qualityMetrics.duplicateCount, severity: 'medium', description: `发现${qualityMetrics.duplicateCount}条重复记录` });
+  }
+  if (qualityMetrics.emptyCount > 0) {
+    issues.push({ type: '缺失值', count: qualityMetrics.emptyCount, severity: 'high', description: `${qualityMetrics.emptyCount}条数据内容为空` });
+  }
+  if (qualityMetrics.shortCount > 0) {
+    issues.push({ type: '过短文本', count: qualityMetrics.shortCount, severity: 'low', description: `${qualityMetrics.shortCount}条文本长度不足5字` });
+  }
+  if (issues.length === 0) {
+    issues.push({ type: '无问题', count: 0, severity: 'low', description: '数据质量良好' });
+  }
+  return issues;
+});
+
+const recommendations = computed(() => {
+  const recs: string[] = [];
+  if (qualityMetrics.duplicateCount > 0) recs.push('建议去除重复数据以提高数据质量');
+  if (qualityMetrics.emptyCount > 0) recs.push('补充缺失字段或删除不完整记录');
+  if (qualityMetrics.shortCount > 0) recs.push('过短文本信息量不足，建议过滤或合并');
+  if (qualityScore.value < 80) recs.push('质检评分低于80分，建议调整清洗规则后重新处理');
+  if (recs.length === 0) recs.push('数据质量良好，可直接用于后续分析');
+  return recs;
+});
 
 const uniqueWords = computed(() => {
   return new Set(segmentWords.value).size;
@@ -408,6 +503,93 @@ const loadPreprocessTasks = async () => {
   }
 };
 
+// 加载采集任务列表
+const fetchCollectionTasks = async () => {
+  if (collectionTaskList.value.length > 0) return;
+  loadingCollectionTasks.value = true;
+  try {
+    collectionTaskList.value = await getCollectionTasks();
+    if (collectionTaskList.value.length === 0) {
+      ElMessage.info('暂无采集任务，请先在数据采集模块创建任务');
+    }
+  } catch {
+    ElMessage.warning('加载采集任务失败');
+  } finally {
+    loadingCollectionTasks.value = false;
+  }
+};
+
+// 数据来源变更
+const onDataSourceChange = async (val: string) => {
+  loadedRealData.value = [];
+  selectedCollectionTaskId.value = '';
+  if (val === 'collection') {
+    await fetchCollectionTasks();
+  } else if (val === 'database') {
+    await loadDatabaseWeibo();
+  } else {
+    originalTexts.value = [...sampleTexts];
+  }
+};
+
+// 从采集任务加载数据
+const loadCollectionData = async (taskId: string) => {
+  try {
+    ElMessage.info('正在加载采集任务数据...');
+    const result = await getTaskData(taskId, 1, 500);
+    if (result.list && result.list.length > 0) {
+      loadedRealData.value = result.list.map((item: any) => ({
+        id: item.id || `item_${Date.now()}_${Math.random()}`,
+        content: item.text || item.text_raw || '',
+        source: 'collection',
+        keyword: item.keyword || '',
+        author: item.user?.screen_name || item.user_name || '',
+        likes: item.attitudes_count || 0,
+        comments: item.comments_count || 0,
+        shares: item.reposts_count || 0,
+        timestamp: item.created_at || new Date().toISOString(),
+      }));
+      originalTexts.value = loadedRealData.value.map(d => d.content).slice(0, 10);
+      ElMessage.success(`已加载 ${loadedRealData.value.length} 条采集数据`);
+    } else {
+      ElMessage.warning('该采集任务暂无数据');
+    }
+  } catch {
+    ElMessage.warning('加载采集任务数据失败');
+  }
+};
+
+// 从数据库加载微博数据
+const loadDatabaseWeibo = async () => {
+  try {
+    ElMessage.info('正在从数据库加载微博数据...');
+    const response = await apiClient.get('/dashboard/weibo-detail', {
+      params: { page: 1, page_size: 500 },
+      timeout: 5000,
+    });
+    const items = response.data?.data?.items || response.data?.data || [];
+    if (items.length > 0) {
+      loadedRealData.value = items.map((item: any) => ({
+        id: item.id || `db_${Date.now()}_${Math.random()}`,
+        content: item.text || item.content || '',
+        source: 'database',
+        keyword: '',
+        author: item.user?.screen_name || item.screen_name || '',
+        likes: item.attitudes_count || 0,
+        comments: item.comments_count || 0,
+        shares: item.reposts_count || 0,
+        timestamp: item.created_at || new Date().toISOString(),
+      }));
+      originalTexts.value = loadedRealData.value.map(d => d.content).slice(0, 10);
+      ElMessage.success(`已加载 ${loadedRealData.value.length} 条数据库微博`);
+    } else {
+      ElMessage.warning('数据库中暂无微博数据');
+    }
+  } catch {
+    ElMessage.warning('加载数据库微博失败');
+  }
+};
+
 // 处理数据并保存到后端
 const handleProcess = async () => {
   processing.value = true;
@@ -427,17 +609,34 @@ const handleProcess = async () => {
   
   try {
     // Step 1: 准备数据
-    const dataToProcess = originalTexts.value.map((text, idx) => ({
-      id: `data_${Date.now()}_${idx}`,
-      content: text,
-      source: 'manual_input',
-      keyword: '预处理测试',
-      author: `用户${idx + 1}`,
-      likes: Math.floor(Math.random() * 100),
-      comments: Math.floor(Math.random() * 50),
-      shares: Math.floor(Math.random() * 20),
-      timestamp: new Date().toISOString(),
-    }));
+    // 如果是采集任务且还没加载数据，先加载
+    if (dataSource.value === 'collection' && selectedCollectionTaskId.value && loadedRealData.value.length === 0) {
+      await loadCollectionData(selectedCollectionTaskId.value);
+    }
+    
+    let dataToProcess: any[];
+    if (dataSource.value !== 'sample' && loadedRealData.value.length > 0) {
+      dataToProcess = loadedRealData.value;
+    } else {
+      dataToProcess = originalTexts.value.map((text, idx) => ({
+        id: `data_${Date.now()}_${idx}`,
+        content: text,
+        source: 'sample',
+        keyword: '预处理测试',
+        author: `用户${idx + 1}`,
+        likes: Math.floor(Math.random() * 100),
+        comments: Math.floor(Math.random() * 50),
+        shares: Math.floor(Math.random() * 20),
+        timestamp: new Date().toISOString(),
+      }));
+    }
+    const texts = dataToProcess.map(d => d.content);
+    qualityMetrics.totalCount = texts.length;
+    qualityMetrics.emptyCount = texts.filter(t => !t || t.trim().length === 0).length;
+    qualityMetrics.shortCount = texts.filter(t => t && t.trim().length > 0 && t.trim().length < 5).length;
+    const uniqueTexts = new Set(texts.map(t => t.trim()));
+    qualityMetrics.duplicateCount = texts.length - uniqueTexts.size;
+    qualityMetrics.cleanedCount = 0;
     updateStep(0);
     
     // Step 2: 调用后端API
@@ -475,7 +674,8 @@ const handleProcess = async () => {
     await loadPreprocessTasks();
     updateStep(3);
     
-    ElMessage.success(`预处理任务创建成功！处理了 ${task.processedCount} 条数据`);
+    const srcLabel = dataSource.value === 'collection' ? '采集任务' : dataSource.value === 'database' ? '数据库' : '示例';
+    ElMessage.success(`预处理任务创建成功！处理了 ${task.processedCount} 条来自「${srcLabel}」的数据，可在情感分析模块选择该任务`);
     activePreview.value = 'compare';
     
   } catch (error: any) {
@@ -485,9 +685,17 @@ const handleProcess = async () => {
   }
 };
 
+// 选择采集任务后自动加载数据
+watch(selectedCollectionTaskId, (taskId) => {
+  if (taskId) {
+    loadCollectionData(taskId);
+  }
+});
+
 // 页面加载时获取已有任务
 onMounted(() => {
   loadPreprocessTasks();
+  fetchCollectionTasks();
 });
 </script>
 

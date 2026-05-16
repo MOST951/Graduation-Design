@@ -70,7 +70,7 @@
       </el-card>
     </transition>
 
-    <!-- 级联策略 & 分析方式统计 -->
+    <!-- 上方：级联策略 & 分析方式统计 -->
     <el-row :gutter="16" class="cascade-row">
       <el-col :span="12">
         <el-card class="cascade-card" shadow="hover">
@@ -78,53 +78,72 @@
             <div class="card-header-custom">
               <div class="header-left">
                 <el-icon><Connection /></el-icon>
-                <span>级联情感分析策略</span>
+                <span>自适应级联融合策略</span>
               </div>
-              <el-tag size="small" type="warning">论文公式4-2</el-tag>
+              <el-segmented v-model="analysisMode" :options="modeOptions" size="small" />
             </div>
           </template>
-          <div class="cascade-formula">
-            <div class="formula-main">
-              S<sub>final</sub> = 
-              <span class="formula-branch">S<sub>dict</sub></span> if |S<sub>dict</sub>| &gt; <strong>{{ confidenceThreshold.toFixed(1) }}</strong>
-              <span class="formula-else">else</span>
-              <span class="formula-branch bert">S<sub>bert</sub></span>
-            </div>
-            <div class="formula-param"> thresholds = <strong>{{ confidenceThreshold.toFixed(1) }}</strong> </div>
+          <div class="cascade-body">
             <div class="threshold-control">
+              <div class="threshold-label">
+                <span>置信度阈值</span>
+                <el-tag size="small" type="warning">{{ confidenceThreshold.toFixed(2) }}</el-tag>
+              </div>
               <el-slider
                 v-model="confidenceThreshold"
                 :min="0.5"
-                :max="0.9"
-                :step="0.1"
-                :format-tooltip="(val) => val.toFixed(1)"
+                :max="1.0"
+                :step="0.05"
+                :format-tooltip="(val:number) => val.toFixed(2)"
                 class="threshold-slider"
                 @change="onThresholdChange"
               />
-              <div class="threshold-label">
-                <span>Confidence Threshold ({{ confidenceThreshold.toFixed(1) }})</span>
-                <el-button size="small" :loading="recalculating" @click="recalculateCascade">
-                  <el-icon><Refresh /></el-icon>
-                  Recalculate
-                </el-button>
+              <div class="threshold-desc">置信度 ≥ {{ confidenceThreshold.toFixed(2) }} 或匹配 ≥ 3个情感词 → 词典直出</div>
+            </div>
+            <el-divider style="margin: 12px 0" />
+            <div class="cascade-flow">
+              <div class="flow-step">
+                <div class="flow-icon dict"><el-icon><List /></el-icon></div>
+                <div class="flow-label">情感词典<br><small>快速 · ~2ms</small></div>
+              </div>
+              <div class="flow-arrow">
+                <div>置信度 &lt; {{ confidenceThreshold.toFixed(2) }}</div>
+                <div>且 &lt; 3个情感词</div>
+                <div>→</div>
+              </div>
+              <div class="flow-step">
+                <div class="flow-icon bert"><el-icon><Cpu /></el-icon></div>
+                <div class="flow-label">ChineseBERT<br><small>精准 · ~50ms</small></div>
+              </div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step">
+                <div class="flow-icon result"><el-icon><CircleCheck /></el-icon></div>
+                <div class="flow-label">最终结果</div>
               </div>
             </div>
-          </div>
-          <el-divider />
-          <div class="cascade-flow">
-            <div class="flow-step">
-              <div class="flow-icon dict"><el-icon><List /></el-icon></div>
-              <div class="flow-label">情感词典<br><small>快速 · ~2ms</small></div>
-            </div>
-            <div class="flow-arrow">→ |S| ≤ 0.7 →</div>
-            <div class="flow-step">
-              <div class="flow-icon bert"><el-icon><Cpu /></el-icon></div>
-              <div class="flow-label">ChineseBERT<br><small>精准 · ~50ms</small></div>
-            </div>
-            <div class="flow-arrow">→</div>
-            <div class="flow-step">
-              <div class="flow-icon result"><el-icon><CircleCheck /></el-icon></div>
-              <div class="flow-label">最终结果<br><small>S<sub>final</sub></small></div>
+            <el-divider style="margin: 12px 0" />
+            <div class="formula-block">
+              <div class="formula-row">
+                <el-tag size="small" effect="dark" type="info">公式 4-1</el-tag>
+                <span class="formula-title">级联门控判断</span>
+              </div>
+              <div class="formula-math">
+                useBERT = <span class="formula-brace">{</span>
+                <span class="formula-cases">
+                  <span class="formula-case"><b>false</b>&ensp;if&ensp;Conf<sub>lex</sub> ≥ θ &ensp;∨&ensp; n<sub>match</sub> ≥ 3</span>
+                  <span class="formula-case"><b>true</b>&ensp;&ensp;otherwise</span>
+                </span>
+              </div>
+              <div class="formula-row" style="margin-top: 10px">
+                <el-tag size="small" effect="dark" type="info">公式 4-2</el-tag>
+                <span class="formula-title">自适应加权融合</span>
+              </div>
+              <div class="formula-math">
+                S<sub>hybrid</sub> = α · S<sub>lex</sub> + (1 − α) · S<sub>bert</sub>
+              </div>
+              <div class="formula-note">
+                θ = {{ confidenceThreshold.toFixed(2) }}，动态权重 α ∈ [0.2, 0.8]，基于词典置信度与文本长度自适应调整
+              </div>
             </div>
           </div>
         </el-card>
@@ -151,7 +170,7 @@
                   <div class="legend-info">
                     <div class="legend-label">词典方法</div>
                     <div class="legend-value">{{ methodStats.dict }} 条 <span class="legend-pct">({{ methodStats.dictPct }}%)</span></div>
-                    <div class="legend-desc">|S<sub>dict</sub>| &gt; 0.7，直接采用</div>
+                    <div class="legend-desc">置信度 ≥ {{ confidenceThreshold.toFixed(2) }} 或 ≥ 3个情感词</div>
                   </div>
                 </div>
                 <div class="legend-item">
@@ -159,7 +178,7 @@
                   <div class="legend-info">
                     <div class="legend-label">BERT回退</div>
                     <div class="legend-value">{{ methodStats.bert }} 条 <span class="legend-pct">({{ methodStats.bertPct }}%)</span></div>
-                    <div class="legend-desc">词典置信度不足，使用BERT</div>
+                    <div class="legend-desc">词典置信度不足，回退到BERT</div>
                   </div>
                 </div>
                 <el-divider />
@@ -176,24 +195,21 @@
       </el-col>
     </el-row>
 
-    <!-- 主内容区域 -->
-    <el-row :gutter="20" class="main-row">
-      <!-- 左侧：实时分析 + 配置 -->
-      <el-col :span="6" class="sidebar-col">
-       <div class="sidebar-sticky">
-        <!-- 实时分析测试 -->
+    <!-- 中间：即时分析 + 情感分布 -->
+    <el-row :gutter="16" class="middle-row">
+      <el-col :span="10">
         <el-card class="analysis-card" shadow="hover">
           <template #header>
             <div class="card-header-custom">
               <el-icon><Edit /></el-icon>
-              <span>实时情感分析</span>
+              <span>即时情感分析</span>
             </div>
           </template>
           <el-input
             v-model="testText"
             type="textarea"
-            :rows="4"
-            placeholder="输入文本进行实时情感分析..."
+            :rows="3"
+            placeholder="输入一条文本进行即时情感分析..."
             class="test-input"
           />
           <el-button 
@@ -208,77 +224,35 @@
           
           <transition name="fade">
             <div v-if="testResult" class="test-result">
-              <div class="result-sentiment">
+              <div class="result-row">
                 <div class="sentiment-badge" :class="testResult.sentiment">
                   <el-icon v-if="testResult.sentiment === 'positive'"><CircleCheck /></el-icon>
                   <el-icon v-else-if="testResult.sentiment === 'negative'"><CircleClose /></el-icon>
                   <el-icon v-else><Remove /></el-icon>
                   {{ getSentimentLabel(testResult.sentiment) }}
                 </div>
+                <div class="result-meta">
+                  <span>置信度: <strong>{{ ((testResult.confidence || Math.abs(testResult.sentiment_score || 0)) * 100).toFixed(1) }}%</strong></span>
+                  <el-tag size="small" :type="testResult.method === 'lexicon' ? 'success' : 'primary'" effect="plain">
+                    {{ testResult.method === 'lexicon' ? '词典' : testResult.method === 'cascade' ? '级联' : 'BERT' }}
+                  </el-tag>
+                </div>
               </div>
               <div class="result-score">
-                <span class="score-label">情感得分</span>
                 <div class="score-bar">
                   <div 
                     class="score-fill" 
                     :class="testResult.sentiment"
-                    :style="{ width: Math.abs(testResult.sentiment_score) * 100 + '%' }"
+                    :style="{ width: (testResult.confidence || Math.abs(testResult.sentiment_score || 0)) * 100 + '%' }"
                   ></div>
                 </div>
-                <span class="score-value">{{ (testResult.sentiment_score * 100).toFixed(1) }}%</span>
               </div>
             </div>
           </transition>
-        </el-card>
-
-        <!-- 分析配置 -->
-        <el-card class="config-card" shadow="hover">
-          <template #header>
-            <div class="card-header-custom">
-              <el-icon><Setting /></el-icon>
-              <span>分析配置</span>
-            </div>
-          </template>
-          <el-form label-position="top" size="default">
-            <el-form-item label="分析模型">
-              <el-select v-model="config.model" style="width: 100%">
-                <el-option label="词典方法 (快速)" value="lexicon">
-                  <div class="model-option">
-                    <span>词典方法</span>
-                    <el-tag size="small" type="success">快速</el-tag>
-                  </div>
-                </el-option>
-                <el-option label="SVM模型" value="svm">
-                  <div class="model-option">
-                    <span>SVM模型</span>
-                    <el-tag size="small" type="info">经典</el-tag>
-                  </div>
-                </el-option>
-                <el-option label="LSTM模型" value="lstm">
-                  <div class="model-option">
-                    <span>LSTM模型</span>
-                    <el-tag size="small" type="warning">深度学习</el-tag>
-                  </div>
-                </el-option>
-                <el-option label="BERT模型 (推荐)" value="bert">
-                  <div class="model-option">
-                    <span>BERT模型</span>
-                    <el-tag size="small" type="danger">推荐</el-tag>
-                  </div>
-                </el-option>
-                <el-option label="级联混合 (词典+BERT)" value="cascade">
-                  <div class="model-option">
-                    <span>级联混合</span>
-                    <el-tag size="small" type="primary">高精度</el-tag>
-                  </div>
-                </el-option>
-              </el-select>
-            </el-form-item>
-            
-            <el-form-item label="情感粒度">
-              <el-segmented v-model="config.granularity" :options="granularityOptions" block />
-            </el-form-item>
-            
+          
+          <el-divider />
+          
+          <el-form label-position="left" label-width="70px" size="default" class="batch-form">
             <el-form-item label="数据来源">
               <el-select v-model="config.dataSource" style="width: 100%" @change="onDataSourceChange">
                 <el-option label="热门数据" value="all" />
@@ -287,71 +261,42 @@
                 <el-option label="预处理数据" value="preprocess" />
               </el-select>
             </el-form-item>
-            
-            <!-- 采集任务选择器 -->
             <el-form-item v-if="config.dataSource === 'task'" label="选择任务">
               <el-select 
-                v-model="config.selectedTaskId" 
-                style="width: 100%" 
-                placeholder="请选择采集任务"
-                :loading="loadingTasks"
-                @focus="loadCollectionTasks"
+                v-model="config.selectedTaskId" style="width: 100%" placeholder="请选择采集任务"
+                :loading="loadingTasks" @focus="loadCollectionTasks"
               >
-                <el-option 
-                  v-for="task in collectionTasks" 
-                  :key="task.id" 
-                  :label="`${task.name} (${task.collected}条)`" 
-                  :value="task.id"
-                  :disabled="task.collected === 0"
-                />
+                <el-option v-for="task in collectionTasks" :key="task.id" :label="`${task.name} (${task.collected}条)`" :value="task.id" :disabled="task.collected === 0" />
               </el-select>
             </el-form-item>
-            
-            <!-- 预处理任务选择器 -->
             <el-form-item v-if="config.dataSource === 'preprocess'" label="选择任务">
               <el-select 
-                v-model="config.selectedPreprocessId" 
-                style="width: 100%" 
-                placeholder="请选择预处理任务"
-                :loading="loadingPreprocess"
-                @focus="loadPreprocessTasks"
+                v-model="config.selectedPreprocessId" style="width: 100%" placeholder="请选择预处理任务"
+                :loading="loadingPreprocess" @focus="loadPreprocessTasks"
               >
-                <el-option 
-                  v-for="task in preprocessTasks" 
-                  :key="task.id" 
-                  :label="`${task.name} (${task.processedCount}条)`" 
-                  :value="task.id"
-                  :disabled="task.processedCount === 0"
-                />
+                <el-option v-for="task in preprocessTasks" :key="task.id" :label="`${task.name} (${task.processedCount}条)`" :value="task.id" :disabled="task.processedCount === 0" />
               </el-select>
             </el-form-item>
-            
             <el-form-item>
               <div class="analysis-buttons">
                 <el-button type="primary" :loading="analyzing" class="start-btn" @click="startAnalysis">
                   <el-icon><VideoPlay /></el-icon>
                   开始批量分析
                 </el-button>
-                <el-button 
-                  v-if="analyzing" 
-                  type="danger" 
-                  :loading="stopping" 
-                  class="stop-btn"
-                  @click="stopAnalysis"
-                >
+                <el-button v-if="analyzing" type="danger" :loading="stopping" class="stop-btn" @click="stopAnalysis">
                   <el-icon><VideoPause /></el-icon>
-                  Stop
+                  停止
                 </el-button>
+              </div>
+              <div v-if="analyzing" style="margin-top: 8px; padding: 8px 12px; background: #ecf5ff; border-radius: 6px; font-size: 13px; color: #409eff;">
+                💡 分析正在后台运行，您可以自由切换到其他模块操作，完成后会自动通知
               </div>
             </el-form-item>
           </el-form>
         </el-card>
-       </div>
       </el-col>
       
-      <!-- 中间：图表展示 -->
-      <el-col :span="12">
-        <!-- 情感分布 -->
+      <el-col :span="14">
         <el-card class="chart-card" shadow="hover">
           <template #header>
             <div class="card-header-custom">
@@ -360,164 +305,69 @@
                 <span>情感分布</span>
               </div>
               <el-radio-group v-model="chartType" size="small">
-                <el-radio-button label="pie">
-                  <el-icon><PieChart /></el-icon>
-                </el-radio-button>
-                <el-radio-button label="bar">
-                  <el-icon><Histogram /></el-icon>
-                </el-radio-button>
+                <el-radio-button label="pie"><el-icon><PieChart /></el-icon></el-radio-button>
+                <el-radio-button label="bar"><el-icon><Histogram /></el-icon></el-radio-button>
               </el-radio-group>
             </div>
           </template>
           <div ref="distributionChartRef" class="chart-container"></div>
         </el-card>
-        
-        <!-- 情感趋势 -->
-        <el-card class="chart-card" shadow="hover">
-          <template #header>
-            <div class="card-header-custom">
-              <div class="header-left">
-                <el-icon><TrendCharts /></el-icon>
-                <span>情感趋势</span>
-              </div>
-              <div class="header-right" style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:12px;color:#909399">时间范围</span>
-                <el-slider
-                  v-model="trendHoursRange"
-                  :min="4"
-                  :max="72"
-                  :step="4"
-                  :format-tooltip="(v: number) => `${v}小时`"
-                  style="width:120px"
-                  @change="updateTrendChart"
-                />
-                <el-tag type="info" size="small">{{ trendHoursRange }}h</el-tag>
-              </div>
-            </div>
-          </template>
-          <div ref="trendChartRef" class="chart-container"></div>
-        </el-card>
-        
-        <!-- 级联统计趋势 -->
-        <el-card class="chart-card" shadow="hover">
-          <template #header>
-            <div class="card-header-custom">
-              <div class="header-left">
-                <el-icon><TrendCharts /></el-icon>
-                <span>级联统计趋势</span>
-              </div>
-              <div class="header-right">
-                <el-radio-group v-model="cascadeTrendType" size="small">
-                  <el-radio-button label="hourly">小时</el-radio-button>
-                  <el-radio-button label="daily">日</el-radio-button>
-                </el-radio-group>
-              </div>
-            </div>
-          </template>
-          <div ref="cascadeTrendChartRef" class="chart-container"></div>
-        </el-card>
-      </el-col>
-      
-      <!-- 右侧：分析结果列表 -->
-      <el-col :span="6" class="sidebar-col">
-       <div class="sidebar-sticky">
-        <el-card class="result-card" shadow="hover">
-          <template #header>
-            <div class="card-header-custom">
-              <div class="header-left">
-                <el-icon><List /></el-icon>
-                <span>分析结果</span>
-              </div>
-              <div class="header-right" style="display:flex;align-items:center;gap:6px;">
-                <el-tag type="primary" size="small">{{ analyzedWeibos.length }}条</el-tag>
-                <el-button size="small" text type="success" @click="exportToExcel" :disabled="analyzedWeibos.length === 0">
-                  导出Excel
-                </el-button>
-              </div>
-            </div>
-          </template>
-          <div class="weibo-list">
-            <div 
-              v-for="item in analyzedWeibos" 
-              :key="item.id" 
-              class="weibo-item"
-              :class="item.sentiment"
-              @click="showWeiboDetail(item)"
-            >
-              <div class="weibo-header">
-                <div class="sentiment-indicator" :class="item.sentiment"></div>
-                <span class="weibo-user">{{ item.user?.screen_name || '匿名用户' }}</span>
-                <el-tag :type="getSentimentType(item.sentiment)" size="small" effect="plain">
-                  {{ getSentimentLabel(item.sentiment) }}
-                </el-tag>
-              </div>
-              <div class="weibo-content">{{ item.text }}</div>
-              <div class="weibo-footer">
-                <span class="score-badge" :class="item.sentiment">
-                  {{ (item.sentiment_score * 100).toFixed(0) }}%
-                </span>
-                <span class="weibo-time">{{ formatTime(item.created_at) }}</span>
-              </div>
-            </div>
-            <el-empty v-if="analyzedWeibos.length === 0" description="暂无分析结果" />
-          </div>
-        </el-card>
-       </div>
       </el-col>
     </el-row>
-    
-    <!-- 模型训练对话框 -->
-    <el-dialog v-model="showTrainDialog" title="模型训练" width="600px">
-      <el-form label-width="120px">
-        <el-form-item label="训练数据">
-          <el-upload
-            drag
-            action="#"
-            :auto-upload="false"
-            accept=".csv,.json"
-          >
-            <el-icon class="el-icon--upload"><Upload /></el-icon>
-            <div class="el-upload__text">拖拽文件到此处或<em>点击上传</em></div>
-            <template #tip>
-              <div class="el-upload__tip">支持CSV、JSON格式的标注数据</div>
-            </template>
-          </el-upload>
-        </el-form-item>
-        
-        <el-form-item label="模型类型">
-          <el-select v-model="trainConfig.modelType" style="width: 100%">
-            <el-option label="SVM" value="svm" />
-            <el-option label="LSTM" value="lstm" />
-            <el-option label="BERT" value="bert" />
-          </el-select>
-        </el-form-item>
-        
-        <el-form-item label="训练集比例">
-          <el-slider v-model="trainConfig.trainRatio" :min="50" :max="90" show-input />
-        </el-form-item>
-        
-        <el-form-item label="批次大小">
-          <el-input-number v-model="trainConfig.batchSize" :min="16" :max="256" />
-        </el-form-item>
-        
-        <el-form-item label="学习率">
-          <el-input-number v-model="trainConfig.learningRate" :min="0.0001" :max="0.1" :step="0.0001" :precision="4" />
-        </el-form-item>
-        
-        <el-form-item label="训练轮数">
-          <el-input-number v-model="trainConfig.epochs" :min="1" :max="100" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showTrainDialog = false">取消</el-button>
-        <el-button type="primary" @click="startTraining">开始训练</el-button>
+
+    <!-- 下方：批量分析结果表格 -->
+    <el-card class="table-card" shadow="hover">
+      <template #header>
+        <div class="card-header-custom">
+          <div class="header-left">
+            <el-icon><List /></el-icon>
+            <span>批量分析结果</span>
+            <el-tag type="primary" size="small">{{ analyzedWeibos.length }} 条</el-tag>
+          </div>
+          <el-button type="success" size="small" :icon="Download" @click="exportToExcel" :disabled="analyzedWeibos.length === 0">
+            一键导出Excel
+          </el-button>
+        </div>
       </template>
-    </el-dialog>
-    
-    <!-- 情感强度分析对话框 -->
-    <el-dialog v-model="showIntensityDialog" title="情感强度分析" width="800px">
-      <div ref="intensityChartRef" style="height: 400px"></div>
-    </el-dialog>
+      <el-table :data="pagedWeibos" stripe border highlight-current-row max-height="380" @row-click="showWeiboDetail" style="width: 100%">
+        <el-table-column type="index" label="序号" width="60" align="center" />
+        <el-table-column prop="user" label="用户" width="110" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.user?.screen_name || row.screen_name || '匿名' }}</template>
+        </el-table-column>
+        <el-table-column label="文本内容" min-width="280" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.text || row.text_raw || '' }}</template>
+        </el-table-column>
+        <el-table-column label="情感类型" width="95" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getSentimentType(row.sentiment)" size="small">{{ getSentimentLabel(row.sentiment) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="置信度" width="90" align="center">
+          <template #default="{ row }">
+            <span :style="{ color: Math.abs(row.sentiment_score||0) > 0.8 ? '#67C23A' : '#909399' }">
+              {{ (Math.abs(row.sentiment_score || 0) * 100).toFixed(1) }}%
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="分析方法" width="95" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.method_used === 'dict' ? 'success' : 'primary'" size="small" effect="plain">
+              {{ row.method_used === 'dict' ? '词典' : 'BERT' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="table-pagination" v-if="analyzedWeibos.length > tablePageSize">
+        <el-pagination
+          v-model:current-page="tablePage"
+          :page-size="tablePageSize"
+          :total="analyzedWeibos.length"
+          layout="total, prev, pager, next"
+          small
+        />
+      </div>
+      <el-empty v-if="analyzedWeibos.length === 0" description="暂无分析结果，请点击「开始批量分析」" />
+    </el-card>
     
     <!-- 微博详情对话框 -->
     <el-dialog v-model="showDetailDialog" title="微博情感分析详情" width="600px">
@@ -547,13 +397,13 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, watch, nextTick, computed } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElNotification } from 'element-plus';
 import * as echarts from 'echarts';
 import { SUCCESS, INFO, DANGER, PRIMARY, WARNING } from '@/styles/colors';
 import { 
-  DataAnalysis, TrendCharts, Cpu, Upload, Edit, Position, Setting, 
+  DataAnalysis, TrendCharts, Cpu, Upload, Edit, Position, Setting, Download,
   VideoPlay, PieChart, Histogram, List, CircleCheck, CircleClose, Remove,
-  Loading, Connection,
+  Loading, Connection, Refresh, VideoPause,
 } from '@element-plus/icons-vue';
 import { realtimeAnalyze, analyzeData, searchWeibo, getCollectionTasks, getTaskData, getPreprocessTasks, getPreprocessData, type CollectionTask, type PreprocessTask } from '@/api/weibo';
 
@@ -577,31 +427,36 @@ const formatTime = (time: string) => {
   return date.toLocaleDateString();
 };
 
+// 分析模式
+const analysisMode = ref('cascade');
+const modeOptions = [
+  { label: '快速模式', value: 'fast' },
+  { label: '高精度模式', value: 'cascade' },
+];
+
 // 状态
 const analyzing = ref(false);
 const stopping = ref(false);
 const testLoading = ref(false);
-const selectedModel = ref('lexicon');
 const chartType = ref('pie');
 const testText = ref('');
 const testResult = ref<any>(null);
-const showTrainDialog = ref(false);
-const showIntensityDialog = ref(false);
 const showDetailDialog = ref(false);
 const selectedWeibo = ref<any>(null);
 
-// 
-const confidenceThreshold = ref(0.7);
-const recalculating = ref(false);
-const cascadeTrendType = ref('hourly');
-const cascadeTrendChartRef = ref<HTMLElement>();
+// 表格分页
+const tablePage = ref(1);
+const tablePageSize = ref(20);
+const pagedWeibos = computed(() => {
+  const start = (tablePage.value - 1) * tablePageSize.value;
+  return analyzedWeibos.value.slice(start, start + tablePageSize.value);
+});
 
+// 级联策略参数
+const confidenceThreshold = ref(0.9);
+const recalculating = ref(false);
 // 
 const globalStopFlag = ref(false);
-let cascadeTrendChart: echarts.ECharts | null = null;
-
-// 趋势图时间范围（小时）
-const trendHoursRange = ref(24);
 
 // 批量进度
 const batchProgress = reactive({
@@ -622,20 +477,14 @@ const methodStats = reactive({
 
 // 图表引用
 const distributionChartRef = ref<HTMLElement>();
-const trendChartRef = ref<HTMLElement>();
-const intensityChartRef = ref<HTMLElement>();
 const methodChartRef = ref<HTMLElement>();
 
 let distributionChart: echarts.ECharts | null = null;
-let trendChart: echarts.ECharts | null = null;
-let intensityChart: echarts.ECharts | null = null;
 let methodChart: echarts.ECharts | null = null;
 
 // 配置
 const config = reactive({
-  model: 'lexicon',
   granularity: 'ternary',
-  threshold: 60,
   dataSource: 'all',
   selectedTaskId: '',
   selectedPreprocessId: '',
@@ -661,13 +510,6 @@ const selectedPreprocessInfo = computed(() => {
   return preprocessTasks.value.find(t => t.id === config.selectedPreprocessId);
 });
 
-const trainConfig = reactive({
-  modelType: 'svm',
-  trainRatio: 80,
-  batchSize: 32,
-  learningRate: 0.001,
-  epochs: 10,
-});
 
 // 分析统计
 const analysisStats = reactive({
@@ -797,7 +639,8 @@ const analyzeText = async () => {
   
   testLoading.value = true;
   try {
-    const result = await realtimeAnalyze(testText.value);
+    const method = analysisMode.value === 'fast' ? 'lexicon' : 'cascade';
+    const result = await realtimeAnalyze(testText.value, method, confidenceThreshold.value);
     testResult.value = result;
     ElMessage.success('分析完成');
   } catch (error: any) {
@@ -837,10 +680,15 @@ const analyzeTaskData = async (taskId: string) => {
 const analyzePreprocessData = async (taskId: string) => {
   ElMessage.info('正在加载预处理任务数据...');
   
-  const taskResult = await getPreprocessData(taskId, 1, 500);
+  let taskResult: any;
+  try {
+    taskResult = await getPreprocessData(taskId, 1, 500);
+  } catch {
+    taskResult = { list: [], total: 0 };
+  }
   
   if (!taskResult.list || taskResult.list.length === 0) {
-    throw new Error('预处理任务数据为空');
+    throw new Error('该预处理任务数据已过期，请重新在数据预处理模块执行预处理');
   }
   
   ElMessage.info(`已加载 ${taskResult.list.length} 条预处理数据，正在进行情感分析...`);
@@ -883,15 +731,17 @@ const simulateBatchProgress = (total: number): Promise<void> => {
   });
 };
 
-// 更新分析方式统计（级联策略 θ=0.7）
+// 更新分析方式统计（级联策略）
 const updateMethodStats = (data: any[]) => {
   const total = data.length;
   if (total === 0) return;
-  // 根据级联策略模拟: |S_dict| > 0.7 → 词典，否则 → BERT
+  const theta = confidenceThreshold.value;
   let dictCount = 0;
   data.forEach((d: any) => {
-    const score = Math.abs(d.sentiment_score || 0);
-    if (score > 0.7) dictCount++;
+    const conf = d.confidence || Math.abs(d.sentiment_score || 0);
+    const isDict = conf >= theta || (d.matched_words && d.matched_words >= 3);
+    d.method_used = isDict ? 'dict' : 'bert';
+    if (isDict) dictCount++;
   });
   const bertCount = total - dictCount;
   methodStats.dict = dictCount;
@@ -966,7 +816,8 @@ const startAnalysis = async () => {
       // 启动批量进度条
       simulateBatchProgress(data.length);
 
-      analyzedWeibos.value = data.slice(0, 20);
+      analyzedWeibos.value = data;
+      tablePage.value = 1;
       
       // 统计
       const positive = data.filter((d: any) => d.sentiment === 'positive').length;
@@ -992,9 +843,15 @@ const startAnalysis = async () => {
       
       // 更新图表
       updateDistributionChart();
-      updateTrendChart();
       
       ElMessage.success(`分析完成，共分析 ${total} 条来自${sourceLabel}的数据`);
+      // 通知（即使用户在其他页面也能看到）
+      ElNotification({
+        title: '情感分析完成',
+        message: `共分析 ${total} 条数据（正面${positive} / 中性${neutral} / 负面${negative}）`,
+        type: 'success',
+        duration: 8000,
+      });
     } else {
       ElMessage.warning('未获取到数据，使用模拟数据展示');
       loadMockData();
@@ -1002,6 +859,12 @@ const startAnalysis = async () => {
   } catch (error: any) {
     console.error('分析失败:', error);
     ElMessage.warning('分析失败: ' + error.message);
+    ElNotification({
+      title: '情感分析失败',
+      message: error.message,
+      type: 'error',
+      duration: 8000,
+    });
     loadMockData();
   } finally {
     analyzing.value = false;
@@ -1061,7 +924,6 @@ const loadMockData = () => {
   analysisStats.avgScore = (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2) as any;
   
   updateDistributionChart();
-  updateTrendChart();
   updateMethodStats(mockWeibos);
 };
 
@@ -1102,34 +964,6 @@ const updateDistributionChart = () => {
   distributionChart.setOption(option);
 };
 
-// 更新趋势图表
-const updateTrendChart = () => {
-  if (!trendChart) return;
-  
-  const range = trendHoursRange.value;
-  const step = range <= 12 ? 1 : range <= 24 ? 1 : 2;
-  const labels = Array.from({ length: Math.ceil(range / step) }, (_, i) => {
-    const h = i * step;
-    return h < 24 ? `${h}:00` : `+${h - 24}h`;
-  });
-  const positiveData = labels.map(() => Math.floor(Math.random() * 100 + 50));
-  const neutralData = labels.map(() => Math.floor(Math.random() * 80 + 30));
-  const negativeData = labels.map(() => Math.floor(Math.random() * 50 + 10));
-  
-  trendChart.setOption({
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['正面', '中性', '负面'], bottom: 0 },
-    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
-    xAxis: { type: 'category', data: labels, axisLabel: { rotate: range > 24 ? 45 : 0, fontSize: 10 } },
-    yAxis: { type: 'value' },
-    series: [
-      { name: '正面', type: 'line', smooth: true, data: positiveData, itemStyle: { color: SUCCESS } },
-      { name: '中性', type: 'line', smooth: true, data: neutralData, itemStyle: { color: INFO } },
-      { name: '负面', type: 'line', smooth: true, data: negativeData, itemStyle: { color: DANGER } },
-    ],
-  });
-};
-
 // 显示微博详情
 const showWeiboDetail = (item: any) => {
   selectedWeibo.value = item;
@@ -1143,14 +977,14 @@ const exportToExcel = () => {
     return;
   }
   
-  const headers = ['序号', '用户', '文本内容', '情感标签', '情感得分', '发布时间'];
+  const headers = ['序号', '用户', '文本内容', '情感标签', '置信度', '分析方法'];
   const rows = analyzedWeibos.value.map((item, idx) => [
     idx + 1,
-    `"${(item.user?.screen_name || '匿名').replace(/"/g, '""')}"`,
-    `"${(item.text || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
+    `"${(item.user?.screen_name || item.screen_name || '匿名').replace(/"/g, '""')}"`,
+    `"${(item.text || item.text_raw || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
     getSentimentLabel(item.sentiment),
-    (item.sentiment_score || 0).toFixed(4),
-    item.created_at || '',
+    (Math.abs(item.sentiment_score || 0) * 100).toFixed(1) + '%',
+    item.method_used === 'dict' ? '词典' : 'BERT',
   ]);
   
   const BOM = '\uFEFF';
@@ -1165,19 +999,10 @@ const exportToExcel = () => {
   ElMessage.success(`已导出 ${rows.length} 条数据`);
 };
 
-// 开始训练
-const startTraining = () => {
-  showTrainDialog.value = false;
-  ElMessage.info('模型训练功能开发中...');
-};
-
 // 初始化图表
 const initCharts = () => {
   if (distributionChartRef.value) {
     distributionChart = echarts.init(distributionChartRef.value);
-  }
-  if (trendChartRef.value) {
-    trendChart = echarts.init(trendChartRef.value);
   }
 };
 
@@ -1186,34 +1011,6 @@ watch(chartType, () => {
   updateDistributionChart();
 });
 
-// 监听强度分析对话框
-watch(showIntensityDialog, (val) => {
-  if (val) {
-    nextTick(() => {
-      if (intensityChartRef.value && !intensityChart) {
-        intensityChart = echarts.init(intensityChartRef.value);
-      }
-      if (intensityChart) {
-        intensityChart.setOption({
-          tooltip: { trigger: 'axis' },
-          xAxis: { type: 'category', data: ['极负面', '负面', '轻微负面', '中性', '轻微正面', '正面', '极正面'] },
-          yAxis: { type: 'value' },
-          series: [{
-            type: 'bar',
-            data: [50, 120, 200, 350, 280, 180, 80],
-            itemStyle: {
-              color: (params: any) => {
-                const colors = [DANGER, WARNING, '#F0F0F0', INFO, '#B3E5FC', SUCCESS, '#4CAF50'];
-                return colors[params.dataIndex];
-              },
-            },
-          }],
-        });
-      }
-    });
-  }
-});
-// 
 const onThresholdChange = (value: number) => {
   console.log('Threshold changed to:', value);
   // 
@@ -1262,9 +1059,8 @@ const recalculateCascade = async () => {
     updateAnalysisStats(updatedData);
     updateDistributionChart();
     updateMethodChart();
-    updateCascadeTrendChart();
     
-    ElMessage.success(`Cascade recalculated with threshold ${confidenceThreshold.value}`);
+    ElMessage.success(`已以阈值 ${confidenceThreshold.value} 重新计算级联结果`);
   } catch (error: any) {
     ElMessage.warning('Recalculation failed: ' + error.message);
   } finally {
@@ -1296,112 +1092,6 @@ const stopAnalysis = async () => {
   }
 };
 
-const updateCascadeTrendChart = () => {
-  if (!cascadeTrendChartRef.value) return;
-  
-  if (!cascadeTrendChart) {
-    cascadeTrendChart = echarts.init(cascadeTrendChartRef.value);
-  }
-  
-  // 
-  const isHourly = cascadeTrendType.value === 'hourly';
-  const timeLabels = isHourly 
-    ? Array.from({length: 24}, (_, i) => `${i}:00`)
-    : Array.from({length: 7}, (_, i) => ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]);
-  
-  // 
-  const dictData = isHourly 
-    ? Array.from({length: 24}, () => Math.floor(Math.random() * 50) + 30)
-    : Array.from({length: 7}, () => Math.floor(Math.random() * 300) + 200);
-  
-  const bertData = isHourly 
-    ? Array.from({length: 24}, () => Math.floor(Math.random() * 30) + 10)
-    : Array.from({length: 7}, () => Math.floor(Math.random() * 150) + 50);
-  
-  const option = {
-    title: {
-      text: `Cascade Statistics (${isHourly ? 'Hourly' : 'Daily'})`,
-      left: 'center',
-      textStyle: { fontSize: 14, fontWeight: 'normal' }
-    },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' },
-      formatter: (params: any) => {
-        let result = `${params[0].axisValue}<br/>`;
-        params.forEach((param: any) => {
-          const total = param.value + (params[1]?.value || 0);
-          const percentage = total > 0 ? ((param.value / total) * 100).toFixed(1) : 0;
-          result += `${param.marker}${param.seriesName}: ${param.value} (${percentage}%)<br/>`;
-        });
-        return result;
-      }
-    },
-    legend: {
-      data: ['Dictionary Method', 'BERT Fallback'],
-      top: 30
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '15%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: timeLabels,
-      axisLabel: {
-        rotate: isHourly ? 45 : 0,
-        fontSize: 10
-      }
-    },
-    yAxis: {
-      type: 'value',
-      name: 'Call Count',
-      axisLabel: { fontSize: 10 }
-    },
-    series: [
-      {
-        name: 'Dictionary Method',
-        type: 'line',
-        data: dictData,
-        smooth: true,
-        itemStyle: { color: SUCCESS },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
-              { offset: 1, color: 'rgba(103, 194, 58, 0.1)' }
-            ]
-          }
-        }
-      },
-      {
-        name: 'BERT Fallback',
-        type: 'line',
-        data: bertData,
-        smooth: true,
-        itemStyle: { color: WARNING },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(230, 162, 60, 0.3)' },
-              { offset: 1, color: 'rgba(230, 162, 60, 0.1)' }
-            ]
-          }
-        }
-      }
-    ]
-  };
-  
-  cascadeTrendChart.setOption(option);
-};
-
 const updateAnalysisStats = (data: any[]) => {
   const positive = data.filter(d => d.sentiment === 'positive').length;
   const negative = data.filter(d => d.sentiment === 'negative').length;
@@ -1422,23 +1112,16 @@ const updateAnalysisStats = (data: any[]) => {
     : 0;
 };
 
-// 
-watch(cascadeTrendType, () => {
-  updateCascadeTrendChart();
-});
-
-// 
 onMounted(() => {
   initCharts();
   loadMockData();
-  updateCascadeTrendChart();
+  // 预加载任务列表，下拉框打开时直接可用
+  loadCollectionTasks();
+  loadPreprocessTasks();
   
   window.addEventListener('resize', () => {
     distributionChart?.resize();
-    trendChart?.resize();
-    intensityChart?.resize();
     methodChart?.resize();
-    cascadeTrendChart?.resize();
   });
 });
 </script>
@@ -1450,33 +1133,16 @@ onMounted(() => {
 .sentiment-analysis-module {
   padding: $spacing-md;
   background: $bg-page;
-  // 论文 3.x: dashboard 风格 — 整页占满 main-content, 无下方留白
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: $spacing-md;
-  overflow: hidden;
+  overflow-y: auto;
 
   > .stats-cards,
   > .cascade-row,
-  > .pipeline-progress-card { flex-shrink: 0; }
-
-  > .main-row {
-    flex: 1;
-    min-height: 0;
-    margin: 0 !important;
-  }
-  > .main-row > .el-col {
-    height: 100%;
-    overflow-y: auto;
-    padding-bottom: $spacing-md;
-    &::-webkit-scrollbar { width: 6px; }
-    &::-webkit-scrollbar-thumb {
-      background: rgba(0, 0, 0, 0.15);
-      border-radius: 3px;
-    }
-    &::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
-  }
+  > .middle-row,
+  > .table-card { flex-shrink: 0; }
 }
 
 // 顶部统计卡片
@@ -1586,9 +1252,8 @@ onMounted(() => {
   }
 }
 
-// 实时分析卡片
+// 即时分析卡片
 .analysis-card {
-  margin-bottom: $spacing-base;
   border-radius: $border-radius-large;
   
   .test-input {
@@ -1602,7 +1267,7 @@ onMounted(() => {
     width: 100%;
     margin-top: $spacing-sm;
     border-radius: $border-radius-base;
-    height: 40px;
+    height: 38px;
   }
 }
 
@@ -1612,50 +1277,41 @@ onMounted(() => {
   background: $bg-page;
   border-radius: $border-radius-large;
   
-  .result-sentiment {
-    text-align: center;
-    margin-bottom: $spacing-base;
+  .result-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: $spacing-sm;
+  }
+  
+  .result-meta {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    font-size: $font-size-small;
+    color: $text-regular;
   }
   
   .sentiment-badge {
     display: inline-flex;
     align-items: center;
     gap: $spacing-xs;
-    padding: $spacing-sm $spacing-lg;
+    padding: $spacing-xs $spacing-base;
     border-radius: $border-radius-round;
-    font-size: $font-size-large;
+    font-size: $font-size-base;
     font-weight: $font-weight-semibold;
     
-    &.positive {
-      background: $success-light;
-      color: $success-color;
-    }
-    
-    &.neutral {
-      background: $info-light;
-      color: $text-regular;
-    }
-    
-    &.negative {
-      background: $danger-light;
-      color: $danger-color;
-    }
+    &.positive { background: $success-light; color: $success-color; }
+    &.neutral { background: $info-light; color: $text-regular; }
+    &.negative { background: $danger-light; color: $danger-color; }
   }
   
   .result-score {
-    .score-label {
-      font-size: $font-size-extra-small;
-      color: $text-secondary;
-      display: block;
-      margin-bottom: $spacing-xs;
-    }
-    
     .score-bar {
-      height: 8px;
+      height: 6px;
       background: $border-base;
       border-radius: $border-radius-xs;
       overflow: hidden;
-      margin-bottom: $spacing-xxs;
     }
     
     .score-fill {
@@ -1667,55 +1323,104 @@ onMounted(() => {
       &.neutral { background: linear-gradient(90deg, $info-color, color.adjust($info-color, $lightness: 15%)); }
       &.negative { background: linear-gradient(90deg, $danger-color, color.adjust($danger-color, $lightness: 18%)); }
     }
+  }
+}
+
+.batch-form {
+  .analysis-buttons {
+    display: flex;
+    gap: $spacing-sm;
+    width: 100%;
     
-    .score-value {
-      font-size: $font-size-base;
-      font-weight: $font-weight-semibold;
-      color: $text-primary;
+    .start-btn, .stop-btn {
+      flex: 1;
+      height: 38px;
+      border-radius: $border-radius-base;
     }
   }
 }
 
-// 配置卡片
-.config-card {
+// 表格卡片
+.table-card {
   border-radius: $border-radius-large;
-  
-  .model-option {
+
+  .table-pagination {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
+    justify-content: flex-end;
+    margin-top: $spacing-base;
   }
-  
-  .analysis-buttons {
+}
+
+// 公式展示块
+.formula-block {
+  padding: $spacing-base;
+  background: linear-gradient(135deg, #f8faff 0%, #f0f5ff 100%);
+  border-radius: $border-radius-base;
+  border: 1px solid #d6e4ff;
+
+  .formula-row {
     display: flex;
+    align-items: center;
     gap: $spacing-sm;
-    
-    .start-btn, .stop-btn {
-      flex: 1;
-      height: 40px;
-      border-radius: $border-radius-base;
-    }
-    
-    .stop-btn {
-      background: $danger-color;
-      border-color: $danger-color;
-      
-      &:hover {
-        background: color.adjust($danger-color, $lightness: -10%);
-        border-color: color.adjust($danger-color, $lightness: -10%);
-      }
-    }
+    margin-bottom: 6px;
+  }
+
+  .formula-title {
+    font-size: $font-size-small;
+    font-weight: $font-weight-semibold;
+    color: $text-primary;
+  }
+
+  .formula-math {
+    font-family: 'Cambria Math', 'Times New Roman', 'STIX Two Math', serif;
+    font-size: 15px;
+    color: #1d3557;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1.8;
+  }
+
+  .formula-brace {
+    font-size: 32px;
+    font-weight: 100;
+    line-height: 1;
+    color: #555;
+  }
+
+  .formula-cases {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .formula-case {
+    font-size: 13px;
+  }
+
+  .formula-note {
+    margin-top: 6px;
+    font-size: $font-size-extra-small;
+    color: $text-secondary;
+    line-height: 1.6;
   }
 }
 
 // 阈值控制
 .threshold-control {
-  margin-top: $spacing-base;
   padding: $spacing-base;
   background: $bg-page;
   border-radius: $border-radius-base;
   border: 1px solid $border-lighter;
+
+  .threshold-desc {
+    font-size: $font-size-extra-small;
+    color: $text-secondary;
+    margin-top: $spacing-xs;
+  }
   
   .threshold-slider {
     margin-bottom: $spacing-base;
@@ -1763,115 +1468,6 @@ onMounted(() => {
   }
 }
 
-// 结果卡片
-.result-card {
-  border-radius: $border-radius-large;
-  
-  .weibo-list {
-    max-height: 620px;
-    overflow-y: auto;
-    
-    &::-webkit-scrollbar {
-      width: 6px;
-    }
-    
-    &::-webkit-scrollbar-thumb {
-      background: $border-base;
-      border-radius: 3px;
-    }
-  }
-}
-
-.weibo-item {
-  padding: $spacing-base;
-  margin-bottom: $spacing-sm;
-  background: $bg-color;
-  border-radius: $border-radius-medium;
-  cursor: pointer;
-  transition: $transition-fast;
-  border-left: 4px solid transparent;
-  
-  &:hover {
-    background: color.adjust($bg-color, $lightness: -3%);
-    transform: translateX(4px);
-  }
-  
-  &.positive {
-    border-left-color: $success-color;
-    &:hover { background: rgba($success-color, 0.08); }
-  }
-  
-  &.neutral {
-    border-left-color: $info-color;
-    &:hover { background: color.adjust($bg-color, $lightness: -4%); }
-  }
-  
-  &.negative {
-    border-left-color: $danger-color;
-    &:hover { background: rgba($danger-color, 0.06); }
-  }
-  
-  .weibo-header {
-    display: flex;
-    align-items: center;
-    gap: $spacing-xs;
-    margin-bottom: $spacing-xs;
-    
-    .sentiment-indicator {
-      width: 8px;
-      height: 8px;
-      border-radius: $border-radius-circle;
-      
-      &.positive { background: $success-color; }
-      &.neutral { background: $info-color; }
-      &.negative { background: $danger-color; }
-    }
-    
-    .weibo-user {
-      font-size: $font-size-small;
-      font-weight: $font-weight-medium;
-      color: $text-primary;
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  }
-  
-  .weibo-content {
-    font-size: $font-size-small;
-    color: $text-regular;
-    line-height: 1.6;
-    margin-bottom: $spacing-sm;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-  }
-  
-  .weibo-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    
-    .score-badge {
-      font-size: $font-size-extra-small;
-      font-weight: $font-weight-semibold;
-      padding: 2px $spacing-xs;
-      border-radius: $border-radius-medium;
-      
-      &.positive { background: $success-light; color: $success-color; }
-      &.neutral { background: $info-light; color: $info-color; }
-      &.negative { background: $danger-light; color: $danger-color; }
-    }
-    
-    .weibo-time {
-      font-size: $font-size-tiny;
-      color: $text-placeholder;
-    }
-  }
-}
 
 // 微博详情对话框
 .weibo-detail {
@@ -2080,21 +1676,4 @@ onMounted(() => {
   }
 }
 
-// 论文 3.x: 优化排版 — 左侧"实时分析+配置"、右侧"分析结果"在用户向下滚动时跟随
-.main-row {
-  align-items: flex-start;
-}
-.sidebar-col {
-  // dashboard 模式: col 自身已是滚动容器，wrapper 仅为语义用
-  .sidebar-sticky {
-    position: static;
-    max-height: none;
-    overflow: visible;
-    display: flex;
-    flex-direction: column;
-    gap: $spacing-base;
-    padding-right: 0;
-    > * { flex-shrink: 0; }
-  }
-}
 </style>

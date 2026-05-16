@@ -333,7 +333,7 @@ test_endpoint() {
 
 test_endpoint "http://${HOST_IP}:${WEB_PORT}/api/v2/health" "Flask_API"
 test_endpoint "http://${HOST_IP}:${FRONTEND_PORT}/" "Frontend"
-test_endpoint "http://${HOST_IP}:${JAVA_PORT}/api/actuator/health" "Java Backend"
+test_endpoint "http://${HOST_IP}:${JAVA_PORT}/actuator/health" "Java Backend"
 test_endpoint "http://${HOST_IP}:${SPARK_UI_PORT}/" "Spark Web UI"
 test_endpoint "http://${HOST_IP}:${HDFS_NN_HTTP}/dfshealth.html" "HDFS WebUI"
 test_endpoint "http://${HOST_IP}:${HBASE_WEBUI_PORT}/master-status" "HBase WebUI"

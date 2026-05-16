@@ -16,17 +16,7 @@
       </div>
     </div>
 
-    <!-- 公式说明 -->
-    <div class="formula-info">
-      <el-alert type="info" :closable="false" show-icon>
-        <template #title>
-          <span class="formula">
-            综合得分 = {{ (config.sentiment_weight * 100).toFixed(0) }}% × 情感强度 + 
-            {{ (config.popularity_weight * 100).toFixed(0) }}% × 传播热度
-          </span>
-        </template>
-      </el-alert>
-    </div>
+
 
     <!-- 排序结果表格 -->
     <el-table 

@@ -52,13 +52,6 @@
             </div>
           </template>
 
-          <!-- 三维度公式说明 -->
-          <div class="formula-banner">
-            <div class="formula-text">
-              S = <span class="w-sentiment">α</span> × 情感强度 + <span class="w-heat">β</span> × 互动热度 + <span class="w-time">γ</span> × 时效性
-            </div>
-          </div>
-
           <!-- 情感强度权重 -->
           <div class="weight-row">
             <span class="weight-label">α 情感强度</span>
@@ -102,6 +95,24 @@
             α + β + γ = {{ weightSum.toFixed(2) }}
             <el-tag v-if="Math.abs(weightSum-1)<=0.06" type="success" size="small">正常</el-tag>
             <el-tag v-else type="warning" size="small">建议为1</el-tag>
+          </div>
+
+          <div class="formula-block">
+            <div class="formula-row">
+              <el-tag size="small" effect="dark" type="info">公式 4-3</el-tag>
+              <span class="formula-title">三维度综合排序</span>
+            </div>
+            <div class="formula-math">
+              TriScore = ω<sub>1</sub> · N(S) + ω<sub>2</sub> · H<sub>norm</sub> + ω<sub>3</sub> · γ(Δt)
+            </div>
+            <div class="formula-detail">
+              <span>N(S) = 情感强度归一化 [0.5, 1]</span>
+              <span>H<sub>norm</sub> = ln(2×评论 + 转发 + 点赞 + 1) 归一化</span>
+              <span>γ(Δt) = 0.5<sup>Δt/12h</sup> 时效半衰期</span>
+            </div>
+            <div class="formula-note">
+              网格搜索最优权重: ω₁={{ (weights.sentiment).toFixed(2) }}, ω₂={{ (weights.heat).toFixed(2) }}, ω₃={{ (weights.timeliness).toFixed(2) }}
+            </div>
           </div>
 
           <el-divider />
@@ -705,6 +716,35 @@ watch(rankedTopics, () => recomputeScores(), { deep: true });
     text-align: center; font-size: 13px; color: #606266; margin-bottom: 4px;
     display: flex; align-items: center; justify-content: center; gap: 8px;
     &.warn { color: #E6A23C; }
+  }
+
+  .formula-block {
+    padding: 10px 12px;
+    background: linear-gradient(135deg, #f8faff 0%, #f0f5ff 100%);
+    border-radius: 8px;
+    border: 1px solid #d6e4ff;
+    margin: 8px 0;
+
+    .formula-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    }
+    .formula-title {
+      font-size: 13px; font-weight: 600; color: #303133;
+    }
+    .formula-math {
+      font-family: 'Cambria Math', 'Times New Roman', serif;
+      font-size: 15px; color: #1d3557;
+      padding: 6px 12px; background: rgba(255,255,255,0.7);
+      border-radius: 6px; line-height: 1.8;
+    }
+    .formula-detail {
+      display: flex; flex-direction: column; gap: 2px;
+      margin-top: 6px; font-size: 11px; color: #606266;
+      span { padding-left: 8px; line-height: 1.6; }
+    }
+    .formula-note {
+      margin-top: 6px; font-size: 11px; color: #909399; line-height: 1.6;
+    }
   }
 
   .search-box {

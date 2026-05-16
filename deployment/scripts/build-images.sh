@@ -2,23 +2,43 @@
 # ====================================================================
 # 微博情感分析系统 — 手动构建 Docker 镜像
 # ====================================================================
-# 用法: 在项目根目录执行 bash deployment/scripts/build-images.sh
+# 用法: bash deployment/scripts/build-images.sh [web|java-backend|frontend|all]
+# 说明: 镜像 tag 与 docker-compose.yml 中 build 自动生成的名称一致
 # ====================================================================
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-cd "${PROJECT_ROOT}"
+DEPLOY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+ENV_FILE="${DEPLOY_DIR}/.env.docker"
 
-echo "=== 构建 Flask 后端镜像 ==="
-docker build -t weibo-sentiment/flask-backend:latest -f deployment/docker/Dockerfile .
+TARGET="${1:-all}"
 
-echo "=== 构建 Java 后端镜像 ==="
-docker build -t weibo-sentiment/java-backend:latest -f deployment/docker/Dockerfile.web-backend .
+build_service() {
+    local svc="$1"
+    echo "=== 构建 ${svc} 镜像 ==="
+    cd "${DEPLOY_DIR}"
+    if [[ -f "${ENV_FILE}" ]]; then
+        docker compose --env-file "${ENV_FILE}" build "${svc}"
+    else
+        docker compose build "${svc}"
+    fi
+}
 
-echo "=== 构建前端镜像 ==="
-docker build -t weibo-sentiment/frontend:latest -f deployment/docker/Dockerfile.frontend .
+case "${TARGET}" in
+    web)          build_service web ;;
+    java|java-backend) build_service java-backend ;;
+    frontend)     build_service frontend ;;
+    all)
+        build_service web
+        build_service java-backend
+        build_service frontend
+        ;;
+    *)
+        echo "用法: $0 [web|java-backend|frontend|all]" >&2
+        exit 1
+        ;;
+esac
 
 echo ""
 echo "=== 构建完成 ==="
-docker images | grep weibo-sentiment
+docker images | grep deployment

@@ -309,7 +309,7 @@ class LiveHotSearchService:
         }
     
     def start(self):
-        if self._running:
+        if self._running and self._thread is not None and self._thread.is_alive():
             return
         self._running = True
         self._thread = threading.Thread(target=self._refresh_loop, daemon=True)

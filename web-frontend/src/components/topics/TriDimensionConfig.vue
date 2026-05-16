@@ -1,22 +1,5 @@
 <template>
   <div class="tri-dimension-config">
-    <!-- 公式展示 -->
-    <div class="formula-display">
-      <div class="formula-title">三维度排序公式</div>
-      <div class="formula-content">
-        <span class="formula-text">S = </span>
-        <span class="formula-alpha">{{ config.alpha.toFixed(2) }}</span>
-        <span class="formula-text"> · |E| + </span>
-        <span class="formula-beta">{{ config.beta.toFixed(2) }}</span>
-        <span class="formula-text"> · P</span>
-      </div>
-      <div class="formula-legend">
-        <span><strong>S</strong>: 综合得分</span>
-        <span><strong>E</strong>: 情感强度</span>
-        <span><strong>P</strong>: 热度得分</span>
-      </div>
-    </div>
-
     <!-- 主要权重调节 -->
     <el-card class="config-card" shadow="hover">
       <template #header>
@@ -145,9 +128,6 @@
                 size="small"
               />
             </div>
-          </div>
-          <div class="param-desc">
-            热度公式: P = log(1 + {{ config.repostWeight }}×转发 + {{ config.commentWeight }}×评论 + {{ config.likeWeight }}×点赞)
           </div>
         </div>
       </el-collapse-item>

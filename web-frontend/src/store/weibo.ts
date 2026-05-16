@@ -236,9 +236,10 @@ export const useWeiboStore = defineStore('weibo', () => {
     pages?: number;
     crawlHot?: boolean;
     dateRange?: [string, string] | null;
+    cookie?: string;
   }) {
     try {
-      const result = await startCrawlTask(params.keywords, params.pages || 3, params.crawlHot || false, params.dateRange);
+      const result = await startCrawlTask(params.keywords, params.pages || 50, params.crawlHot || false, params.dateRange, params.cookie);
       
       // 兼容后端返回的 id 或 task_id 字段
       const taskId = result.task_id || result.id;
@@ -299,7 +300,7 @@ export const useWeiboStore = defineStore('weibo', () => {
     try {
       const result = await startDataflowTask({
         keywords: params.keywords,
-        pages: params.pages || 3,
+        pages: params.pages || 50,
         crawl_hot: params.crawlHot || false,
         auto_process: params.autoProcess !== false,
       });

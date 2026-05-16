@@ -353,7 +353,7 @@ export async function resetPassword(id: string, newPassword?: string): Promise<{
  */
 export async function updateUserStatus(id: string, status: UserStatus): Promise<void> {
   try {
-    await api.patch(`/users/${id}/status`, { status });
+    await api.patch(`/admin/users/${id}/status`, { status });
   } catch (error) {
     await sleep(200);
   }
@@ -461,13 +461,15 @@ export async function getUserStatistics(): Promise<{
  */
 export async function getRoles(): Promise<Role[]> {
   try {
-    const response = await api.get<Role[]>('/admin/roles');
-    return response.data;
+    const response = await api.get<any>('/admin/roles');
+    const body = response.data;
+    const payload = body?.data ?? body;
+    return Array.isArray(payload) ? payload : [];
   } catch (error) {
     await sleep(300);
     return [
       {
-        id: 'role-1',
+        id: 'role-admin',
         name: '系统管理员',
         code: 'admin',
         description: '拥有所有权限',
@@ -477,22 +479,12 @@ export async function getRoles(): Promise<Role[]> {
         updatedAt: '2024-01-01T00:00:00Z',
       },
       {
-        id: 'role-2',
-        name: '数据分析师',
-        code: 'analyst',
-        description: '数据分析和报告权限',
-        permissions: ['data:read', 'report:create', 'report:read'],
-        isSystem: false,
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-      },
-      {
-        id: 'role-3',
+        id: 'role-user',
         name: '普通用户',
         code: 'user',
         description: '基础查看权限',
         permissions: ['data:read', 'report:read'],
-        isSystem: false,
+        isSystem: true,
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
       },

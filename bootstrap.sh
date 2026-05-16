@@ -8,7 +8,7 @@
 #   3. 拉取本项目源码
 #   4. 从 HuggingFace 下载已微调模型 (~410 MB)
 #   5. 修复换行符 + 赋予脚本执行权限
-#   6. 调用 deploy.sh 开始部署
+#   6. 调用 docker-cluster.sh 开始部署
 #
 # 用法:
 #   # 方式 1: 直接从 GitHub 运行 (推荐, 什么都不用下载)
@@ -139,7 +139,7 @@ clone_repo() {
     step "[3/6] 拉取项目源码 ..."
 
     # 如果当前目录已经是项目根目录 (有 deploy.sh), 直接复用
-    if [[ -f "./deploy.sh" && -f "./deployment/docker-compose.yml" ]]; then
+    if [[ -f "./docker-cluster.sh" && -f "./deployment/docker-compose.yml" ]]; then
         PROJECT_DIR="$(pwd)"
         info "检测到当前目录已是项目根目录: ${PROJECT_DIR}"
         return 0
@@ -220,21 +220,21 @@ fix_permissions() {
         -exec dos2unix -q {} \; 2>/dev/null || true
 
     # 确保关键脚本可执行
-    chmod +x deploy.sh docker-cluster.sh 2>/dev/null || true
+    chmod +x docker-cluster.sh bootstrap.sh 2>/dev/null || true
     find deployment/scripts -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
 
     info "脚本权限就绪"
 }
 
 run_deploy() {
-    step "[6/6] 调用 deploy.sh 开始部署 ..."
+    step "[6/6] 调用 docker-cluster.sh 开始部署 ..."
     cd "${PROJECT_DIR}"
 
     if [[ -n "${NEED_NEWGRP:-}" ]]; then
         warn "本次会话 docker 组权限未生效, 使用 sudo 运行 deploy"
-        ${SUDO} bash ./deploy.sh
+        ${SUDO} bash ./docker-cluster.sh
     else
-        ./deploy.sh
+        ./docker-cluster.sh
     fi
 }
 
@@ -252,23 +252,23 @@ show_summary() {
     echo ""
     echo "  常用命令:"
     echo "    cd ${PROJECT_DIR}"
-    echo "    ./deploy.sh              # 一键部署 (首次自动构建镜像)"
-    echo "    ./deploy.sh stop         # 停止所有服务"
-    echo "    ./deploy.sh start        # 启动已部署的服务"
-    echo "    ./deploy.sh restart      # 重启"
-    echo "    ./deploy.sh status       # 查看状态"
-    echo "    ./deploy.sh logs         # 实时日志"
-    echo "    ./deploy.sh health       # 健康检查"
+    echo "    ./docker-cluster.sh              # 启动集群 (首次自动构建镜像)"
+    echo "    ./docker-cluster.sh stop         # 停止所有服务"
+    echo "    ./docker-cluster.sh start        # 启动已部署的服务"
+    echo "    ./docker-cluster.sh restart      # 重启"
+    echo "    ./docker-cluster.sh status       # 查看状态"
+    echo "    ./docker-cluster.sh logs         # 实时日志"
+    echo "    ./docker-cluster.sh health       # 健康检查"
     echo ""
 
     if [[ "${AUTO_DEPLOY}" == "false" ]]; then
         echo -e "${YELLOW}  当前已跳过自动部署 (--no-deploy), 请手动运行:${NC}"
-        echo "    cd ${PROJECT_DIR} && ./deploy.sh"
+        echo "    cd ${PROJECT_DIR} && ./docker-cluster.sh"
     else
         echo "  部署完成后访问:"
         echo "    前端:    http://${ip}:3001"
         echo "    Flask:   http://${ip}:5000/api/v2/health"
-        echo "    Java:    http://${ip}:8081/api/actuator/health"
+        echo "    Java:    http://${ip}:8081/actuator/health"
         echo "    Spark:   http://${ip}:8080"
     fi
 

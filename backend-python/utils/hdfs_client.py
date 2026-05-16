@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 # HDFS 默认路径
 # 论文 5.1: 原始 JSON 按天分区存到 HDFS /raw/YYYY-MM-DD/
-HDFS_RAW_DIR = os.getenv("HDFS_RAW_DIR", "/raw")
-HDFS_OUTPUT_DIR = os.getenv("HDFS_OUTPUT_DIR", "/output")
-HDFS_CHECKPOINT_DIR = os.getenv("HDFS_CHECKPOINT_DIR", "/checkpoint")
-HDFS_CLEANED_DIR = os.getenv("HDFS_CLEANED_DIR", "/cleaned")
+HDFS_RAW_DIR = os.getenv("HDFS_RAW_DIR", "/weibo/raw")
+HDFS_OUTPUT_DIR = os.getenv("HDFS_OUTPUT_DIR", "/weibo/output")
+HDFS_CHECKPOINT_DIR = os.getenv("HDFS_CHECKPOINT_DIR", "/weibo/checkpoint")
+HDFS_CLEANED_DIR = os.getenv("HDFS_CLEANED_DIR", "/weibo/cleaned")
 
 
 def get_hdfs_url() -> Optional[str]:

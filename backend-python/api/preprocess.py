@@ -95,14 +95,18 @@ def remove_urls(text: str) -> str:
     return re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', text)
 
 def remove_emoji(text: str) -> str:
-    """去除表情符号"""
+    """去除表情符号（仅移除 Emoji 平面符号，不影响 CJK 汉字）"""
     emoji_pattern = re.compile("["
-        u"\U0001F600-\U0001F64F"
-        u"\U0001F300-\U0001F5FF"
-        u"\U0001F680-\U0001F6FF"
-        u"\U0001F1E0-\U0001F1FF"
-        u"\U00002702-\U000027B0"
-        u"\U000024C2-\U0001F251"
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags
+        u"\U0001F900-\U0001F9FF"  # supplemental symbols
+        u"\U0001FA00-\U0001FA6F"  # chess symbols
+        u"\U00002702-\U000027B0"  # dingbats
+        u"\U0000FE00-\U0000FE0F"  # variation selectors
+        u"\U0000200D"             # zero width joiner
+        u"\U000024C2-\U000024FF"  # enclosed alphanumerics (only)
         "]+", flags=re.UNICODE)
     return emoji_pattern.sub('', text)
 
@@ -167,16 +171,23 @@ def clean_text(text: str, rules: List[str]) -> str:
 
 # ==================== 分词函数 ====================
 
-def segment_text(text: str, tool: str = 'jieba') -> List[str]:
-    """分词"""
+def segment_text(text: str, tool: str = 'jieba', with_pos: bool = False):
+    """分词，with_pos=True 时返回 [(word, pos), ...]，否则返回 [word, ...]"""
     try:
+        if tool == 'jieba' and with_pos:
+            import jieba.posseg as pseg
+            pairs = list(pseg.cut(text))
+            return [(w.word, w.flag) for w in pairs]
         import jieba
         if tool == 'jieba':
             return list(jieba.cut(text))
     except ImportError:
         pass
     # 简单分词（按空格和标点）
-    return [w for w in re.split(r'\s+', text) if w]
+    words = [w for w in re.split(r'\s+', text) if w]
+    if with_pos:
+        return [(w, 'x') for w in words]
+    return words
 
 
 # ==================== API路由 ====================
@@ -287,6 +298,11 @@ def create_preprocess_task():
             save_task_data(task_id, processed_items)
         
         logger.info(f'Preprocess task created: {task_id}, processed {len(processed_items)} items')
+        
+        # 同时提交 Spark 分布式清洗作业（论文 6.3.2）
+        spark_job_id = _submit_spark_clean_job(task_id)
+        if spark_job_id:
+            task['sparkJobId'] = spark_job_id
         
         return jsonify({
             'code': 200,
@@ -512,29 +528,57 @@ def start_preprocessing():
                 processed = []
                 for item in raw_data:
                     txt = item.get('text', item.get('content', ''))
-                    if 'removeNoise' in rules:
+                    if 'removeNoise' in rules or 'removeUrl' in rules:
                         txt = remove_urls(txt)
+                    if 'removeNoise' in rules or 'removeEmoji' in rules:
                         txt = remove_emoji(txt)
+                    if 'removeNoise' in rules or 'removeAt' in rules:
                         txt = re.sub(r'@[^\s]+', '', txt)
+                    if 'removeNoise' in rules or 'removeHashtag' in rules:
                         txt = re.sub(r'#[^#]+#', '', txt)
+                    if 'removeSpecial' in rules:
+                        txt = remove_special_chars(txt)
                     if 'traditional2simplified' in rules or config.get('traditional2simplified'):
                         txt = traditional_to_simplified(txt)
                     if 'fullwidth2halfwidth' in rules or config.get('fullwidth2halfwidth'):
                         txt = full_to_half(txt)
-                    words = segment_text(txt, tool=segment_tool) if 'segmentation' in rules else [txt]
+                    txt = remove_extra_spaces(txt)
+                    wp = segment_text(txt, tool=segment_tool, with_pos=True)
                     if 'removeStopwords' in rules:
-                        words = [w for w in words if w not in stopwords and len(w) > 1]
+                        wp = [(w, p) for w, p in wp if w not in stopwords and len(w) > 1]
+                    words = [w for w, _ in wp]
+                    pos_tags = [p for _, p in wp]
                     processed.append({
                         'id': item.get('id', ''),
                         'original_text': item.get('text', item.get('content', '')),
                         'processed_text': ''.join(words),
                         'words': words,
+                        'pos_tags': pos_tags,
                         'word_count': len(words),
                         'rules_applied': rules,
                     })
+                # Register completed task so status polling works
+                with task_lock:
+                    preprocess_tasks[job_id] = {
+                        'id': job_id,
+                        'name': f'预处理任务_{datetime.now().strftime("%m%d_%H%M")}',
+                        'status': 'completed',
+                        'progress': 100,
+                        'created_at': datetime.now().isoformat(),
+                        'data_count': len(raw_data),
+                        'processed_count': len(processed),
+                        'processedCount': len(processed),
+                        'totalCount': len(raw_data),
+                        'error': None,
+                    }
+                    processed_data[job_id] = processed
+                # 持久化到磁盘
+                save_task_data(job_id, processed)
+                save_tasks_to_disk()
                 return jsonify({
                     'code': 200,
                     'message': f'同步处理完成 ({len(processed)} 条)',
+                    'job_id': job_id,
                     'data': {
                         'job_id': job_id,
                         'mode': 'sync',
@@ -550,6 +594,7 @@ def start_preprocessing():
         with task_lock:
             preprocess_tasks[job_id] = {
                 'id': job_id,
+                'name': f'预处理任务_{datetime.now().strftime("%m%d_%H%M")}',
                 'status': 'pending',
                 'progress': 0,
                 'created_at': datetime.now().isoformat(),
@@ -560,6 +605,8 @@ def start_preprocessing():
                 'custom_dict': custom_dict,
                 'stopwords': stopwords,
                 'processed_count': 0,
+                'processedCount': 0,
+                'totalCount': len(raw_data),
                 'error': None,
                 'steps': []
             }
@@ -633,6 +680,7 @@ def start_preprocessing():
                     preprocess_tasks[job_id]['status'] = 'completed'
                     preprocess_tasks[job_id]['progress'] = 100
                     preprocess_tasks[job_id]['processed_count'] = len(processed_data)
+                    preprocess_tasks[job_id]['processedCount'] = len(processed_data)
                     preprocess_tasks[job_id]['steps'] = [
                         {'name': 'Data Loading', 'time': '0ms', 'type': 'success', 'count': len(raw_data)},
                         {'name': 'Text Cleaning', 'time': '100ms', 'type': 'success', 'count': len(processed_data)},
@@ -837,3 +885,89 @@ def save_stopwords():
             'code': 500,
             'message': f'保存停用词失败: {str(e)}'
         }), 500
+
+
+# ==================== Spark 分布式清洗作业 (论文 6.3.2) ====================
+
+def _submit_spark_clean_job(task_id: str) -> Optional[str]:
+    """
+    提交 Spark 分布式清洗作业到集群.
+    
+    论文 6.3.2: Spark作业从HDFS读取原始JSON文件，
+    用内置函数 regexp_replace 处理 URL 以及 @提及，
+    较复杂的清洗工作如（表情、繁简）等用 Python UDF 实现。
+    数据自动分片并行后写入 Parquet 文件中。
+    """
+    import subprocess
+    
+    try:
+        # 确定 HDFS 输入路径 (最新日期分区)
+        today = datetime.now().strftime('%Y-%m-%d')
+        hdfs_input = f'hdfs://namenode:9000/weibo/raw/dt={today}/*.json'
+        hdfs_output = f'hdfs://namenode:9000/weibo/cleaned/dt={today}'
+        
+        # Spark 脚本路径
+        script_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), 'spark', 'jobs', 'spark_clean.py'
+        )
+        if not os.path.exists(script_path):
+            script_path = '/app/backend/spark/jobs/spark_clean.py'
+        
+        if not os.path.exists(script_path):
+            logger.warning(f'[Spark] spark_clean.py 不存在: {script_path}')
+            return None
+        
+        # 构建 spark-submit 命令
+        spark_master = 'spark://spark-master:7077'
+        cmd = [
+            'spark-submit',
+            '--master', spark_master,
+            '--deploy-mode', 'client',
+            '--name', f'WeiboClean-{task_id}',
+            '--driver-memory', '1g',
+            '--executor-memory', '1g',
+            '--conf', 'spark.sql.shuffle.partitions=4',
+            '--conf', 'spark.ui.showConsoleProgress=false',
+            script_path,
+            '--input', hdfs_input,
+            '--output', hdfs_output,
+        ]
+        
+        logger.info(f'[Spark 6.3.2] 提交分布式清洗作业: {" ".join(cmd)}')
+        
+        # 异步提交 (不阻塞 API 响应)
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        
+        # 记录作业信息
+        spark_job_id = f'spark_clean_{task_id}'
+        
+        # 启动后台线程监控作业
+        def _monitor_spark_job():
+            try:
+                stdout, stderr = process.communicate(timeout=300)
+                rc = process.returncode
+                if rc == 0:
+                    logger.info(f'[Spark 6.3.2] 作业成功完成: {spark_job_id}')
+                    logger.info(f'[Spark 6.3.2] stdout: {stdout[-500:] if stdout else ""}')
+                else:
+                    logger.error(f'[Spark 6.3.2] 作业失败 (rc={rc}): {stderr[-500:] if stderr else ""}')
+            except subprocess.TimeoutExpired:
+                process.kill()
+                logger.error(f'[Spark 6.3.2] 作业超时被终止: {spark_job_id}')
+            except Exception as e:
+                logger.error(f'[Spark 6.3.2] 监控异常: {e}')
+        
+        monitor_thread = threading.Thread(target=_monitor_spark_job, daemon=True)
+        monitor_thread.start()
+        
+        logger.info(f'[Spark 6.3.2] 作业已提交: {spark_job_id}, input={hdfs_input}, output={hdfs_output}')
+        return spark_job_id
+        
+    except Exception as e:
+        logger.error(f'[Spark 6.3.2] 提交作业失败: {e}', exc_info=True)
+        return None

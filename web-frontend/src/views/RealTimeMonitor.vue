@@ -97,8 +97,28 @@
       <el-col :span="6">
         <el-card shadow="hover" class="status-card status-online">
           <div class="status-label">订阅关键词</div>
-          <div class="status-main">{{ stats.system_status.subscribed_keywords }}</div>
-          <div class="status-sub">SSE 客户端 {{ stats.system_status.sse_clients }}</div>
+          <div class="status-main">{{ subscribedKeywords.length }}</div>
+          <div class="kw-manage">
+            <el-tag
+              v-for="kw in subscribedKeywords"
+              :key="kw"
+              closable
+              size="small"
+              style="margin: 2px"
+              @close="removeKeyword(kw)"
+            >{{ kw }}</el-tag>
+          </div>
+          <div class="kw-add" style="margin-top: 8px; display: flex; gap: 4px">
+            <el-input
+              v-model="newKeyword"
+              placeholder="输入关键词"
+              size="small"
+              style="flex:1"
+              @keyup.enter="addKeyword"
+            />
+            <el-button size="small" type="primary" @click="addKeyword">添加</el-button>
+          </div>
+          <div class="status-sub" style="margin-top: 4px">SSE 客户端 {{ stats.system_status.sse_clients }}</div>
         </el-card>
       </el-col>
     </el-row>
@@ -184,6 +204,44 @@ const donutRef = ref<HTMLElement>();
 let donutChart: echarts.ECharts | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let lastAlertLevel = 'normal';
+
+// ========= 关键词订阅管理 =========
+const subscribedKeywords = ref<string[]>([]);
+const newKeyword = ref('');
+
+const fetchKeywords = async () => {
+  try {
+    const res = await apiClient.get('/monitor/keywords');
+    if (res.data?.code === 200) subscribedKeywords.value = res.data.data || [];
+  } catch { /* ignore */ }
+};
+
+const addKeyword = async () => {
+  const kw = newKeyword.value.trim();
+  if (!kw) return;
+  try {
+    const res = await apiClient.post('/monitor/keywords', { keyword: kw });
+    if (res.data?.code === 200) {
+      subscribedKeywords.value = res.data.data || [];
+      newKeyword.value = '';
+      ElMessage.success(`已订阅: ${kw}`);
+    }
+  } catch (e: any) {
+    ElMessage.error('添加失败: ' + (e?.message || '未知错误'));
+  }
+};
+
+const removeKeyword = async (kw: string) => {
+  try {
+    const res = await apiClient.delete('/monitor/keywords', { data: { keyword: kw } });
+    if (res.data?.code === 200) {
+      subscribedKeywords.value = res.data.data || [];
+      ElMessage.success(`已取消订阅: ${kw}`);
+    }
+  } catch (e: any) {
+    ElMessage.error('删除失败: ' + (e?.message || '未知错误'));
+  }
+};
 
 // ========= 计算属性 =========
 const maxKeywordCount = computed(() =>
@@ -292,6 +350,7 @@ onMounted(async () => {
     donutChart = echarts.init(donutRef.value);
     window.addEventListener('resize', () => donutChart?.resize());
   }
+  await fetchKeywords();
   await fetchStatistics();
   pollTimer = setInterval(fetchStatistics, 5000);
 });

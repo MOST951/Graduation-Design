@@ -310,6 +310,61 @@ class AuthService:
             logger.error(f"检查邮箱失败: {e}")
             return False
     
+    def get_all_users(self) -> list:
+        """获取所有用户列表（管理员用）"""
+        try:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, username, nickname, email, avatar, role, status, "
+                    "created_at, last_login_at FROM users ORDER BY id"
+                )
+                rows = cursor.fetchall()
+            conn.close()
+            users = []
+            for u in rows:
+                users.append({
+                    'id': u['id'],
+                    'username': u['username'],
+                    'name': u.get('nickname') or u['username'],
+                    'email': u.get('email', ''),
+                    'avatar': u.get('avatar') or '/avatars/default.png',
+                    'role': u.get('role', 'user'),
+                    'status': u.get('status', 'active'),
+                    'lastLoginAt': u['last_login_at'].isoformat() if u.get('last_login_at') else None,
+                    'createdAt': u['created_at'].isoformat() if u.get('created_at') else None,
+                })
+            return users
+        except Exception as e:
+            logger.error(f"获取用户列表失败: {e}")
+            return []
+
+    def update_user_role(self, user_id: int, role: str) -> bool:
+        """更新用户角色"""
+        try:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("UPDATE users SET role = %s WHERE id = %s", (role, user_id))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"更新用户角色失败: {e}")
+            return False
+
+    def update_user_status(self, user_id: int, status: str) -> bool:
+        """更新用户状态"""
+        try:
+            conn = self._get_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("UPDATE users SET status = %s WHERE id = %s", (status, user_id))
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            logger.error(f"更新用户状态失败: {e}")
+            return False
+
     def get_user_by_id(self, user_id: int) -> Optional[Dict]:
         """根据ID获取用户信息"""
         try:

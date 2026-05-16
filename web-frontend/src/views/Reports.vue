@@ -148,13 +148,6 @@
                   />
                   <span class="weight-value">{{ reportConfig.popularityWeight }}%</span>
                 </div>
-                <el-alert type="info" :closable="false" class="formula-alert">
-                  <template #title>
-                    <span class="formula-text">
-                      综合得分 = {{ reportConfig.sentimentWeight }}% × 情感强度 + {{ reportConfig.popularityWeight }}% × 传播热度
-                    </span>
-                  </template>
-                </el-alert>
               </div>
             </el-form-item>
 

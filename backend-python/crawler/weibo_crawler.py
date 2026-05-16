@@ -74,6 +74,8 @@ class WeiboCrawler:
         
         if cookie:
             self.session.headers['Cookie'] = cookie
+            # 即使传了cookie参数，也从cookies.json加载UA保持会话指纹一致
+            self._load_ua_from_cookie_file()
         else:
             # 尝试从文件加载cookie
             self._load_cookies()
@@ -81,6 +83,7 @@ class WeiboCrawler:
         self.proxy = {'http': proxy, 'https': proxy} if proxy else None
         self.request_count = 0
         self.last_request_time = 0
+        self._driver = None  # Selenium driver，懒加载
     
     def _rotate_user_agent(self):
         """轮换User-Agent"""
@@ -92,6 +95,25 @@ class WeiboCrawler:
         else:
             self.session.headers['Referer'] = 'https://weibo.com/'
     
+    def _load_ua_from_cookie_file(self):
+        """仅从cookies.json加载UA信息，保持会话指纹一致"""
+        cookie_file = os.path.join(os.path.dirname(__file__), 'cookies.json')
+        try:
+            if os.path.exists(cookie_file):
+                with open(cookie_file, 'r', encoding='utf-8') as f:
+                    cookie_data = json.load(f)
+                candidates = [cookie_data] if isinstance(cookie_data, dict) else (cookie_data or [])
+                for cookie_dict in candidates:
+                    if not isinstance(cookie_dict, dict):
+                        continue
+                    ua = cookie_dict.get('_user_agent')
+                    if ua:
+                        self.session.headers['User-Agent'] = ua
+                        logger.info(f"从cookies.json同步UA: {ua[:50]}")
+                    return
+        except Exception:
+            pass
+
     def _load_cookies(self):
         """从文件加载cookies"""
         cookie_file = os.path.join(os.path.dirname(__file__), 'cookies.json')
@@ -176,10 +198,42 @@ class WeiboCrawler:
     def get_hot_search(self) -> List[Dict]:
         """
         获取微博热搜榜
+        优先使用 weibo.com/ajax API（无需Cookie），备用移动端API
         
         Returns:
             热搜列表，每项包含：rank, title, hot_value, category
         """
+        # 方法1: weibo.com/ajax/side/hotSearch（无需Cookie，最可靠）
+        try:
+            headers = {
+                'User-Agent': self.session.headers.get('User-Agent',
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'),
+                'Accept': 'application/json',
+                'Referer': 'https://weibo.com/',
+            }
+            resp = requests.get('https://weibo.com/ajax/side/hotSearch',
+                                headers=headers, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get('ok') == 1:
+                    realtime = data.get('data', {}).get('realtime', [])
+                    if realtime:
+                        hot_list = []
+                        for i, item in enumerate(realtime):
+                            hot_list.append({
+                                'rank': i + 1,
+                                'title': item.get('word', ''),
+                                'hot_value': item.get('num', 0),
+                                'category': item.get('label_name', ''),
+                                'url': f"https://s.weibo.com/weibo?q=%23{quote(item.get('word', ''))}%23",
+                                'crawl_time': datetime.now().isoformat()
+                            })
+                        logger.info(f"ajax/side/hotSearch 获取 {len(hot_list)} 条热搜")
+                        return hot_list[:50]
+        except Exception as e:
+            logger.warning(f"ajax/side/hotSearch 失败: {e}")
+
+        # 方法2: 移动端API
         url = f"{self.BASE_URL}/api/container/getIndex"
         params = {
             'containerid': '106003type=25&t=3&disable_hot=1&filter_type=realtimehot'
@@ -313,6 +367,156 @@ class WeiboCrawler:
         except:
             return 0
     
+    def _init_selenium(self) -> bool:
+        """懒加载 Selenium 浏览器并注入 Cookie"""
+        if self._driver is not None:
+            return True
+        try:
+            from crawler.cookie_grabber import get_selenium_driver, load_cookies
+            from selenium.webdriver.common.by import By
+
+            logger.info("[Selenium] 创建 headless 浏览器...")
+            self._driver = get_selenium_driver()
+            self._driver.set_window_size(1920, 1080)
+
+            # 先访问 weibo.com 域名，才能 set cookie
+            self._driver.get('https://weibo.com/')
+            time.sleep(2)
+
+            # 注入 cookies.json 中的 Cookie
+            cookie_data = load_cookies()
+            injected = 0
+            for name, value in cookie_data.items():
+                if name.startswith('_'):
+                    continue
+                try:
+                    self._driver.add_cookie({
+                        'name': name, 'value': value,
+                        'domain': '.weibo.com', 'path': '/'
+                    })
+                    injected += 1
+                except Exception:
+                    pass
+
+            # 刷新页面使 Cookie 生效
+            self._driver.get('https://weibo.com/')
+            time.sleep(2)
+
+            # 检查是否登录成功（不在登录页）
+            url = self._driver.current_url
+            if 'passport' in url or 'login' in url:
+                logger.warning("[Selenium] Cookie 注入后仍被重定向到登录页")
+                self._close_driver()
+                return False
+
+            logger.info(f"[Selenium] 浏览器就绪，注入 {injected} 个 Cookie")
+            return True
+        except Exception as e:
+            logger.error(f"[Selenium] 初始化失败: {e}")
+            self._close_driver()
+            return False
+
+    def _search_weibo_selenium(self, keyword: str, page: int = 1) -> List[Dict]:
+        """
+        使用 Selenium 驱动浏览器搜索微博：
+        第1页：在搜索框输入关键词→回车；后续页：直接跳转 URL。
+        """
+        if not self._init_selenium():
+            return []
+
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.common.keys import Keys
+        from selenium.webdriver.support.ui import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+
+        try:
+            if page == 1:
+                # -------- 第 1 页：通过搜索框输入关键词 --------
+                self._driver.get('https://weibo.com/')
+                time.sleep(random.uniform(1.5, 2.5))
+
+                search_ok = False
+                search_selectors = [
+                    'input.woo-input-main',
+                    'input[placeholder*="\u641c\u7d22"]',
+                    '.gn_search input',
+                    'input[type="text"]',
+                ]
+                for sel in search_selectors:
+                    try:
+                        el = WebDriverWait(self._driver, 3).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, sel))
+                        )
+                        if not el:
+                            continue
+                        # 先点击激活搜索框（新版微博需要）
+                        try:
+                            el.click()
+                            time.sleep(0.3)
+                        except Exception:
+                            self._driver.execute_script(
+                                "arguments[0].focus(); arguments[0].click();", el)
+                            time.sleep(0.3)
+                        el.clear()
+                        for ch in keyword:
+                            el.send_keys(ch)
+                            time.sleep(random.uniform(0.05, 0.15))
+                        time.sleep(random.uniform(0.3, 0.6))
+                        el.send_keys(Keys.ENTER)
+                        time.sleep(1)
+                        # 微博搜索会在新标签页打开结果
+                        handles = self._driver.window_handles
+                        if len(handles) > 1:
+                            self._driver.switch_to.window(handles[-1])
+                            logger.info(f"[Selenium] 搜索结果在新标签页打开，已切换")
+                        logger.info(f"[Selenium] 已在搜索框输入 [{keyword}] 并回车 ({sel})")
+                        search_ok = True
+                        break
+                    except Exception as e:
+                        logger.debug(f"[Selenium] \u9009\u62e9\u5668 {sel} \u5931\u8d25: {e}")
+                        continue
+
+                if not search_ok:
+                    logger.info("[Selenium] \u641c\u7d22\u6846\u4ea4\u4e92\u5931\u8d25\uff0c\u901a\u8fc7\u6d4f\u89c8\u5668\u76f4\u63a5\u8bbf\u95ee\u641c\u7d22URL")
+                    self._driver.get(f'https://s.weibo.com/weibo?q={quote(keyword)}')
+            else:
+                # -------- 第 2+ 页：直接跳转 --------
+                url = f'https://s.weibo.com/weibo?q={quote(keyword)}&page={page}'
+                self._driver.get(url)
+                logger.info(f"[Selenium] \u76f4\u63a5\u8df3\u8f6c {url}")
+
+            # 等待搜索结果加载
+            time.sleep(random.uniform(2.5, 4.0))
+
+            # 检查是否被重定向到登录页
+            cur = self._driver.current_url
+            if 'passport' in cur or 'login' in cur:
+                logger.warning("[Selenium] \u641c\u7d22\u65f6\u88ab\u91cd\u5b9a\u5411\u5230\u767b\u5f55\u9875\uff0cCookie \u53ef\u80fd\u5df2\u5931\u6548")
+                return []
+
+            # 获取页面源码并复用现有解析器
+            html = self._driver.page_source
+            results = self._parse_search_html(html, keyword)
+            logger.info(f"[Selenium] \u641c\u7d22 '{keyword}' page={page} \u89e3\u6790\u5f97\u5230 {len(results)} \u6761\u5fae\u535a")
+            return results
+
+        except Exception as e:
+            logger.error(f"[Selenium] \u641c\u7d22\u5931\u8d25: {e}")
+            return []
+
+    def _close_driver(self):
+        """关闭 Selenium 浏览器"""
+        if self._driver:
+            try:
+                self._driver.quit()
+            except Exception:
+                pass
+            self._driver = None
+
+    def close(self):
+        """释放所有资源"""
+        self._close_driver()
+
     def search_weibo(self, keyword: str, page: int = 1, 
                      search_type: str = 'all') -> Generator[Dict, None, None]:
         """
@@ -326,14 +530,22 @@ class WeiboCrawler:
         Yields:
             微博数据字典
         """
-        # 优先尝试PC端API（使用Cookie）
+        # 方法1: Selenium 浏览器搜索（最真实，反爬风险最低）
+        selenium_results = self._search_weibo_selenium(keyword, page)
+        if selenium_results:
+            for weibo in selenium_results:
+                yield weibo
+            return
+
+        # 方法2: requests + Cookie 直接访问 s.weibo.com（回退）
+        logger.info(f"[Selenium] 无结果，回退到 requests 方式")
         pc_results = list(self._search_weibo_pc(keyword, page))
         if pc_results:
             for weibo in pc_results:
                 yield weibo
             return
         
-        # 备用：移动端API
+        # 方法3: 移动端API（可能需要Cookie）
         url = f"{self.BASE_URL}/api/container/getIndex"
         
         # 构建containerid
@@ -369,28 +581,85 @@ class WeiboCrawler:
                         mblog = item.get('mblog', {})
                         if mblog:
                             yield self._parse_weibo(mblog, keyword)
-    
-    def _search_weibo_pc(self, keyword: str, page: int = 1) -> List[Dict]:
+
+    def _search_weibo_ajax(self, keyword: str, page: int = 1) -> List[Dict]:
         """
-        使用 s.weibo.com PC 搜索结果页（HTML）解析真实微博。
-
-        历史 bug：旧实现调的是 ajax/feed/hottimeline 与 ajax/statuses/friends_timeline，
-        前者是“推荐流”、后者是“关注 timeline”，跟搜索关键词没有任何关系，
-        且这两个 API 在大多数 cookie 状态下返回 statuses=[]。导致 search_weibo()
-        对外永远返回空，整个采集链路 fallback 到 _generate_keyword_data 模板兜底
-        （表现为每次稳定 75 条全合成数据）。
-
-        新实现：直接请求 https://s.weibo.com/weibo?q={kw}&page={n}，纯 regex
-        解析卡片区域，避免引入 bs4/lxml 等运行时依赖。需要 cookie 中包含 SUB。
+        使用 weibo.com/ajax/statuses/searchPosts JSON API 搜索。
+        需要 Cookie 中包含 SUB 和 XSRF-TOKEN。
         """
         cookie = self.session.headers.get('Cookie', '')
         if not cookie or 'SUB=' not in cookie:
-            logger.warning("s.weibo.com 搜索需要登录 Cookie (SUB)")
+            return []
+
+        # 从 cookie 中提取 XSRF-TOKEN
+        xsrf = ''
+        for part in cookie.split(';'):
+            part = part.strip()
+            if part.startswith('XSRF-TOKEN='):
+                xsrf = part.split('=', 1)[1]
+                break
+
+        headers = {
+            'User-Agent': self.session.headers.get('User-Agent',
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'),
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': f'https://s.weibo.com/weibo?q={quote(keyword)}',
+            'Cookie': cookie,
+        }
+        if xsrf:
+            headers['X-XSRF-TOKEN'] = xsrf
+
+        try:
+            time.sleep(random.uniform(0.5, 1.5))
+            resp = requests.get(
+                'https://weibo.com/ajax/statuses/searchPosts',
+                params={'q': keyword, 'page': page},
+                headers=headers, timeout=15
+            )
+        except Exception as e:
+            logger.warning(f"ajax searchPosts 请求失败: {e}")
+            return []
+
+        if resp.status_code != 200:
+            logger.warning(f"ajax searchPosts 返回 {resp.status_code}")
+            return []
+
+        try:
+            data = resp.json()
+        except Exception:
+            logger.warning("ajax searchPosts 响应非JSON")
+            return []
+
+        if data.get('ok') != 1:
+            logger.info(f"ajax searchPosts ok={data.get('ok')}，Cookie 可能已失效")
+            return []
+
+        statuses = data.get('data', {}).get('statuses', [])
+        if not statuses:
+            return []
+
+        results = []
+        for mblog in statuses:
+            results.append(self._parse_weibo(mblog, keyword))
+
+        logger.info(f"ajax searchPosts '{keyword}' page={page} 获取 {len(results)} 条真实微博")
+        return results
+
+    def _search_weibo_pc(self, keyword: str, page: int = 1) -> List[Dict]:
+        """
+        使用 s.weibo.com PC 搜索结果页（HTML）解析真实微博。
+        需要 cookie 中包含 SUB。
+        """
+        cookie = self.session.headers.get('Cookie', '')
+        if not cookie or 'SUB=' not in cookie:
             return []
 
         url = f"https://s.weibo.com/weibo?q={quote(keyword)}&page={page}"
-        # 优先用 cookies.json 里随会话导出的 UA, 保证指纹一致
-        ua = self.session.headers.get('User-Agent') or 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        # PC搜索必须使用桌面UA，移动端UA会导致s.weibo.com返回不同格式
+        ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        stored_ua = self.session.headers.get('User-Agent', '')
+        if 'Windows' in stored_ua or 'Macintosh' in stored_ua:
+            ua = stored_ua
         headers = {
             'User-Agent': ua,
             'Accept': 'text/html,application/xhtml+xml',
@@ -423,13 +692,83 @@ class WeiboCrawler:
             logger.info(f"s.weibo.com '{keyword}' page={page} 未解析到卡片（页面结构可能变化）")
         return result
 
+    @staticmethod
+    def _normalize_weibo_time(raw: str) -> str:
+        """
+        把微博搜索页的中文时间转为 ISO 格式 YYYY-MM-DD HH:MM:SS
+        支持：
+          '05月14日 20:01'  -> '2026-05-14 20:01:00'
+          '今天 18:30'      -> 当天
+          '4分钟前'         -> 回推
+          '1小时前'         -> 回推
+          '昨天 09:00'      -> 昨天
+          '2025-03-01'      -> 原样
+        """
+        now = datetime.now()
+        if not raw:
+            return now.strftime('%Y-%m-%d %H:%M:%S')
+
+        raw = raw.strip()
+
+        # "X分钟前"
+        m = re.match(r'(\d+)\s*分钟前', raw)
+        if m:
+            return (now - timedelta(minutes=int(m.group(1)))).strftime('%Y-%m-%d %H:%M:%S')
+
+        # "X小时前"
+        m = re.match(r'(\d+)\s*小时前', raw)
+        if m:
+            return (now - timedelta(hours=int(m.group(1)))).strftime('%Y-%m-%d %H:%M:%S')
+
+        # "X秒前"
+        m = re.match(r'(\d+)\s*秒前', raw)
+        if m:
+            return (now - timedelta(seconds=int(m.group(1)))).strftime('%Y-%m-%d %H:%M:%S')
+
+        # "今天 HH:MM"
+        m = re.match(r'今天\s*(\d{1,2}):(\d{2})', raw)
+        if m:
+            return now.replace(hour=int(m.group(1)), minute=int(m.group(2)),
+                               second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
+
+        # "昨天 HH:MM"
+        m = re.match(r'昨天\s*(\d{1,2}):(\d{2})', raw)
+        if m:
+            d = now - timedelta(days=1)
+            return d.replace(hour=int(m.group(1)), minute=int(m.group(2)),
+                             second=0, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
+
+        # "MM月DD日 HH:MM"  (当年)
+        m = re.match(r'(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})', raw)
+        if m:
+            month, day, hour, minute = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
+            return datetime(now.year, month, day, hour, minute).strftime('%Y-%m-%d %H:%M:%S')
+
+        # "YYYY-MM-DD HH:MM" 已经是标准格式
+        m = re.match(r'(\d{4})-(\d{2})-(\d{2})', raw)
+        if m:
+            return raw if len(raw) >= 16 else raw + ' 00:00:00'
+
+        # 兜底：返回当前时间
+        return now.strftime('%Y-%m-%d %H:%M:%S')
+
     def _parse_search_html(self, html: str, keyword: str) -> List[Dict]:
         """从 s.weibo.com 搜索结果页 HTML 中正则抽取微博卡片"""
-        # 每张微博一个 card-wrap, 带 mid; 用懒匹配切到下一张 card-wrap 或分页区
+        # 每张微博一个 card-wrap, 带 mid
+        # 属性顺序不固定：raw HTML 为 class="card-wrap" mid="..."
+        # Selenium DOM 为 mid="..." class="card-wrap"
+        # 故用宽松正则：匹配同时包含 card-wrap 和 mid 的 div
         card_pattern = re.compile(
-            r'<div\s+class="card-wrap"[^>]*mid="(?P<mid>\d+)"[^>]*>'
+            r'<div\b[^>]*?\bmid="(?P<mid>\d+)"[^>]*?\bclass="card-wrap"[^>]*>'
             r'(?P<body>.*?)'
-            r'(?=<div\s+class="card-wrap"|<div\s+class="m-page"|\Z)',
+            r'(?=<div\b[^>]*?\bclass="card-wrap"[^>]*>|<div\s+class="m-page"|\Z)',
+            re.DOTALL
+        )
+        # 同时尝试另一种属性顺序（class 在 mid 前面）
+        card_pattern_alt = re.compile(
+            r'<div\b[^>]*?\bclass="card-wrap"[^>]*?\bmid="(?P<mid>\d+)"[^>]*>'
+            r'(?P<body>.*?)'
+            r'(?=<div\b[^>]*?\bclass="card-wrap"[^>]*>|<div\s+class="m-page"|\Z)',
             re.DOTALL
         )
         # 用户 a 标签 (class 顺序 / 属性顺序在不同卡片可能不同, 故先抓整体 tag 再分别取属性)
@@ -446,8 +785,17 @@ class WeiboCrawler:
         re_strip = re.compile(r'<[^>]+>')
 
         results = []
-        for m in card_pattern.finditer(html):
+        # 尝试两种属性顺序，取匹配数多的那个
+        matches_a = list(card_pattern.finditer(html))
+        matches_b = list(card_pattern_alt.finditer(html))
+        all_matches = matches_a if len(matches_a) >= len(matches_b) else matches_b
+        # 去重（同一 mid 只保留首次）
+        seen_mids = set()
+        for m in all_matches:
             mid = m.group('mid')
+            if mid in seen_mids:
+                continue
+            seen_mids.add(mid)
             body = m.group('body')
 
             # 用户: 抓 <a class="name" ...>nick</a> 整 tag 再分别取属性
@@ -479,7 +827,8 @@ class WeiboCrawler:
 
             # 时间
             mtime = re_time.search(body)
-            created_at = mtime.group(1).strip() if mtime else ''
+            raw_time = mtime.group(1).strip() if mtime else ''
+            created_at = self._normalize_weibo_time(raw_time)
 
             # 互动数 (转/评/赞)
             counts = []
@@ -784,29 +1133,35 @@ class WeiboCrawlerTask:
     支持批量爬取和任务调度
     """
     
-    def __init__(self, data_dir: str = None):
+    def __init__(self, data_dir: str = None, cookie: str = None):
         """
         初始化任务管理器
         
         Args:
             data_dir: 数据存储目录
+            cookie: 微博登录Cookie（可选，传递给爬虫实例）
         """
-        self.crawler = WeiboCrawler()
+        self.crawler = WeiboCrawler(cookie=cookie)
         self.data_dir = data_dir or os.path.join(
             os.path.dirname(os.path.dirname(__file__)), 
             'data', 
             'weibo_raw'
         )
         os.makedirs(self.data_dir, exist_ok=True)
+
+    def close(self):
+        """释放爬虫资源（Selenium 浏览器等）"""
+        if self.crawler:
+            self.crawler.close()
         
-    def crawl_by_keywords(self, keywords: List[str], pages: int = 5, 
+    def crawl_by_keywords(self, keywords: List[str], pages: int = 50, 
                           save: bool = True) -> List[Dict]:
         """
         按关键词批量爬取
         
         Args:
             keywords: 关键词列表
-            pages: 每个关键词爬取的页数
+            pages: 每个关键词最大爬取页数 (不足则提前停止)
             save: 是否保存到文件
             
         Returns:
@@ -815,20 +1170,36 @@ class WeiboCrawlerTask:
         all_data = []
         
         for keyword in keywords:
-            logger.info(f"开始爬取关键词: {keyword}")
+            logger.info(f"开始爬取关键词: {keyword} (最多 {pages} 页)")
             keyword_data = []
+            empty_count = 0
             
             for page in range(1, pages + 1):
                 logger.info(f"  爬取第 {page}/{pages} 页")
+                page_data = []
                 for weibo in self.crawler.search_weibo(keyword, page):
-                    keyword_data.append(weibo)
+                    page_data.append(weibo)
+                
+                if not page_data:
+                    empty_count += 1
+                    logger.info(f"  第 {page} 页无数据 (连续空页: {empty_count})")
+                    if empty_count >= 2:
+                        logger.info(f"  连续2页无数据，关键词 '{keyword}' 采集结束 (共 {page} 页)")
+                        break
+                else:
+                    empty_count = 0
+                    keyword_data.extend(page_data)
                     
                 # 随机延迟
                 time.sleep(random.uniform(2, 5))
             
-            # 如果搜索API没有返回数据，基于关键词生成数据
+            # 如果搜索API没有返回数据，记录Cookie问题并生成兜底数据
             if not keyword_data:
-                logger.info(f"搜索API无数据，基于关键词生成数据: {keyword}")
+                cookie = self.crawler.session.headers.get('Cookie', '')
+                if not cookie or 'SUB=' not in cookie:
+                    logger.warning(f"关键词搜索需要有效的微博Cookie（必须包含SUB字段），当前Cookie无效，回退为合成数据: {keyword}")
+                else:
+                    logger.warning(f"Cookie中有SUB但搜索仍无数据（Cookie可能已过期），回退为合成数据: {keyword}")
                 keyword_data = self._generate_keyword_data(keyword, pages * 10)
                 
             all_data.extend(keyword_data)
@@ -908,14 +1279,14 @@ class WeiboCrawlerTask:
             
         return hot_list
     
-    def crawl_hot_topics(self, top_n: int = 10, pages_per_topic: int = 3,
+    def crawl_hot_topics(self, top_n: int = 10, pages_per_topic: int = 50,
                          save: bool = True) -> List[Dict]:
         """
         爬取热门话题的微博
         
         Args:
             top_n: 爬取前N个热搜话题
-            pages_per_topic: 每个话题爬取的页数
+            pages_per_topic: 每个话题最大爬取页数 (不足则提前停止)
             save: 是否保存到文件
             
         Returns:
@@ -931,19 +1302,34 @@ class WeiboCrawlerTask:
         
         for hot in hot_list[:top_n]:
             topic = hot['title']
-            logger.info(f"开始爬取话题: {topic}")
+            logger.info(f"开始爬取话题: {topic} (最多 {pages_per_topic} 页)")
             topic_data = []
+            empty_count = 0
             
             for page in range(1, pages_per_topic + 1):
                 logger.info(f"  爬取第 {page}/{pages_per_topic} 页")
+                page_data = []
                 for weibo in self.crawler.search_weibo(topic, page):
-                    topic_data.append(weibo)
+                    page_data.append(weibo)
+                
+                if not page_data:
+                    empty_count += 1
+                    if empty_count >= 2:
+                        logger.info(f"  连续2页无数据，话题 '{topic}' 采集结束 (共 {page} 页)")
+                        break
+                else:
+                    empty_count = 0
+                    topic_data.extend(page_data)
                     
                 time.sleep(random.uniform(2, 5))
             
-            # 如果搜索API没有返回数据，基于热搜生成数据
+            # 如果搜索API没有返回数据，记录原因并生成兜底数据
             if not topic_data:
-                logger.info(f"搜索API无数据，基于热搜生成话题数据: {topic}")
+                cookie = self.crawler.session.headers.get('Cookie', '')
+                if not cookie or 'SUB=' not in cookie:
+                    logger.warning(f"话题搜索需要有效Cookie（含SUB），回退为合成数据: {topic}")
+                else:
+                    logger.warning(f"Cookie有SUB但话题搜索无数据（可能已过期），回退为合成数据: {topic}")
                 topic_data = self._generate_topic_data(hot, pages_per_topic * 5)
                 
             all_data.extend(topic_data)

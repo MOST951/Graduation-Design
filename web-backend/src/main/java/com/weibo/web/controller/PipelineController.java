@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @Slf4j
 @RestController
-@RequestMapping("/pipeline")
+@RequestMapping("/api/pipeline")
 public class PipelineController {
 
     @Autowired
