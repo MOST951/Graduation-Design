@@ -799,61 +799,63 @@ def get_task_logs():
     status_filter = request.args.get('status')
     result = []
 
-    # ---------- 1. MySQL crawl_tasks ----------
+    _COLLECT_STATUS_MAP = {
+        'completed': 'success', 'success': 'success',
+        'failed': 'failed', 'error': 'failed', 'interrupted': 'failed',
+        'cancelled': 'cancelled',
+        'running': 'running', 'pending': 'pending',
+    }
+
+    # ---------- 1. weibo_api.crawl_tasks (内存, 实际数据源) ----------
     try:
-        from services.database_service import get_db_service
-        db = get_db_service()
-        if db is not None:
-            with db.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT task_id, sys_user_id, keywords, pages, crawl_hot,
-                               status, progress, collected, start_time, end_time, error
-                        FROM crawl_tasks
-                        ORDER BY COALESCE(start_time, created_at) DESC
-                        LIMIT 200
-                    """)
-                    for row in cursor.fetchall():
-                        kw_raw = row.get('keywords')
-                        if isinstance(kw_raw, str):
-                            try:
-                                kw_list = json.loads(kw_raw) if kw_raw else []
-                            except Exception:
-                                kw_list = []
-                        elif isinstance(kw_raw, list):
-                            kw_list = kw_raw
-                        else:
-                            kw_list = []
-                        kw_text = ','.join(kw_list[:3]) if kw_list else ('热搜爬取' if row.get('crawl_hot') else '采集任务')
-                        name = f"数据采集: {kw_text}"
-                        db_status = (row.get('status') or 'pending').lower()
-                        fstatus = {
-                            'completed': 'success',
-                            'success': 'success',
-                            'failed': 'failed',
-                            'error': 'failed',
-                            'interrupted': 'failed',
-                            'cancelled': 'cancelled',
-                            'running': 'running',
-                            'pending': 'pending',
-                        }.get(db_status, db_status)
-                        st = _parse_dt(row.get('start_time'))
-                        ed = _parse_dt(row.get('end_time'))
-                        result.append({
-                            'id': str(row.get('task_id')),
-                            'taskName': name,
-                            'taskType': 'collection',
-                            'status': fstatus,
-                            'startTime': _fmt_dt(st),
-                            'endTime': _fmt_dt(ed),
-                            'duration': _format_duration(st, ed),
-                            'progress': int(row.get('progress') or 0),
-                            'executor': row.get('sys_user_id') or 'system',
-                            'collected': int(row.get('collected') or 0),
-                            'errorMessage': row.get('error'),
-                        })
+        from api import weibo_api as _wa
+        with _wa.task_lock:
+            wa_tasks = list(_wa.crawl_tasks.values())
+        for t in wa_tasks:
+            kw_list = t.get('keywords') or []
+            kw_text = ','.join(kw_list[:3]) if kw_list else ('热搜爬取' if t.get('crawl_hot') else '采集任务')
+            st = _parse_dt(t.get('start_time'))
+            ed = _parse_dt(t.get('end_time'))
+            fstatus = _COLLECT_STATUS_MAP.get((t.get('status') or 'pending').lower(), t.get('status'))
+            result.append({
+                'id': str(t.get('id')),
+                'taskName': f"数据采集: {kw_text}",
+                'taskType': 'collection',
+                'status': fstatus,
+                'startTime': _fmt_dt(st),
+                'endTime': _fmt_dt(ed),
+                'duration': _format_duration(st, ed),
+                'progress': int(t.get('progress') or 0),
+                'executor': t.get('sys_user_id') or 'system',
+                'collected': int(t.get('collected') or 0),
+                'errorMessage': t.get('error'),
+            })
     except Exception as e:
-        logger.warning(f"Read crawl_tasks from DB failed: {e}")
+        logger.warning(f"Read weibo_api.crawl_tasks failed: {e}")
+
+    # ---------- 2. 分析任务 (analysis_results) ----------
+    try:
+        from api import weibo_api as _wa
+        with _wa.task_lock:
+            ana_items = list(_wa.analysis_results.values())
+        for a in ana_items:
+            st = _parse_dt(a.get('start_time') or a.get('created_at'))
+            ed = _parse_dt(a.get('end_time') or a.get('completed_at'))
+            fstatus = _COLLECT_STATUS_MAP.get((a.get('status') or 'pending').lower(), a.get('status'))
+            result.append({
+                'id': str(a.get('id') or a.get('task_id')),
+                'taskName': a.get('name') or f"情感分析: {a.get('source_file','')}",
+                'taskType': 'analysis',
+                'status': fstatus,
+                'startTime': _fmt_dt(st),
+                'endTime': _fmt_dt(ed),
+                'duration': _format_duration(st, ed),
+                'progress': int(a.get('progress') or 0),
+                'executor': a.get('sys_user_id') or 'system',
+                'errorMessage': a.get('error'),
+            })
+    except Exception as e:
+        logger.warning(f"Read weibo_api.analysis_results failed: {e}")
 
     # ---------- 2. task_queue 内存 (其他类型) ----------
     try:
