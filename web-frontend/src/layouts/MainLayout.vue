@@ -337,46 +337,95 @@ interface Notification {
   link?: string;
 }
 
-const notifications = ref<Notification[]>([
-  {
-    id: '1',
-    title: '负面情感预警',
-    description: '检测到负面情感占比超过40%阈值',
-    time: '5分钟前',
-    read: false,
-    type: 'alert',
-    level: 'critical',
-    link: '/realtime',
-  },
-  {
-    id: '2',
-    title: '敏感关键词预警',
-    description: '检测到敏感关键词「投诉」出现3次',
-    time: '10分钟前',
-    read: false,
-    type: 'alert',
-    level: 'warning',
-    link: '/realtime',
-  },
-  {
-    id: '3',
-    title: '数据采集完成',
-    description: '关键词「人工智能」采集完成，共510条',
-    time: '30分钟前',
-    read: true,
-    type: 'task',
-    status: 'success',
-    link: '/collection',
-  },
-  {
-    id: '4',
-    title: '系统更新',
-    description: '情感分析模型已更新至最新版本',
-    time: '1小时前',
-    read: true,
-    type: 'system',
-  },
-]);
+const notifications = ref<Notification[]>([]);
+
+// 时间差人性化展示
+const _formatRelative = (iso?: string): string => {
+  if (!iso) return '';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '';
+  const diffSec = Math.floor((Date.now() - t) / 1000);
+  if (diffSec < 60) return `${diffSec}秒前`;
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}分钟前`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}小时前`;
+  return `${Math.floor(diffSec / 86400)}天前`;
+};
+
+// 拉真实任务/告警, 构建通知列表
+const fetchNotifications = async () => {
+  const list: Notification[] = [];
+
+  // 1) 真实采集任务 (task 通知)
+  try {
+    const res = await apiClient.get('/weibo/crawl/tasks');
+    const tasks = res.data?.data?.tasks || res.data?.data || [];
+    const recent = (Array.isArray(tasks) ? tasks : []).slice(0, 5);
+    for (const t of recent) {
+      const keywords = Array.isArray(t.keywords) ? t.keywords.join('、') : (t.keywords || '');
+      const total = t.total_count ?? t.collected ?? 0;
+      let title = '数据采集任务';
+      let desc = `关键词「${keywords || '-'}」`;
+      let status: 'success' | 'error' | 'running' = 'running';
+      if (t.status === 'completed' || t.status === 'success') {
+        title = '数据采集完成';
+        desc = `关键词「${keywords || '-'}」采集完成，共 ${total} 条`;
+        status = 'success';
+      } else if (t.status === 'failed') {
+        title = '数据采集失败';
+        desc = `关键词「${keywords || '-'}」: ${t.error || '未知错误'}`;
+        status = 'error';
+      } else if (t.status === 'crawling' || t.status === 'running' || t.status === 'processing') {
+        title = '数据采集进行中';
+        desc = `关键词「${keywords || '-'}」正在采集...`;
+        status = 'running';
+      }
+      list.push({
+        id: `task-${t.task_id || t.id || Math.random()}`,
+        title,
+        description: desc,
+        time: _formatRelative(t.end_time || t.start_time),
+        read: status !== 'running',
+        type: 'task',
+        status,
+        link: '/collection',
+      });
+    }
+  } catch (e) {
+    // 后端不可用静默
+  }
+
+  // 2) 真实告警 (alert 通知)
+  try {
+    const res = await apiClient.get('/dashboard/alerts');
+    const alerts = res.data?.data || [];
+    for (const a of (Array.isArray(alerts) ? alerts : []).slice(0, 5)) {
+      list.push({
+        id: `alert-${a.id || Math.random()}`,
+        title: a.type === 'warning' ? '舆情预警' : '系统提示',
+        description: a.message || '',
+        time: _formatRelative(a.time),
+        read: false,
+        type: 'alert',
+        level: a.type === 'warning' ? 'warning' : 'info',
+        link: '/realtime',
+      });
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  notifications.value = list;
+};
+
+let _notificationsTimer: number | undefined;
+onMounted(() => {
+  fetchNotifications();
+  // 30 秒刷新一次
+  _notificationsTimer = window.setInterval(fetchNotifications, 30000);
+});
+onUnmounted(() => {
+  if (_notificationsTimer) clearInterval(_notificationsTimer);
+});
 
 // 计算属性
 const alertNotifications = computed(() => notifications.value.filter(n => n.type === 'alert'));
