@@ -395,6 +395,153 @@ def get_hot_topics():
         'source': source,
     })
 
+@dashboard_bp.route('/extras', methods=['GET'])
+@redis_cache('dashboard:extras', ttl=120)
+def get_dashboard_extras():
+    """补全数据可视化模块剩余图表的真实数据聚合
+    - keywordDistribution: top12 关键词 (代替地域分布: location 字段无数据)
+    - intensityHistogram: sentiment_analysis_results.intensity 分桶
+    - sentimentScatter: 情感分数 vs 互动量散点
+    - topicHourly: weibo_core_data 按小时发文量 (替话题传播时间线)
+    - topicDailyTrend: top3 keyword 按日发文量
+    - sentimentWordBar: top12 keyword + 主要情感类别 + 出现次数
+    """
+    try:
+        from services.database_service import get_db_service
+        db = get_db_service()
+        if db is None:
+            raise RuntimeError("database unavailable")
+
+        with db.get_connection() as conn:
+            with conn.cursor() as cur:
+                # 1) 关键词分布 (替代地域分布)
+                cur.execute("""
+                    SELECT keyword, COUNT(*) AS n
+                    FROM weibo_core_data
+                    WHERE keyword IS NOT NULL AND TRIM(keyword) != ''
+                    GROUP BY keyword ORDER BY n DESC LIMIT 12
+                """)
+                rows = cur.fetchall() or []
+                keyword_dist = {
+                    'labels': [r['keyword'] for r in rows],
+                    'values': [int(r['n']) for r in rows],
+                }
+
+                # 2) 情感强度分布 (7档)
+                cur.execute("""
+                    SELECT
+                      SUM(CASE WHEN sentiment_class='negative' AND intensity >= 0.8 THEN 1 ELSE 0 END) AS very_neg,
+                      SUM(CASE WHEN sentiment_class='negative' AND intensity >= 0.5 AND intensity < 0.8 THEN 1 ELSE 0 END) AS neg,
+                      SUM(CASE WHEN sentiment_class='negative' AND intensity < 0.5 THEN 1 ELSE 0 END) AS mild_neg,
+                      SUM(CASE WHEN sentiment_class='neutral' THEN 1 ELSE 0 END) AS neu,
+                      SUM(CASE WHEN sentiment_class='positive' AND intensity < 0.5 THEN 1 ELSE 0 END) AS mild_pos,
+                      SUM(CASE WHEN sentiment_class='positive' AND intensity >= 0.5 AND intensity < 0.8 THEN 1 ELSE 0 END) AS pos,
+                      SUM(CASE WHEN sentiment_class='positive' AND intensity >= 0.8 THEN 1 ELSE 0 END) AS very_pos
+                    FROM sentiment_analysis_results
+                """)
+                r = cur.fetchone() or {}
+                intensity_hist = {
+                    'labels': ['极负面', '负面', '轻微负面', '中性', '轻微正面', '正面', '极正面'],
+                    'values': [int(r.get(k) or 0) for k in ('very_neg', 'neg', 'mild_neg', 'neu', 'mild_pos', 'pos', 'very_pos')],
+                }
+
+                # 3) 情感-互动散点 (JOIN, 取最近 200 条)
+                cur.execute("""
+                    SELECT s.hybrid_score AS score,
+                           (COALESCE(w.reposts_count,0) + COALESCE(w.comments_count,0) + COALESCE(w.attitudes_count,0)) AS interactions
+                    FROM sentiment_analysis_results s
+                    JOIN weibo_core_data w ON s.weibo_id = w.weibo_id
+                    WHERE s.hybrid_score IS NOT NULL
+                    ORDER BY s.analysis_time DESC LIMIT 200
+                """)
+                scatter = []
+                for row in (cur.fetchall() or []):
+                    sc = float(row.get('score') or 0)
+                    # hybrid_score 是 0-1; 映射到 -1..1 (假设 0.5 为中性)
+                    norm = round((sc - 0.5) * 2, 3)
+                    scatter.append([norm, int(row.get('interactions') or 0)])
+
+                # 4) 24 小时发文量
+                cur.execute("""
+                    SELECT HOUR(created_at) AS h, COUNT(*) AS n
+                    FROM weibo_core_data WHERE created_at IS NOT NULL
+                    GROUP BY HOUR(created_at)
+                """)
+                hour_map = {int(rr['h']): int(rr['n']) for rr in (cur.fetchall() or []) if rr.get('h') is not None}
+                topic_hourly = {
+                    'labels': [f"{h:02d}:00" for h in range(24)],
+                    'values': [hour_map.get(h, 0) for h in range(24)],
+                }
+
+                # 5) top3 keyword 按日趋势 (最近 7 天)
+                cur.execute("""
+                    SELECT keyword, COUNT(*) AS n
+                    FROM weibo_core_data WHERE keyword IS NOT NULL AND TRIM(keyword)!=''
+                    GROUP BY keyword ORDER BY n DESC LIMIT 3
+                """)
+                top3_kws = [rr['keyword'] for rr in (cur.fetchall() or [])]
+                topic_daily_trend = {'dates': [], 'series': []}
+                if top3_kws:
+                    cur.execute("""
+                        SELECT DATE(created_at) AS d, keyword, COUNT(*) AS n
+                        FROM weibo_core_data
+                        WHERE keyword IN (%s) AND created_at >= (NOW() - INTERVAL 30 DAY)
+                        GROUP BY DATE(created_at), keyword
+                        ORDER BY d
+                    """ % ','.join(['%s'] * len(top3_kws)), tuple(top3_kws))
+                    raw = cur.fetchall() or []
+                    date_set = sorted({rr['d'].strftime('%m/%d') for rr in raw if rr.get('d')})
+                    by_kw = {kw: {d: 0 for d in date_set} for kw in top3_kws}
+                    for rr in raw:
+                        if rr.get('d'):
+                            by_kw[rr['keyword']][rr['d'].strftime('%m/%d')] = int(rr['n'])
+                    topic_daily_trend = {
+                        'dates': date_set,
+                        'series': [{'name': kw, 'data': [by_kw[kw][d] for d in date_set]} for kw in top3_kws],
+                    }
+
+                # 6) 关键词 + 主要情感 (用于情感词云替代图)
+                cur.execute("""
+                    SELECT w.keyword,
+                           SUM(CASE WHEN s.sentiment_class='positive' THEN 1 ELSE 0 END) AS pos,
+                           SUM(CASE WHEN s.sentiment_class='negative' THEN 1 ELSE 0 END) AS neg,
+                           SUM(CASE WHEN s.sentiment_class='neutral'  THEN 1 ELSE 0 END) AS neu,
+                           COUNT(*) AS total
+                    FROM weibo_core_data w
+                    LEFT JOIN sentiment_analysis_results s ON s.weibo_id = w.weibo_id
+                    WHERE w.keyword IS NOT NULL AND TRIM(w.keyword) != ''
+                    GROUP BY w.keyword ORDER BY total DESC LIMIT 12
+                """)
+                kw_sent = []
+                for rr in (cur.fetchall() or []):
+                    pos = int(rr.get('pos') or 0)
+                    neg = int(rr.get('neg') or 0)
+                    neu = int(rr.get('neu') or 0)
+                    dominant = 'positive' if pos >= max(neg, neu) else ('negative' if neg >= neu else 'neutral')
+                    kw_sent.append({
+                        'name': rr['keyword'],
+                        'value': int(rr['total'] or 0),
+                        'sentiment': dominant,
+                    })
+
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'keywordDistribution': keyword_dist,
+                'intensityHistogram': intensity_hist,
+                'sentimentScatter': scatter,
+                'topicHourly': topic_hourly,
+                'topicDailyTrend': topic_daily_trend,
+                'keywordSentiment': kw_sent,
+            },
+            'source': 'mysql',
+        })
+    except Exception as e:
+        logger.error(f"get_dashboard_extras failed: {e}", exc_info=True)
+        return jsonify({'code': 500, 'message': str(e), 'data': None}), 500
+
+
 @dashboard_bp.route('/user-profile', methods=['GET'])
 @redis_cache('dashboard:user_profile', ttl=120)
 def get_user_profile():
