@@ -41,19 +41,23 @@ __pycache__/
 .pytest_cache/
 
 # 数据 & 模型缓存 (~4GB, 严禁打进镜像; 容器运行时会从 HF/本地挂载加载)
+# 注意: 只排除模型权重子目录 (chinese-bert-*) 和二进制权重, 保留 *.py 代码
 model_cache/
-models/
 model_cache_ms/
 backend-python/model_cache/
-backend-python/models/
 backend-python/model_cache_ms/
 backend-python/data/
+backend-python/models/chinese-bert-wwm-ext/
+backend-python/models/chinese-bert-wwm-ext-v3/
+backend-python/models/chinese-bert-wwm-ext-finetuned/
 *.db
 *.sqlite3
 *.pt
 *.bin
 *.safetensors
 *.onnx
+*.h5
+*.ckpt
 
 # npm/pnpm cache
 .npm-cache/
