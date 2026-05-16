@@ -62,6 +62,8 @@ services:
       - model_cache:/app/model_cache
       - ../backend-python/models/chinese-bert-wwm-ext:/app/backend/models/chinese-bert-wwm-ext:ro
       - ../backend-python/models/chinese-bert-wwm-ext-v3:/app/backend/models/chinese-bert-wwm-ext-v3:ro
+      # 微博登录 cookie (后台实时 Feed 爬虫 + 数据采集复用); 持久化于 host 避免镜像重建丢失
+      - ../backend-python/crawler/cookies.json:/app/backend/crawler/cookies.json
     networks:
       - weibo-net
     init: true

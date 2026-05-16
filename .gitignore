@@ -183,3 +183,6 @@ coverage/
 
 # ====== Frontend build ======
 web-frontend/dist/
+
+# 微博登录 cookie (敏感, 不进 git, host volume mount 持久化)
+backend-python/crawler/cookies.json
