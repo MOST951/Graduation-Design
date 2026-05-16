@@ -343,95 +343,22 @@ export const useAdminStore = defineStore('admin', () => {
   }) {
     isLoadingLogs.value = true;
     try {
-      // 模拟任务日志数据
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      const mockLogs: TaskLog[] = [
-        {
-          id: 'task-1',
-          taskName: '微博热点数据采集',
-          taskType: 'collection',
-          status: 'success',
-          startTime: '2024-12-10 09:00:00',
-          endTime: '2024-12-10 09:05:30',
-          duration: '5分30秒',
-          progress: 100,
-          executor: 'admin',
-          resourceUsage: { cpu: 45, memory: 2048, disk: 512 },
-          steps: [
-            { id: 's1', name: '初始化爬虫', status: 'success', startTime: '09:00:00', endTime: '09:00:05', message: '爬虫初始化完成' },
-            { id: 's2', name: '获取热点列表', status: 'success', startTime: '09:00:05', endTime: '09:01:00', message: '获取50条热点' },
-            { id: 's3', name: '采集微博数据', status: 'success', startTime: '09:01:00', endTime: '09:04:30', message: '采集12580条微博' },
-            { id: 's4', name: '数据存储', status: 'success', startTime: '09:04:30', endTime: '09:05:30', message: '存储完成' },
-          ],
-        },
-        {
-          id: 'task-2',
-          taskName: 'Spark情感分析任务',
-          taskType: 'spark',
-          status: 'running',
-          startTime: '2024-12-10 09:30:00',
-          progress: 65,
-          executor: 'system',
-          resourceUsage: { cpu: 78, memory: 8192, disk: 1024 },
-          steps: [
-            { id: 's1', name: 'Spark初始化', status: 'success', startTime: '09:30:00', endTime: '09:30:15', message: 'SparkContext创建成功' },
-            { id: 's2', name: '数据加载', status: 'success', startTime: '09:30:15', endTime: '09:31:00', message: '加载125800条数据' },
-            { id: 's3', name: '情感分析处理', status: 'running', startTime: '09:31:00', message: '正在处理中...' },
-            { id: 's4', name: '结果汇总', status: 'pending' },
-          ],
-        },
-        {
-          id: 'task-3',
-          taskName: '数据预处理任务',
-          taskType: 'preprocess',
-          status: 'failed',
-          startTime: '2024-12-10 08:00:00',
-          endTime: '2024-12-10 08:02:15',
-          duration: '2分15秒',
-          progress: 35,
-          executor: 'admin',
-          resourceUsage: { cpu: 25, memory: 1024, disk: 256 },
-          errorMessage: '内存不足，无法完成数据清洗操作',
-          steps: [
-            { id: 's1', name: '数据加载', status: 'success', startTime: '08:00:00', endTime: '08:00:30', message: '加载完成' },
-            { id: 's2', name: '文本清洗', status: 'failed', startTime: '08:00:30', endTime: '08:02:15', message: '内存溢出', details: 'java.lang.OutOfMemoryError: Java heap space' },
-          ],
-        },
-        {
-          id: 'task-4',
-          taskName: '分析报告导出',
-          taskType: 'export',
-          status: 'success',
-          startTime: '2024-12-10 07:30:00',
-          endTime: '2024-12-10 07:31:00',
-          duration: '1分钟',
-          progress: 100,
-          executor: 'analyst',
-          resourceUsage: { cpu: 15, memory: 512, disk: 128 },
-        },
-        {
-          id: 'task-5',
-          taskName: '定时数据采集',
-          taskType: 'collection',
-          status: 'pending',
-          startTime: '2024-12-10 10:00:00',
-          progress: 0,
-          executor: 'scheduler',
-        },
-      ];
-      
-      // 根据参数过滤
-      let filtered = [...mockLogs];
-      if (params?.taskType) {
-        filtered = filtered.filter(t => t.taskType === params.taskType);
-      }
-      if (params?.status) {
-        filtered = filtered.filter(t => t.status === params.status);
-      }
-      
-      taskLogs.value = filtered;
-      taskLogTotal.value = filtered.length;
+      const apiClient = (await import('@/api')).default;
+      const query: Record<string, any> = {};
+      if (params?.taskType) query.taskType = params.taskType;
+      if (params?.status) query.status = params.status;
+      if (params?.startDate) query.startDate = params.startDate;
+      if (params?.endDate) query.endDate = params.endDate;
+
+      const resp = await apiClient.get<any>('/admin/tasks', { params: query });
+      const body = resp.data;
+      const list: TaskLog[] = Array.isArray(body?.data) ? body.data : (Array.isArray(body) ? body : []);
+      taskLogs.value = list;
+      taskLogTotal.value = body?.total ?? list.length;
+    } catch (e) {
+      console.error('fetchTaskLogs failed', e);
+      taskLogs.value = [];
+      taskLogTotal.value = 0;
     } finally {
       isLoadingLogs.value = false;
     }

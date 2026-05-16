@@ -16,6 +16,7 @@ from pathlib import Path
 
 # Import config classes
 from config import DatabaseConfig, SparkConfig, SystemConfig
+from services.auth_service import get_auth_service
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 logger = logging.getLogger(__name__)
@@ -621,30 +622,7 @@ def get_system_metrics():
 def get_users():
     """Get all users with role-based access"""
     try:
-        # In production, this would query from database
-        users = [
-            {
-                'id': 1,
-                'username': 'admin',
-                'name': 'Administrator',
-                'email': 'admin@example.com',
-                'role': 'admin',
-                'status': 'active',
-                'lastLoginAt': datetime.now().isoformat(),
-                'createdAt': datetime.now().isoformat()
-            },
-            {
-                'id': 2,
-                'username': 'user1',
-                'name': 'Regular User',
-                'email': 'user1@example.com',
-                'role': 'user',
-                'status': 'active',
-                'lastLoginAt': datetime.now().isoformat(),
-                'createdAt': datetime.now().isoformat()
-            }
-        ]
-        
+        users = get_auth_service().get_all_users()
         return jsonify({
             'code': 200,
             'data': users,
@@ -672,9 +650,11 @@ def update_user_role(user_id):
                 'message': 'Invalid role. Must be admin or user'
             }), 400
         
-        # In production, this would update the database
-        logger.info(f"User {user_id} role updated to {new_role}")
+        success = get_auth_service().update_user_role(user_id, new_role)
+        if not success:
+            return jsonify({'code': 500, 'message': 'Failed to update role in database'}), 500
         
+        logger.info(f"User {user_id} role updated to {new_role}")
         return jsonify({
             'code': 200,
             'message': 'User role updated successfully'
@@ -685,6 +665,152 @@ def update_user_role(user_id):
             'code': 500,
             'message': f'Failed to update user role: {str(e)}'
         }), 500
+
+
+@admin_bp.route('/users/<int:user_id>/status', methods=['PATCH', 'PUT'])
+@require_admin
+@log_admin_operation('update_user_status')
+def update_user_status(user_id):
+    """Update user status (active/disabled)"""
+    try:
+        data = request.json
+        new_status = data.get('status')
+        
+        if new_status not in ['active', 'disabled']:
+            return jsonify({
+                'code': 400,
+                'message': 'Invalid status. Must be active or disabled'
+            }), 400
+        
+        success = get_auth_service().update_user_status(user_id, new_status)
+        if not success:
+            return jsonify({'code': 500, 'message': 'Failed to update status in database'}), 500
+        
+        logger.info(f"User {user_id} status updated to {new_status}")
+        return jsonify({
+            'code': 200,
+            'message': 'User status updated successfully'
+        })
+    except Exception as e:
+        logger.error(f"Failed to update user status: {e}")
+        return jsonify({
+            'code': 500,
+            'message': f'Failed to update user status: {str(e)}'
+        }), 500
+
+
+@admin_bp.route('/roles', methods=['GET'])
+@require_admin
+def get_roles():
+    """Get system roles (fixed: admin + user)"""
+    roles = [
+        {
+            'id': 'role-admin',
+            'name': '系统管理员',
+            'code': 'admin',
+            'description': '拥有所有权限',
+            'permissions': ['*'],
+            'isSystem': True,
+            'createdAt': '2024-01-01T00:00:00Z',
+            'updatedAt': '2024-01-01T00:00:00Z',
+        },
+        {
+            'id': 'role-user',
+            'name': '普通用户',
+            'code': 'user',
+            'description': '基础查看权限',
+            'permissions': ['data:read', 'report:read'],
+            'isSystem': True,
+            'createdAt': '2024-01-01T00:00:00Z',
+            'updatedAt': '2024-01-01T00:00:00Z',
+        },
+    ]
+    return jsonify({'code': 200, 'data': roles, 'message': 'Roles retrieved successfully'})
+
+
+# ==================== 任务日志 ====================
+
+def _format_duration(started, ended):
+    if not started or not ended:
+        return None
+    secs = int((ended - started).total_seconds())
+    if secs < 60:
+        return f"{secs}秒"
+    m, s = divmod(secs, 60)
+    if m < 60:
+        return f"{m}分{s}秒" if s else f"{m}分钟"
+    h, m = divmod(m, 60)
+    return f"{h}小时{m}分"
+
+
+def _guess_task_type(name: str) -> str:
+    n = (name or '').lower()
+    if 'spark' in n:
+        return 'spark'
+    if any(k in n for k in ('采集', 'collect', 'crawl', '爬')):
+        return 'collection'
+    if any(k in n for k in ('预处理', 'preprocess', '清洗')):
+        return 'preprocess'
+    if any(k in n for k in ('情感', '分析', 'analysis', 'sentiment')):
+        return 'analysis'
+    if any(k in n for k in ('导出', 'export', '报告')):
+        return 'export'
+    return 'collection'
+
+
+_STATUS_MAP = {
+    'pending': 'pending',
+    'running': 'running',
+    'completed': 'success',
+    'failed': 'failed',
+    'cancelled': 'cancelled',
+    'retrying': 'running',
+}
+
+
+@admin_bp.route('/tasks', methods=['GET'])
+@require_admin
+def get_task_logs():
+    """获取真实任务列表 (来源: task_queue 内存中的所有任务)"""
+    try:
+        from services.task_queue import task_queue
+        all_tasks = task_queue.get_all_tasks()
+
+        task_type = request.args.get('taskType')
+        status_filter = request.args.get('status')
+
+        result = []
+        for t in all_tasks:
+            started = t.started_at or t.created_at
+            ended = t.completed_at
+            ttype = _guess_task_type(t.name)
+            fstatus = _STATUS_MAP.get(t.status.value if hasattr(t.status, 'value') else str(t.status), 'pending')
+            executor = (t.config or {}).get('executor') or (t.config or {}).get('user') or 'system'
+
+            item = {
+                'id': t.id,
+                'taskName': t.name,
+                'taskType': ttype,
+                'status': fstatus,
+                'startTime': started.strftime('%Y-%m-%d %H:%M:%S') if started else None,
+                'endTime': ended.strftime('%Y-%m-%d %H:%M:%S') if ended else None,
+                'duration': _format_duration(t.started_at, ended),
+                'progress': int(t.progress or 0),
+                'executor': executor,
+                'errorMessage': t.error_message,
+            }
+            if task_type and item['taskType'] != task_type:
+                continue
+            if status_filter and item['status'] != status_filter:
+                continue
+            result.append(item)
+
+        # 按开始时间倒序
+        result.sort(key=lambda x: x.get('startTime') or '', reverse=True)
+        return jsonify({'code': 200, 'data': result, 'total': len(result), 'message': 'OK'})
+    except Exception as e:
+        logger.error(f"Failed to get task logs: {e}", exc_info=True)
+        return jsonify({'code': 500, 'message': str(e), 'data': []}), 500
 
 
 # ==================== Email 配置 ====================
