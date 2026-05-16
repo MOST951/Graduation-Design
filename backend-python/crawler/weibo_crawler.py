@@ -1155,7 +1155,7 @@ class WeiboCrawlerTask:
             self.crawler.close()
         
     def crawl_by_keywords(self, keywords: List[str], pages: int = 50, 
-                          save: bool = True) -> List[Dict]:
+                          save: bool = True, progress_callback=None) -> List[Dict]:
         """
         按关键词批量爬取
         
@@ -1163,6 +1163,8 @@ class WeiboCrawlerTask:
             keywords: 关键词列表
             pages: 每个关键词最大爬取页数 (不足则提前停止)
             save: 是否保存到文件
+            progress_callback: 可选回调 fn(keyword, page, total_pages, partial_data_so_far)
+                               每爬完 1 页触发, 用于上层 (API) 实时刷新 collected/partial_data
             
         Returns:
             所有爬取的微博数据
@@ -1189,7 +1191,14 @@ class WeiboCrawlerTask:
                 else:
                     empty_count = 0
                     keyword_data.extend(page_data)
-                    
+
+                # 每页结束实时回调 (含合成本批数据快照)
+                if progress_callback:
+                    try:
+                        progress_callback(keyword, page, pages, all_data + keyword_data)
+                    except Exception as cb_err:
+                        logger.debug(f"progress_callback 抛错(忽略): {cb_err}")
+
                 # 随机延迟
                 time.sleep(random.uniform(2, 5))
             

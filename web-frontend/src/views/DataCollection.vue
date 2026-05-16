@@ -1059,11 +1059,15 @@ const loadPreviewData = async () => {
     }
     const tid = target.task_id || target.id;
     const kws = Array.isArray(target.keywords) ? target.keywords.join('、') : (target.keywords || '');
-    previewTaskInfo.value = `${tid}  「${kws}」  ${target.status}`;
 
-    // 2) 拿该任务的数据
+    // 2) 拿该任务的数据 (后端: data.items)
     const dataRes = await apiClient.get(`/weibo/crawl/data/${tid}`);
-    const list: any[] = dataRes.data?.data?.data || dataRes.data?.data || [];
+    const payload = dataRes.data?.data || {};
+    const list: any[] = payload.items || payload.data || [];
+    const total = payload.total || (Array.isArray(list) ? list.length : 0);
+    const isPartial = !!payload.is_partial;
+    const statusLabel = isPartial ? `${target.status} · 已采集 ${total} 条` : `${target.status} · 共 ${total} 条`;
+    previewTaskInfo.value = `${tid}  「${kws}」  ${statusLabel}`;
     previewData.value = (Array.isArray(list) ? list : []).slice(0, 5).map((w: any, i: number) => ({
       id: w.weibo_id || w.id || i,
       author: w.user_name || w.author || '匿名用户',

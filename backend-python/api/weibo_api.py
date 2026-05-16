@@ -569,8 +569,22 @@ def start_crawl_task():
 
                     if keywords:
                         try:
+                            # 每页实时回调: 把已爬条数 + 数据快照写入 task_info, 让 /crawl/data API
+                            # 在运行中也能向前端返回中间数据 (用户在"本次采集任务数据预览"卡片实时看到累积)
+                            def _on_page(kw, page_idx, total_pages, partial):
+                                try:
+                                    snapshot = list(all_data) + list(partial)
+                                    task_info['partial_data'] = snapshot
+                                    task_info['collected'] = len(snapshot)
+                                    # 关键词阶段占 progress 30~80, 按页推进
+                                    pct = 30 + int(min(page_idx, total_pages) / max(total_pages, 1) * 50)
+                                    task_info['progress'] = min(pct, 79)
+                                except Exception:
+                                    pass
+
                             kw_weibo = crawler_task.crawl_by_keywords(
-                                keywords, pages=pages, save=True
+                                keywords, pages=pages, save=True,
+                                progress_callback=_on_page,
                             )
                             all_data.extend(kw_weibo)
                         except Exception as e:
@@ -739,13 +753,35 @@ def get_crawl_data(task_id: str):
             }), 404
         
         task_info = crawl_tasks[task_id]
-        
-        if task_info['status'] != 'completed':
+
+        # 运行中任务: 返回内存中的中间快照 (progress_callback 实时写入)
+        if task_info.get('status') != 'completed':
+            partial = task_info.get('partial_data') or []
+            page = request.args.get('page', 1, type=int)
+            page_size = request.args.get('page_size', 50, type=int)
+            total = len(partial)
+            start = (page - 1) * page_size
+            paginated = partial[start: start + page_size]
             return jsonify({
-                'code': 400,
-                'message': '任务尚未完成'
-            }), 400
-        
+                'code': 200,
+                'message': '任务进行中, 返回当前已采集的中间数据',
+                'data': {
+                    'items': paginated,
+                    'total': total,
+                    'page': page,
+                    'page_size': page_size,
+                    'is_partial': True,
+                    'task_info': {
+                        'id': task_info.get('id'),
+                        'keywords': task_info.get('keywords'),
+                        'collected': task_info.get('collected', 0),
+                        'progress': task_info.get('progress', 0),
+                        'status': task_info.get('status'),
+                        'start_time': task_info.get('start_time'),
+                    }
+                }
+            })
+
         result_file = task_info.get('result_file')
         if not result_file or not os.path.exists(result_file):
             return jsonify({
