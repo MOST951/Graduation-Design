@@ -637,6 +637,14 @@ const backendUserProfile = ref<{
   postHours: { labels: string[]; values: number[] };
   influence: { indicators: { name: string; max: number }[]; values: number[] };
 } | null>(null);
+const backendExtras = ref<{
+  keywordDistribution: { labels: string[]; values: number[] };
+  intensityHistogram: { labels: string[]; values: number[] };
+  sentimentScatter: number[][];
+  topicHourly: { labels: string[]; values: number[] };
+  topicDailyTrend: { dates: string[]; series: { name: string; data: number[] }[] };
+  keywordSentiment: { name: string; value: number; sentiment: string }[];
+} | null>(null);
 
 const realtimeData = ref({
   currentRate: 156,
@@ -746,17 +754,19 @@ const initOverviewCharts = () => {
     }],
   });
 
-  // 地域分布
+  // 关键词分布 (替代地域分布: 数据库 location 字段无数据, 改用 keyword 真实聚合)
+  const kd = backendExtras.value?.keywordDistribution;
   initChart(regionMapRef.value, {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: ['北京', '上海', '广东', '江苏', '浙江', '四川', '湖北', '山东', '河南', '福建'] },
-    yAxis: { type: 'value' },
+    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+    xAxis: { type: 'category', data: kd?.labels || ['暂无数据'], axisLabel: { rotate: 30, interval: 0, fontSize: 10 } },
+    yAxis: { type: 'value', name: '微博数' },
     dataZoom: [{ type: 'inside' }],
     series: [{
       type: 'bar',
-      data: [15680, 14230, 12890, 9870, 8960, 7650, 6890, 6540, 5980, 5230],
+      data: kd?.values || [0],
       itemStyle: { color: PRIMARY, borderRadius: [4, 4, 0, 0] },
+      label: { show: true, position: 'top' },
     }],
   });
 };
@@ -808,28 +818,23 @@ const initSentimentCharts = () => {
     ],
   });
 
-  // 情感强度分布
+  // 情感强度分布 (真实 sentiment_analysis_results.intensity 分桶)
+  const ih = backendExtras.value?.intensityHistogram;
+  const intensityColors = ['#c45656', DANGER, '#fab6b6', INFO, '#b3e19d', SUCCESS, '#529b2e'];
   initChart(intensityHistogramRef.value, {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: ['极负面', '负面', '轻微负面', '中性', '轻微正面', '正面', '极正面'], axisLabel: { rotate: 30 } },
+    xAxis: { type: 'category', data: ih?.labels || ['极负面', '负面', '轻微负面', '中性', '轻微正面', '正面', '极正面'], axisLabel: { rotate: 30 } },
     yAxis: { type: 'value', name: '数量' },
     series: [{
       type: 'bar',
-      data: [
-        { value: 2100, itemStyle: { color: '#c45656' } },
-        { value: 5800, itemStyle: { color: DANGER } },
-        { value: 8900, itemStyle: { color: '#fab6b6' } },
-        { value: 36200, itemStyle: { color: INFO } },
-        { value: 12300, itemStyle: { color: '#b3e19d' } },
-        { value: 18500, itemStyle: { color: SUCCESS } },
-        { value: 5200, itemStyle: { color: '#529b2e' } },
-      ],
+      data: (ih?.values || [2100, 5800, 8900, 36200, 12300, 18500, 5200]).map((v, i) => ({ value: v, itemStyle: { color: intensityColors[i] || PRIMARY } })),
       barWidth: '60%',
     }],
   });
 
-  // 情感-互动散点图
+  // 情感-互动散点图 (真实 JOIN 数据)
+  const scatter = backendExtras.value?.sentimentScatter || generateScatterData(100);
   initChart(sentimentScatterRef.value, {
     tooltip: { trigger: 'item', formatter: (params: any) => `情感分数: ${params.value[0]}<br/>互动量: ${params.value[1]}` },
     xAxis: { type: 'value', name: '情感分数', min: -1, max: 1 },
@@ -837,33 +842,22 @@ const initSentimentCharts = () => {
     series: [{
       type: 'scatter',
       symbolSize: 10,
-      data: generateScatterData(100),
+      data: scatter,
       itemStyle: { color: (params: any) => params.value[0] > 0.3 ? SUCCESS : params.value[0] < -0.3 ? DANGER : INFO },
     }],
   });
 
-  // 情感词云（简化为柱状图）
+  // 关键词+主导情感 (替代情感词云: 用真实 keyword 出现次数 + sentiment_analysis_results 主导情感)
+  const ks = backendExtras.value?.keywordSentiment || [];
+  const sentColor = (s: string) => s === 'positive' ? SUCCESS : s === 'negative' ? DANGER : INFO;
   initChart(sentimentWordCloudRef.value, {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: ['喜欢', '推荐', '满意', '开心', '失望', '差评', '垃圾', '不错', '一般', '还行', '超棒', '难吃'] },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (p: any) => `${p[0].name}<br/>出现次数: ${p[0].value}<br/>主导情感: ${ks[p[0].dataIndex]?.sentiment || '-'}` },
+    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+    xAxis: { type: 'category', data: ks.length ? ks.map((k: any) => k.name) : ['暂无数据'], axisLabel: { rotate: 30, interval: 0, fontSize: 10 } },
     yAxis: { type: 'value' },
     series: [{
       type: 'bar',
-      data: [
-        { value: 2890, itemStyle: { color: SUCCESS } },
-        { value: 2450, itemStyle: { color: SUCCESS } },
-        { value: 2100, itemStyle: { color: SUCCESS } },
-        { value: 1890, itemStyle: { color: SUCCESS } },
-        { value: 1560, itemStyle: { color: DANGER } },
-        { value: 1230, itemStyle: { color: DANGER } },
-        { value: 980, itemStyle: { color: DANGER } },
-        { value: 1780, itemStyle: { color: SUCCESS } },
-        { value: 1450, itemStyle: { color: INFO } },
-        { value: 1320, itemStyle: { color: INFO } },
-        { value: 1680, itemStyle: { color: SUCCESS } },
-        { value: 890, itemStyle: { color: DANGER } },
-      ],
+      data: ks.length ? ks.map((k: any) => ({ value: k.value, itemStyle: { color: sentColor(k.sentiment) } })) : [0],
     }],
   });
 };
@@ -915,12 +909,18 @@ const initTopicsCharts = () => {
       { type: 'inside', start: 0, end: 100 },
       { type: 'slider', start: 0, end: 100, height: 20, bottom: 5 },
     ],
-    series: topicTrendNames.map((name, idx) => ({
-      name,
-      type: 'line',
-      smooth: true,
-      data: generateRandomData(topicTrendDates.length, (3 - idx) * 300, (4 - idx) * 400),
-    })),
+    series: (() => {
+      const dt = backendExtras.value?.topicDailyTrend;
+      if (dt?.dates?.length && dt.series?.length) {
+        return dt.series.map(s => ({ name: s.name, type: 'line', smooth: true, data: s.data }));
+      }
+      return topicTrendNames.map((name, idx) => ({
+        name,
+        type: 'line',
+        smooth: true,
+        data: generateRandomData(topicTrendDates.length, (3 - idx) * 300, (4 - idx) * 400),
+      }));
+    })(),
   });
 
   // 话题情感构成 — 优先后端真实分布
@@ -940,16 +940,17 @@ const initTopicsCharts = () => {
     series: [{ type: 'pie', radius: '60%', data: sentData }],
   });
 
-  // 话题传播时间线
+  // 话题传播时间线 (真实 24h 发文量)
+  const th = backendExtras.value?.topicHourly;
   initChart(topicTimelineRef.value, {
     tooltip: { trigger: 'axis' },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'] },
-    yAxis: { type: 'value', name: '讨论量' },
+    xAxis: { type: 'category', data: th?.labels || ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'], axisLabel: { interval: 1 } },
+    yAxis: { type: 'value', name: '发文量' },
     series: [{
       type: 'line',
       smooth: true,
-      data: [120, 80, 45, 60, 350, 680, 520, 450, 380, 620, 780, 450],
+      data: th?.values || [120, 80, 45, 60, 350, 680, 520, 450, 380, 620, 780, 450],
       areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(22, 93, 255, 0.5)' }, { offset: 1, color: 'rgba(22, 93, 255, 0.1)' }]) },
       lineStyle: { color: PRIMARY, width: 2 },
       itemStyle: { color: PRIMARY },
@@ -1041,15 +1042,16 @@ const initUsersCharts = () => {
     }],
   });
 
-  // 用户地域分布
+  // 用户讨论关键词分布 (替代地域分布)
+  const kd2 = backendExtras.value?.keywordDistribution;
   initChart(userRegionRef.value, {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: ['北京', '上海', '广东', '江苏', '浙江', '四川', '湖北', '山东', '河南', '福建', '湖南', '河北'] },
-    yAxis: { type: 'value' },
+    grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+    xAxis: { type: 'category', data: kd2?.labels || ['暂无数据'], axisLabel: { rotate: 30, interval: 0, fontSize: 10 } },
+    yAxis: { type: 'value', name: '讨论数' },
     series: [{
       type: 'bar',
-      data: [18500, 16800, 15200, 12300, 11500, 9800, 8900, 8200, 7600, 6800, 6200, 5800],
+      data: kd2?.values || [0],
       itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: PRIMARY }, { offset: 1, color: SUCCESS }]), borderRadius: [4, 4, 0, 0] },
     }],
   });
@@ -1223,12 +1225,13 @@ const handleDateChange = () => {
 const fetchBackendData = async () => {
   const period = dateRange.value?.length === 2 ? 'all' : 'all';
   try {
-    const [overviewRes, sentimentRes, trendRes, topicsRes, userProfileRes] = await Promise.allSettled([
+    const [overviewRes, sentimentRes, trendRes, topicsRes, userProfileRes, extrasRes] = await Promise.allSettled([
       apiClient.get('/dashboard/overview'),
       apiClient.get('/dashboard/sentiment-distribution', { params: { period } }),
       apiClient.get('/dashboard/trend'),
       apiClient.get('/dashboard/hot-topics'),
       apiClient.get('/dashboard/user-profile'),
+      apiClient.get('/dashboard/extras'),
     ]);
 
     // 概览
@@ -1263,6 +1266,11 @@ const fetchBackendData = async () => {
     // 用户画像
     if (userProfileRes.status === 'fulfilled' && userProfileRes.value.data?.code === 200) {
       backendUserProfile.value = userProfileRes.value.data.data || null;
+    }
+
+    // 补全聚合 (关键词分布/情感强度/散点/时段/话题趋势)
+    if (extrasRes.status === 'fulfilled' && extrasRes.value.data?.code === 200) {
+      backendExtras.value = extrasRes.value.data.data || null;
     }
   } catch (e) {
     console.warn('[Viz] 后端数据拉取失败', e);
