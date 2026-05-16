@@ -34,6 +34,22 @@ def _load_cookie_str() -> str:
     return ''
 
 
+def _load_xsrf_token() -> str:
+    """从 cookie 中提取 XSRF-TOKEN, 用于 X-XSRF-TOKEN 头.
+    支持环境变量 WEIBO_XSRF_TOKEN 覆盖 (调试场景)."""
+    env_tok = os.environ.get('WEIBO_XSRF_TOKEN')
+    if env_tok:
+        return env_tok
+    try:
+        from crawler.cookie_grabber import load_cookies
+        cookie_data = load_cookies() or {}
+        if isinstance(cookie_data, dict):
+            return cookie_data.get('XSRF-TOKEN') or cookie_data.get('xsrf-token') or ''
+    except Exception:
+        pass
+    return ''
+
+
 def _parse_status(s: dict) -> dict:
     """微博 hottimeline status -> weibo_core_data row"""
     user = s.get('user') or {}
@@ -133,6 +149,10 @@ def _fetch_and_store():
         'Cookie': cookie_str,
         'Referer': 'https://weibo.com/',
     }
+    xsrf = _load_xsrf_token()
+    if xsrf:
+        headers['X-XSRF-TOKEN'] = xsrf
+        headers['x-requested-with'] = 'XMLHttpRequest'
     # group_id=102803 = 实时/热门 timeline
     url = ("https://weibo.com/ajax/feed/hottimeline"
            "?since_id=0&refresh=0&group_id=102803&containerid=102803"
