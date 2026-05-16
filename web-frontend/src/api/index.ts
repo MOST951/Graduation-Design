@@ -1,34 +1,17 @@
 import axios, { AxiosError, type AxiosResponse } from 'axios';
-import { ElLoading, ElMessage } from 'element-plus';
+import { ElMessage } from 'element-plus';
 import { useAuthStore } from '@/store/auth';
 import router from '@/router';
 
 // 是否为开发环境
 const isDev = import.meta.env.DEV;
 
-// 全局 loading 实例管理（支持并发请求计数）
-let loadingInstance: ReturnType<typeof ElLoading.service> | null = null;
-let requestCount = 0;
-
-function showLoading() {
-  if (requestCount === 0) {
-    loadingInstance = ElLoading.service({
-      lock: true,
-      text: '加载中...',
-      background: 'rgba(0, 0, 0, 0.15)',
-    });
-  }
-  requestCount++;
-}
-
-function hideLoading() {
-  requestCount--;
-  if (requestCount <= 0) {
-    requestCount = 0;
-    loadingInstance?.close();
-    loadingInstance = null;
-  }
-}
+// 注: 已移除全局 ElLoading 蒙层
+// 原因: 全局 loading 用 requestCount 计数, 任何慢/挂起的请求都会让 "加载中..." 永不消失,
+// 锁死整个 UI (如 PipelineManager 多个并发请求中只要 1 个慢就触发).
+// 改为各组件自行用 v-loading / loading ref 管理局部 loading.
+function showLoading() { /* no-op */ }
+function hideLoading() { /* no-op */ }
 
 // 创建 axios 实例
 const apiClient = axios.create({
