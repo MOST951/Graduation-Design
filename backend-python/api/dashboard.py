@@ -335,41 +335,64 @@ def get_realtime():
     })
 
 @dashboard_bp.route('/hot-topics', methods=['GET'])
-@redis_cache('dashboard:hot_topics', ttl=120)  # 论文 4.3.1: 热搜列表是典型热点数据
+@redis_cache('dashboard:hot_topics', ttl=60)  # 论文 4.3.1: 热搜列表是典型热点数据
 def get_hot_topics():
-    """获取热门话题 - 基于真实微博热搜"""
-    cache = _fetch_real_data()
-    hot_search = cache.get('hot_search', [])
-    
+    """获取热门话题 - 优先使用 LiveHotSearchService 真实数据"""
     topics = []
-    for item in hot_search[:10]:
-        word = item.get('word', '')
-        heat = item.get('num', 0)
-        is_hot = item.get('is_hot', 0)
-        is_new = item.get('is_new', 0)
-        
-        trend = 'up' if is_hot else ('new' if is_new else 'stable')
-        
-        topics.append({
-            'name': word,
-            'heat': heat,
-            'trend': trend,
-            'isHot': is_hot == 1,
-            'isNew': is_new == 1,
-        })
-    
-    # 如果没有真实数据，使用备用数据
+    source = 'simulated'
+
+    # 1) 优先用 LiveHotSearchService (后台已在持续刷新真实热搜)
+    try:
+        from services.live_hot_search_service import get_live_hot_search_service
+        svc = get_live_hot_search_service()
+        live = svc.get_hot_search() or []
+        for item in live[:15]:
+            topics.append({
+                'name': item.get('title', ''),
+                'heat': int(item.get('hot_value') or 0),
+                'trend': item.get('trend') or ('up' if item.get('is_hot') else 'stable'),
+                'isHot': bool(item.get('is_hot')),
+                'isNew': bool(item.get('is_new')),
+                'category': item.get('category') or '',
+            })
+        if topics:
+            source = 'live_hot_search'
+    except Exception as e:
+        logger.warning(f"LiveHotSearch unavailable: {e}")
+
+    # 2) Fallback: _fetch_real_data (直接调微博 API, 需 cookie)
+    if not topics:
+        try:
+            cache = _fetch_real_data()
+            for item in (cache.get('hot_search') or [])[:10]:
+                word = item.get('word', '')
+                heat = item.get('num', 0)
+                is_hot = item.get('is_hot', 0)
+                is_new = item.get('is_new', 0)
+                topics.append({
+                    'name': word,
+                    'heat': heat,
+                    'trend': 'up' if is_hot else ('new' if is_new else 'stable'),
+                    'isHot': is_hot == 1,
+                    'isNew': is_new == 1,
+                })
+            if topics:
+                source = 'weibo_realtime'
+        except Exception as e:
+            logger.warning(f"_fetch_real_data failed: {e}")
+
+    # 3) 最终 fallback (避免前端空白)
     if not topics:
         topics = [
             {'name': '人工智能', 'heat': 9500, 'trend': 'up'},
             {'name': '新能源汽车', 'heat': 8800, 'trend': 'up'},
         ]
-    
+
     return jsonify({
         'code': 200,
         'message': 'success',
         'data': topics,
-        'source': 'weibo_realtime' if hot_search else 'simulated'
+        'source': source,
     })
 
 @dashboard_bp.route('/alerts', methods=['GET'])
