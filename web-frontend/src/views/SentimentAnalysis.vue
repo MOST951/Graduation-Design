@@ -324,9 +324,23 @@
             <span>批量分析结果</span>
             <el-tag type="primary" size="small">{{ analyzedWeibos.length }} 条</el-tag>
           </div>
-          <el-button type="success" size="small" :icon="Download" @click="exportToExcel" :disabled="analyzedWeibos.length === 0">
-            一键导出Excel
-          </el-button>
+          <div style="display: flex; align-items: center; gap: 12px">
+            <el-tooltip content="纯净版: 去除 #话题#、@用户、URL、【】等符号" placement="top">
+              <el-switch v-model="cleanMode" active-text="纯净版" inactive-text="原始" inline-prompt />
+            </el-tooltip>
+            <el-dropdown @command="exportToExcel" :disabled="analyzedWeibos.length === 0">
+              <el-button type="success" size="small" :icon="Download" :disabled="analyzedWeibos.length === 0">
+                一键导出Excel <el-icon style="margin-left:4px"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="raw">原始文本版</el-dropdown-item>
+                  <el-dropdown-item command="clean">纯净文本版</el-dropdown-item>
+                  <el-dropdown-item command="both">两版同导 (推荐)</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </div>
       </template>
       <el-table :data="pagedWeibos" stripe border highlight-current-row max-height="380" @row-click="showWeiboDetail" style="width: 100%">
@@ -335,7 +349,7 @@
           <template #default="{ row }">{{ row.user?.screen_name || row.screen_name || '匿名' }}</template>
         </el-table-column>
         <el-table-column label="文本内容" min-width="280" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.text || row.text_raw || '' }}</template>
+          <template #default="{ row }">{{ cleanMode ? cleanText(row.text || row.text_raw || '') : (row.text || row.text_raw || '') }}</template>
         </el-table-column>
         <el-table-column label="情感类型" width="95" align="center">
           <template #default="{ row }">
@@ -403,7 +417,7 @@ import { SUCCESS, INFO, DANGER, PRIMARY, WARNING } from '@/styles/colors';
 import { 
   DataAnalysis, TrendCharts, Cpu, Upload, Edit, Position, Setting, Download,
   VideoPlay, PieChart, Histogram, List, CircleCheck, CircleClose, Remove,
-  Loading, Connection, Refresh, VideoPause,
+  Loading, Connection, Refresh, VideoPause, ArrowDown,
 } from '@element-plus/icons-vue';
 import { realtimeAnalyze, analyzeData, searchWeibo, getCollectionTasks, getTaskData, getPreprocessTasks, getPreprocessData, type CollectionTask, type PreprocessTask } from '@/api/weibo';
 
@@ -970,33 +984,70 @@ const showWeiboDetail = (item: any) => {
   showDetailDialog.value = true;
 };
 
-// 导出Excel (CSV格式，浏览器直接下载)
-const exportToExcel = () => {
+// 纯净化文本: 去除 #话题#、@用户、URL、【】等符号
+const cleanText = (s: string): string => {
+  if (!s) return '';
+  return s
+    .replace(/#[^#\n]+#/g, '')              // #话题#
+    .replace(/@[\u4e00-\u9fa5A-Za-z0-9_\-]+/g, '')  // @用户
+    .replace(/https?:\/\/[^\s]+/g, '')      // URL
+    .replace(/【[^】]*】/g, '')              // 【标题】
+    .replace(/\[[^\]]{1,8}\]/g, '')         // [表情]
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+// 显示模式: false=原始 / true=纯净
+const cleanMode = ref(false);
+
+// 导出Excel (CSV格式, 支持 原始/纯净/两版)
+const exportToExcel = (mode: string = 'raw') => {
   if (analyzedWeibos.value.length === 0) {
     ElMessage.warning('暂无数据可导出');
     return;
   }
-  
-  const headers = ['序号', '用户', '文本内容', '情感标签', '置信度', '分析方法'];
-  const rows = analyzedWeibos.value.map((item, idx) => [
-    idx + 1,
-    `"${(item.user?.screen_name || item.screen_name || '匿名').replace(/"/g, '""')}"`,
-    `"${(item.text || item.text_raw || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
-    getSentimentLabel(item.sentiment),
-    (Math.abs(item.sentiment_score || 0) * 100).toFixed(1) + '%',
-    item.method_used === 'dict' ? '词典' : 'BERT',
-  ]);
-  
+
+  const baseHeaders = ['序号', '用户'];
+  const tailHeaders = ['情感标签', '置信度', '分析方法'];
+  let headers: string[];
+  if (mode === 'both') {
+    headers = [...baseHeaders, '原始文本', '纯净文本', ...tailHeaders];
+  } else if (mode === 'clean') {
+    headers = [...baseHeaders, '纯净文本', ...tailHeaders];
+  } else {
+    headers = [...baseHeaders, '原始文本', ...tailHeaders];
+  }
+
+  const esc = (v: string) => `"${(v || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+  const rows = analyzedWeibos.value.map((item, idx) => {
+    const user = item.user?.screen_name || item.screen_name || '匿名';
+    const raw = item.text || item.text_raw || '';
+    const clean = cleanText(raw);
+    const tail = [
+      getSentimentLabel(item.sentiment),
+      (Math.abs(item.sentiment_score || 0) * 100).toFixed(1) + '%',
+      item.method_used === 'dict' ? '词典' : 'BERT',
+    ];
+    if (mode === 'both') {
+      return [idx + 1, esc(user), esc(raw), esc(clean), ...tail];
+    } else if (mode === 'clean') {
+      return [idx + 1, esc(user), esc(clean), ...tail];
+    } else {
+      return [idx + 1, esc(user), esc(raw), ...tail];
+    }
+  });
+
   const BOM = '\uFEFF';
   const csv = BOM + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
+  const suffix = mode === 'both' ? '对照版' : (mode === 'clean' ? '纯净版' : '原始版');
   a.href = url;
-  a.download = `情感分析结果_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`;
+  a.download = `情感分析结果_${suffix}_${new Date().toLocaleDateString('zh-CN').replace(/\//g, '-')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  ElMessage.success(`已导出 ${rows.length} 条数据`);
+  ElMessage.success(`已导出 ${rows.length} 条 (${suffix})`);
 };
 
 // 初始化图表
