@@ -154,15 +154,20 @@ let sentimentChart: echarts.ECharts | null = null;
 let trendChart: echarts.ECharts | null = null;
 
 // --- 生命周期钩子 ---
+let chartsRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
 onMounted(async () => {
   initCharts();
   await loadDashboardData();
   startRealtimeConnection();
+  // 每 60s 自动刷新情感分布/趋势 (跟随后台实时入库数据)
+  chartsRefreshTimer = setInterval(() => { loadDashboardData(); }, 60000);
   window.addEventListener('resize', handleResize);
 });
 
 onUnmounted(() => {
   disconnectRealtime();
+  if (chartsRefreshTimer) clearInterval(chartsRefreshTimer);
   sentimentChart?.dispose();
   trendChart?.dispose();
   window.removeEventListener('resize', handleResize);
@@ -170,16 +175,38 @@ onUnmounted(() => {
 
 // --- 数据加载方法 ---
 async function loadDashboardData() {
+  await Promise.all([loadSentimentDistribution(), loadTrend()]);
+}
+
+async function loadSentimentDistribution() {
   try {
-    const response = await getDashboardData({
-      period: sentimentPeriod.value,
-      dateRange: trendDateRange.value,
-    });
-    if (response.overviewCards) overviewCards.value = response.overviewCards;
-    if (response.sentimentDistribution) updateSentimentChart(response.sentimentDistribution);
-    if (response.trendData) updateTrendChart(response.trendData);
-  } catch (error) {
-    console.error('加载仪表盘数据失败:', error);
+    const res = await apiClient.get('/dashboard/sentiment-distribution', { params: { period: sentimentPeriod.value } });
+    if (res.data?.code === 200 && res.data.data) {
+      const d = res.data.data;
+      const counts = d.raw_counts || { positive: d.positive || 0, neutral: d.neutral || 0, negative: d.negative || 0 };
+      updateSentimentChart(counts);
+    }
+  } catch (e) {
+    console.error('加载情感分布失败:', e);
+  }
+}
+
+async function loadTrend() {
+  try {
+    const params: any = {};
+    if (trendDateRange.value?.length === 2) {
+      const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      params.start = fmt(trendDateRange.value[0]);
+      params.end = fmt(trendDateRange.value[1]);
+    } else {
+      params.days = 7;
+    }
+    const res = await apiClient.get('/dashboard/trend', { params });
+    if (res.data?.code === 200 && res.data.data) {
+      updateTrendChart(res.data.data);
+    }
+  } catch (e) {
+    console.error('加载趋势失败:', e);
   }
 }
 

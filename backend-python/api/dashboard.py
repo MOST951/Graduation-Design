@@ -262,25 +262,67 @@ def get_sentiment_distribution():
 
 @dashboard_bp.route('/trend', methods=['GET'])
 def get_trend():
-    """获取趋势数据"""
-    days = 7
-    dates = [(datetime.now() - timedelta(days=i)).strftime('%m/%d') for i in range(days-1, -1, -1)]
-    
-    # 基于当前数据生成趋势（模拟历史数据）
-    cache = _fetch_real_data()
-    base_positive = len([h for h in cache.get('hot_search', []) if any(kw in h.get('word', '') for kw in ['好', '赞', '成功'])])
-    base_negative = len([h for h in cache.get('hot_search', []) if any(kw in h.get('word', '') for kw in ['差', '问题', '事故'])])
-    
-    return jsonify({
-        'code': 200,
-        'message': 'success',
-        'data': {
-            'dates': dates,
-            'positive': [max(100, base_positive * 50 + random.randint(-50, 100)) for _ in range(days)],
-            'neutral': [random.randint(200, 400) for _ in range(days)],
-            'negative': [max(50, base_negative * 30 + random.randint(-30, 50)) for _ in range(days)],
-        }
-    })
+    """情感趋势 - 基于 sentiment_analysis_results 真实数据按日聚合
+    参数:
+      days: 天数 (默认 7, 最大 90)
+      start, end: 替代 days 的日期范围 YYYY-MM-DD (优先级高于 days)
+    """
+    try:
+        from services.database_service import get_db_service
+        days = max(1, min(int(request.args.get('days', 7)), 90))
+        start_str = request.args.get('start')
+        end_str = request.args.get('end')
+
+        if start_str and end_str:
+            start_dt = datetime.strptime(start_str, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_str, '%Y-%m-%d')
+            days = max(1, (end_dt - start_dt).days + 1)
+        else:
+            end_dt = datetime.now()
+            start_dt = end_dt - timedelta(days=days - 1)
+
+        dates = [(start_dt + timedelta(days=i)).strftime('%m/%d') for i in range(days)]
+        date_keys = [(start_dt + timedelta(days=i)).strftime('%Y-%m-%d') for i in range(days)]
+
+        db = get_db_service()
+        if db is None:
+            raise RuntimeError("database unavailable")
+
+        with db.get_connection() as conn:
+            with conn.cursor() as cur:
+                # 用 weibo_core_data.created_at 作为时间维度 (与 analysis_time JOIN)
+                cur.execute("""
+                    SELECT DATE(w.created_at) AS d, s.sentiment_class, COUNT(*) AS n
+                    FROM weibo_core_data w
+                    JOIN sentiment_analysis_results s ON s.weibo_id = w.weibo_id
+                    WHERE w.created_at >= %s AND w.created_at < (%s + INTERVAL 1 DAY)
+                    GROUP BY DATE(w.created_at), s.sentiment_class
+                """, (start_dt.strftime('%Y-%m-%d'), end_dt.strftime('%Y-%m-%d')))
+                rows = cur.fetchall() or []
+
+        bucket = {dk: {'positive': 0, 'neutral': 0, 'negative': 0} for dk in date_keys}
+        for r in rows:
+            dk = r['d'].strftime('%Y-%m-%d') if r.get('d') else None
+            if dk in bucket and r.get('sentiment_class') in bucket[dk]:
+                bucket[dk][r['sentiment_class']] = int(r['n'])
+
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'dates': dates,
+                'positive': [bucket[dk]['positive'] for dk in date_keys],
+                'neutral':  [bucket[dk]['neutral']  for dk in date_keys],
+                'negative': [bucket[dk]['negative'] for dk in date_keys],
+            },
+            'source': 'mysql',
+        })
+    except Exception as e:
+        logger.error(f"get_trend failed: {e}", exc_info=True)
+        return jsonify({
+            'code': 500, 'message': str(e),
+            'data': {'dates': [], 'positive': [], 'neutral': [], 'negative': []},
+        }), 500
 
 @dashboard_bp.route('/realtime', methods=['GET'])
 @redis_cache('dashboard:realtime', ttl=30)
