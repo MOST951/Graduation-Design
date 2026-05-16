@@ -290,8 +290,15 @@
         </el-card>
         
         <!-- 数据预览 -->
-        <el-card header="最新数据预览" shadow="hover" style="margin-top: 20px">
-          <div class="preview-list">
+        <el-card shadow="hover" style="margin-top: 20px">
+          <template #header>
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span>本次采集任务数据预览 <el-tag v-if="previewTaskInfo" size="small" type="info" style="margin-left: 8px">{{ previewTaskInfo }}</el-tag></span>
+              <el-button size="small" :icon="Refresh" @click="loadPreviewData" :loading="previewLoading">刷新</el-button>
+            </div>
+          </template>
+          <el-empty v-if="!previewData.length && !previewLoading" description="暂无采集数据" :image-size="60" />
+          <div v-else class="preview-list" v-loading="previewLoading">
             <div v-for="item in previewData" :key="item.id" class="preview-item">
               <div class="preview-header">
                 <el-avatar :size="32">{{ item.author?.charAt(0) || 'U' }}</el-avatar>
@@ -389,7 +396,7 @@ import { storeToRefs } from 'pinia';
 import { ElMessage } from 'element-plus';
 import { 
   VideoPlay, VideoPause, Setting, ChatDotRound, Share, Star,
-  Connection, CircleCheck, CircleClose, Loading, Download, DataAnalysis, Sort, Monitor
+  Connection, CircleCheck, CircleClose, Loading, Download, DataAnalysis, Sort, Monitor, Refresh
 } from '@element-plus/icons-vue';
 import { useWeiboStore } from '@/store/weibo';
 import { SUCCESS, PRIMARY, DANGER, INFO, WARNING } from '@/styles/colors';
@@ -496,8 +503,10 @@ const tasks = ref<any[]>([]);
 // 日志
 const logs = ref<any[]>([]);
 
-// 预览数据
+// 预览数据 (本次采集任务)
 const previewData = ref<any[]>([]);
+const previewLoading = ref(false);
+const previewTaskInfo = ref('');
 
 // 进度条颜色
 const progressColors = [
@@ -1032,12 +1041,50 @@ const getLogLevelType = (level: string) => {
   return map[level.toLowerCase()] || 'info';
 };
 
-const loadPreviewData = () => {
-  fetchPreviewData([]);
+// 加载“本次采集任务”数据预览: 取最近 1 个已完成的采集任务的真实微博数据
+const loadPreviewData = async () => {
+  previewLoading.value = true;
+  try {
+    // 1) 拿任务列表
+    const tasksRes = await apiClient.get('/weibo/crawl/tasks');
+    const tasks = tasksRes.data?.data?.tasks || tasksRes.data?.data || [];
+    const taskArr = Array.isArray(tasks) ? tasks : [];
+    // 优先运行中 > 已完成, 取最新的一个
+    const sorted = [...taskArr].sort((a: any, b: any) => (b.start_time || '').localeCompare(a.start_time || ''));
+    const target = sorted.find((t: any) => ['crawling','running','processing'].includes(t.status)) || sorted.find((t: any) => ['completed','success'].includes(t.status));
+    if (!target) {
+      previewData.value = [];
+      previewTaskInfo.value = '';
+      return;
+    }
+    const tid = target.task_id || target.id;
+    const kws = Array.isArray(target.keywords) ? target.keywords.join('、') : (target.keywords || '');
+    previewTaskInfo.value = `${tid}  「${kws}」  ${target.status}`;
+
+    // 2) 拿该任务的数据
+    const dataRes = await apiClient.get(`/weibo/crawl/data/${tid}`);
+    const list: any[] = dataRes.data?.data?.data || dataRes.data?.data || [];
+    previewData.value = (Array.isArray(list) ? list : []).slice(0, 5).map((w: any, i: number) => ({
+      id: w.weibo_id || w.id || i,
+      author: w.user_name || w.author || '匿名用户',
+      content: (w.content || w.text || '').slice(0, 200),
+      time: w.created_at || w.publish_time || w.crawled_at || '',
+      comments: w.comments_count ?? w.comments ?? 0,
+      shares: w.reposts_count ?? w.shares ?? 0,
+      likes: w.attitudes_count ?? w.likes ?? 0,
+    }));
+  } catch (e) {
+    previewData.value = [];
+    previewTaskInfo.value = '';
+  } finally {
+    previewLoading.value = false;
+  }
 };
 
+// 保留旧接口: 以热搜 list 填充
 const fetchPreviewData = async (hotList: any[]) => {
   try {
+    if (!hotList?.length) { await loadPreviewData(); return; }
     previewData.value = hotList.slice(0, 5).map((item: any, index: number) => ({
       id: index,
       author: '微博热搜',
