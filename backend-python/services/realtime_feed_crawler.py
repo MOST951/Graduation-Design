@@ -23,16 +23,12 @@ _last_run = {'time': None, 'inserted': 0, 'fetched': 0, 'error': None}
 
 
 def _load_cookie_str() -> str:
-    cookie_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'crawler', 'cookies.json')
-    if not os.path.exists(cookie_file):
-        return ''
+    """复用 crawler.cookie_grabber.load_cookies 兼容 list/dict 两种存储格式"""
     try:
-        with open(cookie_file, 'r', encoding='utf-8') as f:
-            cookie_data = json.load(f)
-        if isinstance(cookie_data, dict):
+        from crawler.cookie_grabber import load_cookies
+        cookie_data = load_cookies() or {}
+        if isinstance(cookie_data, dict) and cookie_data:
             return '; '.join([f"{k}={v}" for k, v in cookie_data.items() if v and not k.startswith('_')])
-        if isinstance(cookie_data, str):
-            return cookie_data
     except Exception as e:
         logger.warning(f'读取 cookie 失败: {e}')
     return ''
