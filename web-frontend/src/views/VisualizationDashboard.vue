@@ -37,7 +37,6 @@
             <el-dropdown-menu>
               <el-dropdown-item command="dashboard">导出仪表盘</el-dropdown-item>
               <el-dropdown-item command="png">导出为图片</el-dropdown-item>
-              <el-dropdown-item command="pdf">导出为PDF</el-dropdown-item>
               <el-dropdown-item command="excel">导出数据</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -1290,17 +1289,92 @@ const exportAllChartsPNG = () => {
   ElMessage.success(`已导出 ${charts.length} 张图表图片`);
 };
 
-const exportAllChartsPDF = () => {
-  if (charts.length === 0) { ElMessage.warning('暂无图表可导出'); return; }
-  // Export each chart as PNG then trigger download (simple approach without jspdf)
-  charts.forEach((chart, idx) => {
-    const url = chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `chart_${currentDashboard.value}_${idx + 1}_${Date.now()}.png`;
-    link.click();
-  });
-  ElMessage.success(`已导出 ${charts.length} 张图表 (高清PNG格式)`);
+const exportDataAsExcel = async () => {
+  try {
+    const XLSX: any = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    const ts = new Date().toISOString().slice(0, 10);
+    let sheetCount = 0;
+
+    // 1) 热点话题
+    if (backendHotTopics.value?.length) {
+      const rows = backendHotTopics.value.map((t: any, i: number) => ({
+        排名: i + 1,
+        话题: t.name,
+        热度: t.heat,
+        趋势: t.trend,
+        是否热门: t.isHot ? '是' : '否',
+        是否新增: t.isNew ? '是' : '否',
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), '热点话题');
+      sheetCount++;
+    }
+
+    // 2) 情感分布
+    if (backendSentiment.value) {
+      const s = backendSentiment.value;
+      const rows = [
+        { 情感: '正面', 占比: s.positive || 0 },
+        { 情感: '中性', 占比: s.neutral || 0 },
+        { 情感: '负面', 占比: s.negative || 0 },
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), '情感分布');
+      sheetCount++;
+    }
+
+    // 3) 舆情趋势
+    if (backendTrend.value?.dates?.length) {
+      const t = backendTrend.value;
+      const rows = t.dates.map((d, i) => ({
+        日期: d,
+        正面: t.positive?.[i] ?? 0,
+        中性: t.neutral?.[i] ?? 0,
+        负面: t.negative?.[i] ?? 0,
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), '舆情趋势');
+      sheetCount++;
+    }
+
+    // 4) 用户画像
+    const up = backendUserProfile.value;
+    if (up) {
+      if (up.activity?.length) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(up.activity.map(a => ({ 活跃度: a.name, 用户数: a.value }))), '用户活跃度');
+        sheetCount++;
+      }
+      if (up.verifiedType?.length) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(up.verifiedType.map(v => ({ 类型: v.name, 用户数: v.value }))), '认证类型');
+        sheetCount++;
+      }
+      if (up.fansDistribution?.labels?.length) {
+        const rows = up.fansDistribution.labels.map((l, i) => ({ 粉丝区间: l, 用户数: up.fansDistribution.values[i] || 0 }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), '粉丝分布');
+        sheetCount++;
+      }
+      if (up.postHours?.labels?.length) {
+        const rows = up.postHours.labels.map((l, i) => ({ 时段: l, 发帖量: up.postHours.values[i] || 0 }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), '发布时段');
+        sheetCount++;
+      }
+      if (up.influence?.indicators?.length) {
+        const rows = up.influence.indicators.map((it, i) => ({ 维度: it.name, 分数: up.influence.values[i] || 0 }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), '影响力雷达');
+        sheetCount++;
+      }
+    }
+
+    if (sheetCount === 0) {
+      ElMessage.warning('暂无可导出数据，请先刷新');
+      return;
+    }
+
+    const fileName = `数据可视化_${ts}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    ElMessage.success(`已导出 ${sheetCount} 个数据表: ${fileName}`);
+  } catch (e: any) {
+    console.error(e);
+    ElMessage.error(`导出失败: ${e?.message || e}`);
+  }
 };
 
 const exportChart = (chartName: string, format: string) => {
@@ -1475,10 +1549,8 @@ const handleExport = (type: string) => {
     exportDashboardAsImage();
   } else if (type === 'png') {
     exportAllChartsPNG();
-  } else if (type === 'pdf') {
-    exportAllChartsPDF();
-  } else {
-    ElMessage.info('正在导出数据...');
+  } else if (type === 'excel') {
+    exportDataAsExcel();
   }
 };
 
