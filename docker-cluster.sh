@@ -46,13 +46,13 @@ PROFILES=""
 COMPOSE_BASE=""
 
 # 标记容器（判断是否首次部署）
-SENTINEL_CONTAINER="weibo_sentiment_db"
+SENTINEL_CONTAINER="weibo_db"
 
 # 最大重试次数
 MAX_RETRY=3
 
-# 需要检测的端口列表 (端口:服务名) — 包含大数据服务端口
-REQUIRED_PORTS="5000:Flask 3306:MySQL 6379:Redis 3001:Frontend 8081:JavaBackend 8080:SparkUI 7077:SparkMaster 2181:ZooKeeper 9000:HDFS_NameNode 50070:HDFS_WebUI 50075:HDFS_DataNode 16000:HBase_Master 16010:HBase_WebUI 16020:HBase_RS 16030:HBase_RS_WebUI"
+# 需要检测的端口列表 (端口:服务名)
+REQUIRED_PORTS="5000:Flask 3306:MySQL 3001:Frontend 8080:SparkUI 7077:SparkMaster 9000:HDFS_NameNode 9870:HDFS_WebUI 9864:HDFS_DataNode"
 
 # ==================== 日志函数 ====================
 log() {
@@ -124,27 +124,18 @@ check_ports() {
     local has_conflict=false
 
     # 从 .env.docker 读取实际端口
-    local web_port frontend_port java_port db_port redis_port spark_ui_port spark_port
+    local web_port frontend_port db_port spark_ui_port spark_port
+    local hdfs_nn_port hdfs_nn_http hdfs_dn_http
     web_port=$(get_env_val "WEB_PORT" "5000")
     frontend_port=$(get_env_val "FRONTEND_PORT" "3001")
-    java_port=$(get_env_val "JAVA_BACKEND_PORT" "8081")
     db_port=$(get_env_val "DB_PORT" "3306")
-    redis_port=$(get_env_val "REDIS_PORT" "6379")
     spark_ui_port=$(get_env_val "SPARK_WEBUI_PORT" "8080")
     spark_port=$(get_env_val "SPARK_MASTER_PORT" "7077")
-
-    # 大数据服务端口
-    local zk_port hdfs_nn_port hdfs_nn_http hdfs_dn_http hbase_master hbase_webui hbase_rs hbase_rs_webui
-    zk_port=$(get_env_val "ZK_PORT" "2181")
     hdfs_nn_port=$(get_env_val "HDFS_NAMENODE_PORT" "9000")
-    hdfs_nn_http=$(get_env_val "HDFS_NAMENODE_HTTP_PORT" "50070")
-    hdfs_dn_http=$(get_env_val "HDFS_DATANODE_HTTP_PORT" "50075")
-    hbase_master=$(get_env_val "HBASE_MASTER_PORT" "16000")
-    hbase_webui=$(get_env_val "HBASE_MASTER_WEBUI_PORT" "16010")
-    hbase_rs=$(get_env_val "HBASE_RS_PORT" "16020")
-    hbase_rs_webui=$(get_env_val "HBASE_RS_WEBUI_PORT" "16030")
+    hdfs_nn_http=$(get_env_val "HDFS_NAMENODE_HTTP_PORT" "9870")
+    hdfs_dn_http=$(get_env_val "HDFS_DATANODE_HTTP_PORT" "9864")
 
-    local port_list="${web_port}:Flask ${db_port}:MySQL ${redis_port}:Redis ${frontend_port}:Frontend ${java_port}:JavaBackend ${spark_ui_port}:SparkUI ${spark_port}:SparkMaster ${zk_port}:ZooKeeper ${hdfs_nn_port}:HDFS_NameNode ${hdfs_nn_http}:HDFS_WebUI ${hdfs_dn_http}:HDFS_DataNode ${hbase_master}:HBase_Master ${hbase_webui}:HBase_WebUI ${hbase_rs}:HBase_RS ${hbase_rs_webui}:HBase_RS_WebUI"
+    local port_list="${web_port}:Flask ${db_port}:MySQL ${frontend_port}:Frontend ${spark_ui_port}:SparkUI ${spark_port}:SparkMaster ${hdfs_nn_port}:HDFS_NameNode ${hdfs_nn_http}:HDFS_WebUI ${hdfs_dn_http}:HDFS_DataNode"
 
     for item in ${port_list}; do
         local port="${item%%:*}"
@@ -154,7 +145,7 @@ check_ports() {
             # 检查是否是我们自己的容器占用
             local container_using
             container_using=$(docker ps --format '{{.Names}}' --filter "publish=${port}" 2>/dev/null | head -1)
-            if [[ -n "${container_using}" && "${container_using}" == weibo_sentiment_* ]]; then
+            if [[ -n "${container_using}" && "${container_using}" == weibo_* ]]; then
                 continue  # 是自己的容器，跳过
             fi
             warn "端口 ${port} (${name}) 已被占用！"
@@ -260,21 +251,10 @@ get_host_ip() {
     echo "${ip:-localhost}"
 }
 
-# 初始化 Compose 参数 (从 .env 动态读取启用的 profiles)
+# 初始化 Compose 参数 (精简版无 profiles)
 init_compose_base() {
-    local enabled_profiles
-    enabled_profiles=$(grep -E "^ENABLED_PROFILES=" "${ENV_FILE}" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]')
-    if [[ -z "${enabled_profiles}" ]]; then
-        enabled_profiles="with-frontend,with-java-backend,with-spark,with-bigdata"
-    fi
-    PROFILES=""
-    local profile_list
-    IFS=',' read -ra profile_list <<< "${enabled_profiles}"
-    for p in "${profile_list[@]}"; do
-        PROFILES+=" --profile ${p}"
-    done
-    COMPOSE_BASE="-f ${COMPOSE_FILE} --env-file ${ENV_FILE}${PROFILES}"
-    info "启用 Profiles:${PROFILES}"
+    COMPOSE_BASE="-f ${COMPOSE_FILE} --env-file ${ENV_FILE}"
+    info "Compose 配置: ${COMPOSE_BASE}"
 }
 
 # ==================== 镜像拉取 (国内网络增强) ====================
@@ -290,13 +270,8 @@ MIRROR_CANDIDATES=(
 # 所需镜像列表 (Compose & Dockerfile 基础镜像)
 REQUIRED_IMAGES=(
     "bitnami/spark:3.5"
-    "harisekhon/hbase:2.4"
     "apache/hadoop:3.3.6"
-    "zookeeper:3.8"
     "mysql:8.0"
-    "redis:7-alpine"
-    "maven:3.8-openjdk-11-slim"
-    "eclipse-temurin:11-jre-jammy"
     "python:3.11-slim"
     "node:18-alpine"
     "nginx:alpine"
@@ -581,7 +556,7 @@ check_model_weights() {
 # 首次部署 (带重试)
 do_first_deploy() {
     echo ""
-    info "检测到首次运行，正在部署完整集群 (Spark + HDFS + HBase + 前后端)，这可能需要几分钟..."
+    info "检测到首次运行，正在部署集群 (7 容器: MySQL + Flask + Vue + HDFS + Spark)，这可能需要几分钟..."
     echo ""
 
     check_model_weights
@@ -627,7 +602,7 @@ do_start_existing() {
         attempt=$((attempt + 1))
         if run_compose start 2>&1 | tee -a "${LOG_FILE}"; then
             echo ""
-            info "集群已启动！所有数据（MySQL / Redis）完整保留。"
+            info "集群已启动！所有数据（MySQL / HDFS）完整保留。"
             wait_for_healthy
             show_access_info
             return 0
@@ -671,7 +646,7 @@ wait_for_healthy() {
     fi
 
     # 阶段 2: 等待 HDFS NameNode (应用层: 安全模式检测)
-    local nn_container="weibo_sentiment_namenode"
+    local nn_container="weibo_namenode"
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${nn_container}"; then
         step "等待 HDFS NameNode 就绪..."
         waited=0
@@ -693,30 +668,6 @@ wait_for_healthy() {
         fi
     fi
 
-    # 阶段 3: 等待 HBase Master (优先使用 Docker healthcheck / Web UI)
-    local hb_container="weibo_sentiment_hbase_master"
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${hb_container}"; then
-        step "等待 HBase Master 就绪..."
-        waited=0
-        local hbase_ok=false
-        while [[ ${waited} -lt 120 ]]; do
-            local hb_status
-            hb_status=$(docker inspect --format='{{.State.Health.Status}}' "${hb_container}" 2>/dev/null || echo "unknown")
-            if [[ "${hb_status}" == "healthy" ]] || \
-               docker exec "${hb_container}" sh -c "curl -sf http://localhost:16010/master-status >/dev/null 2>&1 || wget -q -O /dev/null http://localhost:16010/master-status" &>/dev/null; then
-                info "HBase Master 就绪 (healthcheck/Web UI 验证通过)"
-                hbase_ok=true
-                break
-            fi
-            echo -ne "  [${waited}s] 等待 HBase Master... (${hb_status})\r"
-            sleep 5
-            waited=$((waited + 5))
-        done
-        if [[ "${hbase_ok}" != "true" ]]; then
-            overall_ok=false
-        fi
-    fi
-
     echo ""
     if [[ "${overall_ok}" != "true" ]]; then
         warn "部分服务可能还未完全就绪，请用 './docker-cluster.sh status' 查看"
@@ -734,14 +685,11 @@ do_stop() {
     echo ""
     info "所有服务已停止。"
     echo "  数据卷已保留:"
-    echo "    - weibo_sentiment_mysql_data    (MySQL 数据)"
-    echo "    - weibo_sentiment_redis_data    (Redis 数据)"
-    echo "    - weibo_sentiment_hdfs_namenode (HDFS NameNode 元数据)"
-    echo "    - weibo_sentiment_hdfs_datanode (HDFS DataNode 数据块)"
-    echo "    - weibo_sentiment_hbase_data    (HBase 数据)"
-    echo "    - weibo_sentiment_zk_data       (ZooKeeper 数据)"
-    echo "    - weibo_sentiment_app_logs      (应用日志)"
-    echo "    - weibo_sentiment_model_cache   (模型缓存)"
+    echo "    - weibo_mysql_data    (MySQL 数据)"
+    echo "    - weibo_hdfs_namenode (HDFS NameNode 元数据)"
+    echo "    - weibo_hdfs_datanode (HDFS DataNode 数据块)"
+    echo "    - weibo_app_logs      (应用日志)"
+    echo "    - weibo_model_cache   (模型缓存)"
     echo ""
     echo "  模型权重 (bind mount):"
     echo "    - backend-python/models/chinese-bert-wwm-ext  (BERT 情感模型)"
@@ -774,10 +722,8 @@ do_down() {
     run_compose down 2>&1 | tee -a "${LOG_FILE}"
     echo ""
     info "容器已销毁。命名数据卷已保留，如需彻底清理:"
-    echo "    docker volume rm weibo_sentiment_mysql_data weibo_sentiment_redis_data \\"
-    echo "      weibo_sentiment_hdfs_namenode weibo_sentiment_hdfs_datanode \\"
-    echo "      weibo_sentiment_hbase_data weibo_sentiment_zk_data weibo_sentiment_zk_datalog \\"
-    echo "      weibo_sentiment_app_logs weibo_sentiment_model_cache"
+    echo "    docker volume rm weibo_mysql_data weibo_hdfs_namenode weibo_hdfs_datanode \\"
+    echo "      weibo_app_logs weibo_model_cache"
 }
 
 # 健康检查
@@ -788,24 +734,20 @@ do_health() {
 
     local host_ip
     host_ip=$(get_host_ip)
-    local web_port frontend_port java_port spark_port
+    local web_port frontend_port spark_port
     web_port=$(get_env_val "WEB_PORT" "5000")
     frontend_port=$(get_env_val "FRONTEND_PORT" "3001")
-    java_port=$(get_env_val "JAVA_BACKEND_PORT" "8081")
     spark_port=$(get_env_val "SPARK_WEBUI_PORT" "8080")
-    local hdfs_http_port hbase_webui_port
-    hdfs_http_port=$(get_env_val "HDFS_NAMENODE_HTTP_PORT" "50070")
-    hbase_webui_port=$(get_env_val "HBASE_MASTER_WEBUI_PORT" "16010")
+    local hdfs_http_port
+    hdfs_http_port=$(get_env_val "HDFS_NAMENODE_HTTP_PORT" "9870")
     local all_ok=true
 
     # 检查容器运行状态
     step "容器运行状态:"
     local -a containers=(
-        weibo_sentiment_web weibo_sentiment_db weibo_sentiment_redis
-        weibo_sentiment_frontend weibo_sentiment_java
-        weibo_sentiment_spark_master weibo_sentiment_spark_worker
-        weibo_sentiment_zookeeper weibo_sentiment_namenode weibo_sentiment_datanode
-        weibo_sentiment_hbase_master weibo_sentiment_hbase_rs
+        weibo_db weibo_web weibo_frontend
+        weibo_namenode weibo_datanode
+        weibo_spark_master weibo_spark_worker
     )
     for c in "${containers[@]}"; do
         local status
@@ -826,10 +768,8 @@ do_health() {
     local endpoints=(
         "http://${host_ip}:${web_port}/api/v2/health:Flask_API"
         "http://${host_ip}:${frontend_port}/:Frontend"
-        "http://${host_ip}:${java_port}/api/actuator/health:Java_API"
         "http://${host_ip}:${spark_port}/:Spark_WebUI"
         "http://${host_ip}:${hdfs_http_port}/dfshealth.html:HDFS_WebUI"
-        "http://${host_ip}:${hbase_webui_port}/master-status:HBase_WebUI"
     )
     for ep in "${endpoints[@]}"; do
         local url="${ep%%:*}:${ep#*:}"
@@ -857,7 +797,7 @@ do_health() {
     echo ""
 
     # 检查 HDFS 状态
-    local nn_container="weibo_sentiment_namenode"
+    local nn_container="weibo_namenode"
     if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${nn_container}"; then
         step "HDFS 状态:"
         # 检查 NameNode 安全模式 (超时保护)
@@ -892,31 +832,6 @@ do_health() {
         echo ""
     fi
 
-    # 检查 HBase 状态 (通过 Web UI，避免 hbase shell JVM 启动慢)
-    local hb_container="weibo_sentiment_hbase_master"
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "${hb_container}"; then
-        step "HBase 状态:"
-        local hb_page
-        hb_page=$(timeout 10 docker exec "${hb_container}" wget -q -O - http://localhost:16010/tablesDetailed.jsp 2>/dev/null || echo "")
-        if echo "${hb_page}" | grep -q "weibo_sentiment"; then
-            echo -e "    ${GREEN}●${NC} HBase 表 weibo_sentiment: 存在"
-        else
-            echo -e "    ${RED}●${NC} HBase 表 weibo_sentiment: 未找到"
-            all_ok=false
-        fi
-        # RegionServer 数量 (从 master-status 页面检测)
-        local rs_page
-        rs_page=$(timeout 10 docker exec "${hb_container}" wget -q -O - http://localhost:16010/master-status 2>/dev/null || echo "")
-        local rs_count
-        rs_count=$(echo "${rs_page}" | grep -c "regionserver" || echo "0")
-        if [[ ${rs_count} -gt 0 ]]; then
-            echo -e "    ${GREEN}●${NC} RegionServer: 已注册"
-        else
-            echo -e "    ${YELLOW}●${NC} RegionServer: 未检测到"
-        fi
-        echo ""
-    fi
-
     if [[ "${all_ok}" == "true" ]]; then
         info "所有服务运行正常！"
     else
@@ -928,14 +843,11 @@ do_health() {
 show_access_info() {
     local host_ip
     host_ip=$(get_host_ip)
-    local web_port frontend_port java_port spark_ui_port
+    local web_port frontend_port spark_ui_port hdfs_http_port
     web_port=$(get_env_val "WEB_PORT" "5000")
     frontend_port=$(get_env_val "FRONTEND_PORT" "3001")
-    java_port=$(get_env_val "JAVA_BACKEND_PORT" "8081")
     spark_ui_port=$(get_env_val "SPARK_WEBUI_PORT" "8080")
-    local hdfs_http_port hbase_webui_port
-    hdfs_http_port=$(get_env_val "HDFS_NAMENODE_HTTP_PORT" "50070")
-    hbase_webui_port=$(get_env_val "HBASE_MASTER_WEBUI_PORT" "16010")
+    hdfs_http_port=$(get_env_val "HDFS_NAMENODE_HTTP_PORT" "9870")
 
     echo ""
     echo "=========================================="
@@ -943,10 +855,8 @@ show_access_info() {
     echo "=========================================="
     echo "  前端页面          http://${host_ip}:${frontend_port}"
     echo "  Flask API        http://${host_ip}:${web_port}"
-    echo "  Java  API        http://${host_ip}:${java_port}"
     echo "  Spark Web UI     http://${host_ip}:${spark_ui_port}"
     echo "  HDFS  Web UI     http://${host_ip}:${hdfs_http_port}"
-    echo "  HBase Web UI     http://${host_ip}:${hbase_webui_port}"
     echo "=========================================="
     echo "  管理命令:"
     echo "    ./docker-cluster.sh status        查看状态"
@@ -1022,7 +932,7 @@ main() {
             echo ""
             step "仅重启 Spark 服务 (核心参数变更后使用)..."
             echo ""
-            run_compose restart weibo_sentiment_spark_master weibo_sentiment_spark_worker 2>&1 | tee -a "${LOG_FILE}"
+            run_compose restart spark-master spark-worker 2>&1 | tee -a "${LOG_FILE}"
             echo ""
             # 等待 Spark UI 就绪
             local spark_ui_port

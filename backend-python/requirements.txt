@@ -44,8 +44,6 @@ transformers>=4.35.0
 # ==================== 数据库 ====================
 pymysql>=1.1.0
 DBUtils>=3.0.0
-redis>=5.0.0
-# happybase>=1.2.0  # HBase Thrift客户端(可选)
 
 # --- 网页爬虫 (可选) ---
 selenium>=4.15.0

@@ -193,20 +193,20 @@
             <el-card header="特征向量预览">
               <el-alert
                 title="特征提取信息"
-                :description="`方法: ${extractMethod.toUpperCase()} | 维度: ${vectorSize || maxFeatures}`"
+                :description="`方法: ${(featureVector.method || extractMethod).toUpperCase()} | 实际维度: ${realDimensionDisplay} | 文档数: ${featureVector.doc_count || 0}`"
                 type="info"
                 :closable="false"
                 style="margin-bottom: 16px"
               />
-              
+
               <div class="feature-preview">
-                <pre>{{ featureVector }}</pre>
+                <pre>{{ JSON.stringify(featureVector, null, 2) }}</pre>
               </div>
-              
+
               <el-divider />
-              
+
               <el-descriptions title="特征统计" :column="2" border>
-                <el-descriptions-item label="特征维度">{{ vectorSize || maxFeatures }}</el-descriptions-item>
+                <el-descriptions-item label="特征维度">{{ realDimensionDisplay }}</el-descriptions-item>
                 <el-descriptions-item label="非零特征">{{ nonZeroFeatures }}</el-descriptions-item>
                 <el-descriptions-item label="最大值">{{ maxFeatureValue }}</el-descriptions-item>
                 <el-descriptions-item label="最小值">{{ minFeatureValue }}</el-descriptions-item>
@@ -351,16 +351,21 @@ const diffItems = ref<{ original: string; cleaned: string }[]>([]);
 // 进度步骤
 const progressSteps = ref<{ label: string; done: boolean }[]>([]);
 
-const segmentWords = ref([
-  '今天', '天气', '真', '好', '心情', '也', '很', '不错',
-  '这个', '产品', '质量', '太', '差', '了', '非常', '失望',
-]);
+const segmentWords = ref<string[]>([]);
 
-const featureVector = ref({
-  method: 'TF-IDF',
-  dimension: 1000,
-  vector: [0.234, 0.567, 0.123, 0.890, 0.456, '...'],
-  sparse: true,
+const featureVector = ref<any>({
+  method: '-',
+  dimension: 0,
+  sample_vector: [],
+  top_terms: [],
+  doc_count: 0,
+  hint: '请先执行预处理任务，特征向量将基于实际清洗后分词数据自动生成',
+});
+const featureStats = reactive({
+  nonZero: 0,
+  maxValue: 0,
+  minValue: 0,
+  realDimension: 0,
 });
 
 const qualityMetrics = reactive({
@@ -423,9 +428,11 @@ const avgWordLength = computed(() => {
   return (total / segmentWords.value.length).toFixed(2);
 });
 
-const nonZeroFeatures = computed(() => 456);
-const maxFeatureValue = computed(() => 0.890);
-const minFeatureValue = computed(() => 0.001);
+// 真实特征统计来自 /api/preprocess/tasks/<id>/features
+const nonZeroFeatures = computed(() => featureStats.nonZero);
+const maxFeatureValue = computed(() => Number(featureStats.maxValue || 0).toFixed(4));
+const minFeatureValue = computed(() => Number(featureStats.minValue || 0).toFixed(4));
+const realDimensionDisplay = computed(() => featureStats.realDimension || vectorSize.value || maxFeatures.value);
 
 const getWordType = (word: string) => {
   if (word.length === 1) return 'info';
@@ -669,7 +676,33 @@ const handleProcess = async () => {
       }));
     }
     updateStep(2);
-    
+
+    // Step 3.5: 拉真实 TF-IDF 特征向量统计 (基于该任务的 cleaned words)
+    try {
+      const featRes = await apiClient.get(`/preprocess/tasks/${task.id}/features`, {
+        params: {
+          method: extractMethod.value === 'tfidf' ? 'tfidf' : 'count',
+          max_features: maxFeatures.value || 1000,
+        },
+      });
+      const fd = featRes.data?.data;
+      if (fd) {
+        featureVector.value = {
+          method: fd.method,
+          dimension: fd.dimension,
+          doc_count: fd.doc_count,
+          sample_vector: fd.sample_vector,
+          top_terms: fd.top_terms,
+        };
+        featureStats.realDimension = fd.dimension || 0;
+        featureStats.nonZero = fd.non_zero || 0;
+        featureStats.maxValue = fd.max_value || 0;
+        featureStats.minValue = fd.min_value || 0;
+      }
+    } catch (e: any) {
+      console.debug('[Preprocess] 特征向量接口失败, 保留空白', e?.response?.status);
+    }
+
     // Step 4: 完成
     await loadPreprocessTasks();
     updateStep(3);

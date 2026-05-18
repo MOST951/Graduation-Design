@@ -573,7 +573,7 @@ class SparkTriDimensionProcessor:
         elif SPARK_AVAILABLE:
             self.spark = SparkSession.builder \
                 .appName("TriDimensionRanking") \
-                .master("local[*]") \
+                .master(os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077')) \
                 .config("spark.driver.memory", "2g") \
                 .config("spark.sql.shuffle.partitions", "4") \
                 .getOrCreate()

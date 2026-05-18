@@ -111,19 +111,11 @@ echo "========================================"
 echo " 3. 容错能力测试"
 echo "========================================"
 
-echo "--- 3.1 Redis重启恢复 ---"
-docker restart weibo_sentiment_redis > /dev/null 2>&1
-sleep 5
-r=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$API/api/dashboard/overview" 2>/dev/null)
-echo "  Redis重启后API响应 => $r (预期: 200, 降级DB查询)"
-
-# 等Redis恢复healthy
-for i in $(seq 1 6); do
-  sleep 5
-  rh=$(docker inspect --format='{{.State.Health.Status}}' weibo_sentiment_redis 2>/dev/null)
-  if [ "$rh" = "healthy" ]; then break; fi
-done
-echo "  Redis恢复状态 => $rh"
+echo "--- 3.1 Flask重启恢复 ---"
+docker restart weibo_web > /dev/null 2>&1
+sleep 8
+r=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$API/api/v2/health" 2>/dev/null)
+echo "  Flask重启后API响应 => $r (预期: 200)"
 
 echo "--- 3.2 无效API路径 ---"
 r=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$API/api/nonexistent/endpoint" 2>/dev/null)
@@ -142,7 +134,7 @@ code=$(echo "$r" | python3 -c "import sys,json; print(json.load(sys.stdin).get('
 echo "  缺少text字段 => code=$code (预期: 400)"
 
 echo "--- 3.5 服务健康状态汇总 ---"
-for c in weibo_sentiment_web weibo_sentiment_java weibo_sentiment_db weibo_sentiment_redis weibo_sentiment_frontend; do
+for c in weibo_web weibo_db weibo_frontend weibo_namenode weibo_spark_master; do
   s=$(docker inspect --format='{{.State.Status}}' $c 2>/dev/null)
   h=$(docker inspect --format='{{.State.Health.Status}}' $c 2>/dev/null || echo "N/A")
   echo "  $c => status=$s health=$h"

@@ -3,7 +3,7 @@ Spark作业触发服务
 ================
 
 负责触发和监控Spark作业，实现数据流连通：
-微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 三维度排序
+微博爬虫 → HDFS原始存储 → Spark清洗 → MySQL结构化 → 三维度排序
 
 功能：
 1. 使用subprocess调用spark-submit
@@ -68,8 +68,6 @@ class SparkJobConfig:
     preprocessing_jar: str = ''
     # HDFS 配置
     hdfs_url: str = os.environ.get('HDFS_URL', 'hdfs://namenode:9000')
-    # HBase 配置
-    hbase_zookeeper: str = os.environ.get('HBASE_ZK', 'hbase-master:2181')
     # MySQL JDBC (Spark 写情感分析结果回 MySQL, 论文 6.3.3)
     mysql_jdbc_url: str = os.environ.get(
         'MYSQL_JDBC_URL',
@@ -148,47 +146,6 @@ class SparkJobStore:
         self._jobs: Dict[str, SparkJob] = {}
         self._lock = threading.Lock()
         self._load()
-        # 论文 4.3.1: Redis 暂存任务状态 (热点数据/任务状态)
-        # 失败不影响 JSON 主存储; 接口可优先从 Redis 拿到亚毫秒级 job 进度
-        self._redis = self._init_redis()
-
-    def _init_redis(self):
-        try:
-            import redis as _redis
-            client = _redis.Redis(
-                host=os.environ.get('REDIS_HOST', 'localhost'),
-                port=int(os.environ.get('REDIS_PORT', '6379')),
-                password=os.environ.get('REDIS_PASSWORD') or None,
-                db=int(os.environ.get('REDIS_DB', '0')),
-                decode_responses=True,
-                socket_connect_timeout=2,
-                socket_timeout=2,
-            )
-            client.ping()
-            logger.info("SparkJobStore: Redis 任务状态镜像已启用")
-            return client
-        except Exception as e:
-            logger.warning(f"SparkJobStore: Redis 不可用, 仅 JSON 存储: {e}")
-            return None
-
-    def _mirror_to_redis(self, job: 'SparkJob'):
-        if self._redis is None:
-            return
-        try:
-            key = f"spark:job:{job.job_id}"
-            self._redis.setex(key, 3600, json.dumps(job.to_dict(), ensure_ascii=False))
-            # 维护按状态分组的 set, 便于 dashboard 拉 running/completed
-            self._redis.sadd(f"spark:jobs:by_status:{job.status}", job.job_id)
-            # 总作业列表 zset (score=created_at_ts)
-            try:
-                ts = int(datetime.fromisoformat(
-                    (job.created_at or datetime.now().isoformat()).replace('Z', '')
-                ).timestamp())
-            except Exception:
-                ts = int(time.time())
-            self._redis.zadd("spark:jobs:all", {job.job_id: ts})
-        except Exception as e:
-            logger.debug(f"Redis 镜像失败(忽略): {e}")
     
     def _load(self):
         """加载作业记录"""
@@ -217,7 +174,6 @@ class SparkJobStore:
         with self._lock:
             self._jobs[job.job_id] = job
             self._save()
-        self._mirror_to_redis(job)
         return job
     
     def update(self, job: SparkJob) -> SparkJob:
@@ -225,7 +181,6 @@ class SparkJobStore:
         with self._lock:
             self._jobs[job.job_id] = job
             self._save()
-        self._mirror_to_redis(job)
         return job
     
     def get(self, job_id: str) -> Optional[SparkJob]:
@@ -507,15 +462,7 @@ class SparkService:
             job.progress = 60
             self.store.update(job)
             
-            # 阶段3: 写入HBase (60-80%)
-            logger.info(f"[{job.job_id}] 阶段3: 写入HBase...")
-            
-            self._write_to_hbase(job)
-            
-            job.progress = 80
-            self.store.update(job)
-            
-            # 阶段4: 三维度排序 (80-100%)
+            # 阶段3: 三维度排序 (60-100%)
             logger.info(f"[{job.job_id}] 阶段4: 三维度排序...")
             
             self._run_pipeline_stage(
@@ -600,47 +547,6 @@ class SparkService:
             logger.error(f"情感分析失败: {e}")
             raise
     
-    def _write_to_hbase(self, job: SparkJob):
-        """
-        写入数据到HBase
-        
-        开发环境使用本地JSON模拟
-        """
-        try:
-            # 尝试使用HBase客户端
-            try:
-                import happybase
-                connection = happybase.Connection(self.config.hbase_zookeeper.split(':')[0])
-                
-                # 检查表是否存在
-                tables = connection.tables()
-                if b'weibo_posts' not in tables:
-                    connection.create_table('weibo_posts', {'cf': dict()})
-                
-                logger.info("HBase连接成功，数据写入完成")
-                connection.close()
-                
-            except Exception as e:
-                logger.warning(f"HBase不可用，使用本地存储模拟: {e}")
-                
-                # 本地模拟HBase存储
-                hbase_dir = os.path.join(
-                    os.path.dirname(os.path.dirname(__file__)),
-                    'data', 'hbase_mock'
-                )
-                os.makedirs(hbase_dir, exist_ok=True)
-                
-                # 创建模拟表文件
-                table_file = os.path.join(hbase_dir, 'weibo_posts.json')
-                if not os.path.exists(table_file):
-                    with open(table_file, 'w', encoding='utf-8') as f:
-                        json.dump({}, f)
-                
-                logger.info("本地HBase模拟存储已就绪")
-                
-        except Exception as e:
-            logger.error(f"HBase写入失败: {e}")
-            raise
     
     # ==================== 论文 6.3: PySpark 脚本直提交 ====================
 
@@ -753,14 +659,6 @@ class SparkService:
                 '--jdbc-url',      self.config.mysql_jdbc_url,
                 '--jdbc-user',     self.config.mysql_user,
                 '--jdbc-password', self.config.mysql_password,
-            ]
-        # HBase 可选: 环境变量 HBASE_HOST 触发 (论文 4.3.3 宽表写入)
-        hbase_host = os.environ.get('HBASE_HOST', '')
-        if hbase_host:
-            args += [
-                '--hbase-host',  hbase_host,
-                '--hbase-port',  os.environ.get('HBASE_PORT', '9090'),
-                '--hbase-table', os.environ.get('HBASE_TABLE', 'sentiment_result'),
             ]
         extra_jars = []
         # 如果有 mysql-connector jar 预置在固定位置则加上

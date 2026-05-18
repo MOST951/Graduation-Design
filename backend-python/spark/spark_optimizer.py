@@ -50,7 +50,7 @@ class SparkOptimizationConfig:
     
     # 应用配置
     app_name: str = "WeiboSentimentOptimized"
-    master: str = "local[*]"
+    master: str = os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077')
     
     # 内存配置
     driver_memory: str = "2g"
@@ -754,7 +754,7 @@ class SparkSubmitConfigGenerator:
         config = config or SparkOptimizationConfig()
         
         cmd = f"""spark-submit \\
-    --master local[*] \\
+    --master {config.master} \\
     --driver-memory {config.driver_memory} \\
     --conf spark.serializer={config.serializer} \\
     --conf spark.kryoserializer.buffer.max={config.kryo_buffer_max} \\

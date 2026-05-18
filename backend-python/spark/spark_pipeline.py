@@ -62,7 +62,7 @@ class PipelineConfig:
     """流水线配置"""
     # Spark配置
     app_name: str = "WeiboSentimentPipeline"
-    master: str = "local[*]"
+    master: str = os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077')
     driver_memory: str = "2g"
     executor_memory: str = "2g"
     shuffle_partitions: int = 4

@@ -68,7 +68,7 @@ def _resolve_master(configured_master: str) -> str:
 # Load centralized config
 _cfg = _load_from_config()
 
-_master = _cfg.master_url if _cfg else os.getenv('SPARK_MASTER_URL', 'local[*]')
+_master = _cfg.master_url if _cfg else os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077')
 _app_name = _cfg.app_name if _cfg else os.getenv('SPARK_APP_NAME', 'WeiboSentimentAnalysis')
 _driver_mem = _cfg.driver_memory if _cfg else os.getenv('SPARK_DRIVER_MEMORY', '2g')
 _executor_mem = _cfg.executor_memory if _cfg else os.getenv('SPARK_EXECUTOR_MEMORY', '2g')

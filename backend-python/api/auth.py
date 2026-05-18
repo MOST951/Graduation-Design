@@ -13,82 +13,39 @@ import base64
 import hmac
 import hashlib
 
-try:
-    import redis
-except ImportError:
-    redis = None
-
 from services.auth_service import get_auth_service
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 logger = logging.getLogger(__name__)
 
-# ==================== 验证码缓存 ====================
-# { email: { code: '123456', expires: datetime, type: 'register' } }
+# ==================== 验证码缓存（进程内存） ====================
+# { "register:email": { code, expires, type, created_at } }
 _verification_codes = {}
-_redis_client = None
 
 
-def _get_redis_client():
-    global _redis_client
-    if _redis_client is not None:
-        return _redis_client
-    if redis is None:
-        return None
-    try:
-        _redis_client = redis.Redis(
-            host=os.getenv('REDIS_HOST', 'localhost'),
-            port=int(os.getenv('REDIS_PORT', '6379')),
-            password=os.getenv('REDIS_PASSWORD') or None,
-            db=int(os.getenv('REDIS_DB', '0')),
-            decode_responses=True,
-            socket_connect_timeout=float(os.getenv('REDIS_SOCKET_CONNECT_TIMEOUT', '3')),
-            socket_timeout=float(os.getenv('REDIS_SOCKET_TIMEOUT', '3')),
-        )
-        _redis_client.ping()
-        return _redis_client
-    except Exception as e:
-        logger.warning(f'Redis unavailable for verification codes, fallback to memory: {e}')
-        _redis_client = None
-        return None
-
-
-def _verification_key(email: str, code_type: str) -> str:
-    return f'auth:verification:{code_type}:{email}'
+def _vcode_key(email: str, code_type: str) -> str:
+    return f'{code_type}:{email}'
 
 
 def _store_verification_code(email: str, code_type: str, code: str):
-    payload = {
+    _verification_codes[_vcode_key(email, code_type)] = {
         'code': code,
         'type': code_type,
-        'created_at': datetime.now().isoformat(),
-    }
-    client = _get_redis_client()
-    if client:
-        client.setex(_verification_key(email, code_type), 300, json.dumps(payload, ensure_ascii=False))
-        return
-    _verification_codes[email] = {
-        'code': code,
         'expires': datetime.now() + timedelta(minutes=5),
-        'type': code_type,
         'created_at': datetime.now(),
     }
 
 
 def _get_verification_code(email: str, code_type: str):
-    client = _get_redis_client()
-    if client:
-        raw = client.get(_verification_key(email, code_type))
-        return json.loads(raw) if raw else None
-    return _verification_codes.get(email)
+    entry = _verification_codes.get(_vcode_key(email, code_type))
+    if entry and datetime.now() > entry.get('expires', datetime.min):
+        _verification_codes.pop(_vcode_key(email, code_type), None)
+        return None
+    return entry
 
 
 def _delete_verification_code(email: str, code_type: str):
-    client = _get_redis_client()
-    if client:
-        client.delete(_verification_key(email, code_type))
-        return
-    _verification_codes.pop(email, None)
+    _verification_codes.pop(_vcode_key(email, code_type), None)
 
 
 def _generate_token(user: dict) -> str:

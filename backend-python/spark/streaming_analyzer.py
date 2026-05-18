@@ -82,7 +82,7 @@ class StreamingConfig:
     """流处理配置"""
     # Spark 配置
     app_name: str = "WeiboStreamingSentiment"
-    master: str = os.getenv('SPARK_MASTER_URL', 'local[*]')
+    master: str = os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077')
     
     # 内存配置
     driver_memory: str = "2g"

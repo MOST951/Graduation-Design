@@ -1443,7 +1443,7 @@ def get_models_info():
 
 # ==================== 完整数据流连通API ====================
 # 解决中期检查表中"爬虫数据未与各个模块连通"问题
-# 数据流：微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 三维度排序 → 前端展示
+# 数据流：微博爬虫 → HDFS原始存储 → Spark清洗 → MySQL结构化 → 三维度排序 → 前端展示
 
 @weibo_bp.route('/collect', methods=['POST'])
 def collect_and_process():
@@ -1453,7 +1453,7 @@ def collect_and_process():
     数据流：
     1. 启动爬虫任务，采集微博数据
     2. 采集完成后自动触发Spark清洗作业
-    3. 清洗完成后写入HBase
+    3. 清洗完成后写入MySQL
     4. 最后执行三维度排序
     
     Body参数:
@@ -2269,7 +2269,7 @@ def get_dataflow_overview():
     获取数据流概览
     
     展示完整数据流的状态：
-    微博爬虫 → HDFS原始存储 → Spark清洗 → HBase结构化 → 三维度排序
+    微博爬虫 → HDFS原始存储 → Spark清洗 → MySQL结构化 → 三维度排序
     """
     try:
         from services.spark_service import get_spark_service
@@ -2307,7 +2307,7 @@ def get_dataflow_overview():
                         {'name': '微博爬虫', 'status': 'active', 'count': total_crawl_tasks},
                         {'name': 'HDFS存储', 'status': 'active', 'count': total_raw_files},
                         {'name': 'Spark清洗', 'status': 'active', 'count': sum(1 for j in spark_jobs if j['job_type'] == 'data_cleaning')},
-                        {'name': 'HBase存储', 'status': 'active', 'count': total_raw_records},
+                        {'name': 'MySQL存储', 'status': 'active', 'count': total_raw_records},
                         {'name': '三维度排序', 'status': 'active', 'count': sum(1 for j in spark_jobs if j['job_type'] == 'topic_ranking')},
                     ]
                 },

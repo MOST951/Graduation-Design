@@ -6,15 +6,11 @@
 
 
 
-提供多种存储后端的统一接口：
+提供两种存储后端的统一接口：
 
-1. HDFS存储：原始数据、清洗数据、特征向量（Parquet格式）
+1. MySQL存储：全部业务数据、分析结果、用户信息、配置、任务管理
 
-2. HBase存储：微博数据、用户画像、热点话题
-
-3. MySQL存储：元数据、任务管理、系统配置
-
-4. Redis缓存：热点数据、会话管理、分布式锁
+2. HDFS存储：原始微博数据文件（JSON）和Spark中间处理结果（Parquet）
 
 
 
@@ -37,12 +33,6 @@
     # MySQL操作
 
     storage.mysql.insert_task(task_data)
-
-    
-
-    # Redis缓存
-
-    storage.redis.cache_hot_search(hot_list)
 
 """
 
@@ -118,9 +108,7 @@ def load_env_config() -> Dict[str, str]:
 
     for key in ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USERNAME', 'DB_PASSWORD',
 
-                'REDIS_HOST', 'REDIS_PORT', 'REDIS_PASSWORD',
-
-                'HDFS_DEFAULT_FS', 'HBASE_HOST']:
+                'HDFS_DEFAULT_FS']:
 
         if key in os.environ:
 
@@ -164,31 +152,11 @@ class StorageConfig:
 
     
 
-    # Redis
-
-    redis_host: str = ENV_CONFIG.get('REDIS_HOST', 'localhost')
-
-    redis_port: int = int(ENV_CONFIG.get('REDIS_PORT', '6379'))
-
-    redis_password: str = ENV_CONFIG.get('REDIS_PASSWORD', '')
-
-    redis_db: int = 0
-
-    
-
     # HDFS
 
     hdfs_url: str = ENV_CONFIG.get('HDFS_DEFAULT_FS', 'hdfs://localhost:9000')
 
     hdfs_user: str = 'hadoop'
-
-    
-
-    # HBase
-
-    hbase_host: str = ENV_CONFIG.get('HBASE_HOST', 'localhost')
-
-    hbase_port: int = 9090
 
     
 
@@ -602,491 +570,6 @@ class HDFSClient:
 
 
 
-
-
-# ==================== HBase存储客户端 ====================
-
-
-
-class HBaseClient:
-
-    """
-
-    HBase存储客户端
-
-    
-
-    表结构设计：
-
-    - weibo_raw: 原始微博数据
-
-    - weibo_cleaned: 清洗后数据
-
-    - user_profiles: 用户画像
-
-    - hot_topics: 热点话题
-
-    
-
-    RowKey设计：时间戳反转 + 用户ID/话题ID
-
-    """
-
-    
-
-    # 表结构定义
-
-    TABLES = {
-
-        'weibo_raw': {
-
-            'cf_basic': ['id', 'mid', 'text', 'source', 'created_at'],
-
-            'cf_user': ['user_id', 'user_name', 'user_verified'],
-
-            'cf_stats': ['reposts_count', 'comments_count', 'attitudes_count'],
-
-            'cf_media': ['pics', 'video_url'],
-
-        },
-
-        'weibo_cleaned': {
-
-            'cf_basic': ['id', 'cleaned_text', 'tokens'],
-
-            'cf_features': ['tfidf', 'word2vec', 'sentiment_score'],
-
-            'cf_meta': ['keyword', 'topic', 'crawl_time'],
-
-        },
-
-        'user_profiles': {
-
-            'cf_basic': ['user_id', 'screen_name', 'description', 'location'],
-
-            'cf_stats': ['followers_count', 'friends_count', 'statuses_count'],
-
-            'cf_analysis': ['sentiment_avg', 'activity_score', 'influence_score'],
-
-        },
-
-        'hot_topics': {
-
-            'cf_basic': ['topic', 'hot_value', 'category'],
-
-            'cf_stats': ['weibo_count', 'user_count', 'sentiment_distribution'],
-
-            'cf_trend': ['hourly_trend', 'daily_trend'],
-
-        },
-
-    }
-
-    
-
-    def __init__(self, config: StorageConfig):
-
-        self.config = config
-
-        self._connection = None
-
-        self._use_local = True
-
-        
-
-        self._init_connection()
-
-    
-
-    def _init_connection(self):
-
-        """初始化HBase连接"""
-
-        try:
-
-            import happybase
-
-            self._connection = happybase.Connection(
-
-                host=self.config.hbase_host,
-
-                port=self.config.hbase_port
-
-            )
-
-            self._use_local = False
-
-            logger.info(f"HBase连接成功: {self.config.hbase_host}:{self.config.hbase_port}")
-
-        except Exception as e:
-
-            logger.warning(f"HBase不可用，使用本地JSON存储: {e}")
-
-            self._use_local = True
-
-            self._local_data = {}
-
-            self._local_path = os.path.join(
-
-                self.config.local_storage_path, 'hbase_local'
-
-            )
-
-            os.makedirs(self._local_path, exist_ok=True)
-
-            self._load_local_data()
-
-    
-
-    def _load_local_data(self):
-
-        """加载本地数据"""
-
-        for table_name in self.TABLES.keys():
-
-            file_path = os.path.join(self._local_path, f'{table_name}.json')
-
-            if os.path.exists(file_path):
-
-                try:
-
-                    with open(file_path, 'r', encoding='utf-8') as f:
-
-                        self._local_data[table_name] = json.load(f)
-
-                except:
-
-                    self._local_data[table_name] = {}
-
-            else:
-
-                self._local_data[table_name] = {}
-
-    
-
-    def _save_local_data(self, table_name: str):
-
-        """保存本地数据"""
-
-        file_path = os.path.join(self._local_path, f'{table_name}.json')
-
-        with open(file_path, 'w', encoding='utf-8') as f:
-
-            json.dump(self._local_data.get(table_name, {}), f, ensure_ascii=False, indent=2)
-
-    
-
-    @staticmethod
-
-    def generate_rowkey(timestamp: datetime = None, entity_id: str = '') -> str:
-
-        """
-
-        生成RowKey
-
-        
-
-        格式：反转时间戳_实体ID
-
-        反转时间戳确保最新数据在前
-
-        """
-
-        if timestamp is None:
-
-            timestamp = datetime.now()
-
-        
-
-        # 时间戳反转（使用最大时间戳减去当前时间戳）
-
-        max_ts = 9999999999999  # 13位时间戳最大值
-
-        current_ts = int(timestamp.timestamp() * 1000)
-
-        reversed_ts = max_ts - current_ts
-
-        
-
-        # 组合RowKey
-
-        if entity_id:
-
-            return f"{reversed_ts}_{entity_id}"
-
-        return str(reversed_ts)
-
-    
-
-    def put(self, table_name: str, rowkey: str, data: Dict[str, Any]):
-
-        """
-
-        写入数据
-
-        
-
-        Args:
-
-            table_name: 表名
-
-            rowkey: 行键
-
-            data: 数据字典 {列族:列名: 值}
-
-        """
-
-        if self._use_local:
-
-            if table_name not in self._local_data:
-
-                self._local_data[table_name] = {}
-
-            self._local_data[table_name][rowkey] = data
-
-            self._save_local_data(table_name)
-
-        else:
-
-            table = self._connection.table(table_name)
-
-            # 转换数据格式
-
-            hbase_data = {}
-
-            for key, value in data.items():
-
-                if isinstance(value, (dict, list)):
-
-                    value = json.dumps(value, ensure_ascii=False)
-
-                elif not isinstance(value, bytes):
-
-                    value = str(value)
-
-                hbase_data[key.encode()] = value.encode() if isinstance(value, str) else value
-
-            table.put(rowkey.encode(), hbase_data)
-
-    
-
-    def batch_put(self, table_name: str, rows: List[Dict]):
-
-        """
-
-        批量写入
-
-        
-
-        Args:
-
-            table_name: 表名
-
-            rows: 数据列表 [{'rowkey': ..., 'data': {...}}, ...]
-
-        """
-
-        if self._use_local:
-
-            if table_name not in self._local_data:
-
-                self._local_data[table_name] = {}
-
-            for row in rows:
-
-                self._local_data[table_name][row['rowkey']] = row['data']
-
-            self._save_local_data(table_name)
-
-        else:
-
-            table = self._connection.table(table_name)
-
-            with table.batch(batch_size=1000) as batch:
-
-                for row in rows:
-
-                    hbase_data = {}
-
-                    for key, value in row['data'].items():
-
-                        if isinstance(value, (dict, list)):
-
-                            value = json.dumps(value, ensure_ascii=False)
-
-                        elif not isinstance(value, bytes):
-
-                            value = str(value)
-
-                        hbase_data[key.encode()] = value.encode() if isinstance(value, str) else value
-
-                    batch.put(row['rowkey'].encode(), hbase_data)
-
-    
-
-    def get(self, table_name: str, rowkey: str) -> Optional[Dict]:
-
-        """获取单行数据"""
-
-        if self._use_local:
-
-            return self._local_data.get(table_name, {}).get(rowkey)
-
-        else:
-
-            table = self._connection.table(table_name)
-
-            row = table.row(rowkey.encode())
-
-            if row:
-
-                return {k.decode(): v.decode() for k, v in row.items()}
-
-            return None
-
-    
-
-    def scan(self, table_name: str, 
-
-             row_start: str = None, 
-
-             row_stop: str = None,
-
-             limit: int = 100,
-
-             filter_str: str = None) -> List[Dict]:
-
-        """
-
-        扫描表
-
-        
-
-        Args:
-
-            table_name: 表名
-
-            row_start: 起始行键
-
-            row_stop: 结束行键
-
-            limit: 返回数量限制
-
-            filter_str: 过滤条件
-
-            
-
-        Returns:
-
-            数据列表
-
-        """
-
-        if self._use_local:
-
-            data = self._local_data.get(table_name, {})
-
-            results = []
-
-            for rowkey, row_data in sorted(data.items()):
-
-                if row_start and rowkey < row_start:
-
-                    continue
-
-                if row_stop and rowkey >= row_stop:
-
-                    break
-
-                results.append({'rowkey': rowkey, 'data': row_data})
-
-                if len(results) >= limit:
-
-                    break
-
-            return results
-
-        else:
-
-            table = self._connection.table(table_name)
-
-            results = []
-
-            for key, data in table.scan(
-
-                row_start=row_start.encode() if row_start else None,
-
-                row_stop=row_stop.encode() if row_stop else None,
-
-                limit=limit,
-
-                filter=filter_str
-
-            ):
-
-                results.append({
-
-                    'rowkey': key.decode(),
-
-                    'data': {k.decode(): v.decode() for k, v in data.items()}
-
-                })
-
-            return results
-
-    
-
-    def delete(self, table_name: str, rowkey: str):
-
-        """删除行"""
-
-        if self._use_local:
-
-            if table_name in self._local_data and rowkey in self._local_data[table_name]:
-
-                del self._local_data[table_name][rowkey]
-
-                self._save_local_data(table_name)
-
-        else:
-
-            table = self._connection.table(table_name)
-
-            table.delete(rowkey.encode())
-
-    
-
-    def create_table(self, table_name: str, column_families: List[str] = None):
-
-        """创建表"""
-
-        if self._use_local:
-
-            if table_name not in self._local_data:
-
-                self._local_data[table_name] = {}
-
-        else:
-
-            if column_families is None:
-
-                column_families = list(self.TABLES.get(table_name, {}).keys())
-
-            
-
-            families = {cf: dict() for cf in column_families}
-
-            self._connection.create_table(table_name, families)
-
-    
-
-    def close(self):
-
-        """关闭连接"""
-
-        if self._connection:
-
-            self._connection.close()
 
 
 
@@ -1710,145 +1193,53 @@ class MySQLClient:
 
 
 
-# ==================== Redis缓存客户端 ====================
+# ==================== 内存缓存（替代 Redis） ====================
 
 
 
-class RedisClient:
+class MemoryCache:
 
     """
 
-    Redis缓存客户端
+    应用层内存缓存（替代 Redis）
 
     
 
     功能：
 
-    - 热点数据缓存
+    - 热点数据缓存（TTL 自动过期）
 
-    - 会话管理
-
-    - 实时计算中间结果
-
-    - 分布式锁
+    - 通用 KV 缓存
 
     """
 
     
 
-    # 缓存键前缀
+    def __init__(self, max_size: int = 1024):
 
-    KEY_PREFIX = {
+        self._cache: Dict[str, Any] = {}
 
-        'hot_search': 'weibo:hot_search',
-
-        'hot_topic': 'weibo:hot_topic:',
-
-        'user_session': 'session:',
-
-        'task_progress': 'task:progress:',
-
-        'cache': 'cache:',
-
-        'lock': 'lock:',
-
-        'rate_limit': 'rate_limit:',
-
-    }
-
-    
-
-    # 默认过期时间（秒）
-
-    DEFAULT_EXPIRE = {
-
-        'hot_search': 300,      # 5分钟
-
-        'hot_topic': 600,       # 10分钟
-
-        'user_session': 3600,   # 1小时
-
-        'task_progress': 86400, # 1天
-
-        'cache': 3600,          # 1小时
-
-    }
-
-    
-
-    def __init__(self, config: StorageConfig):
-
-        self.config = config
-
-        self._client = None
-
-        self._use_local = True
-
-        self._local_cache = {}
-
-        self._local_expire = {}
+        self._expire: Dict[str, float] = {}
 
         self._lock = threading.Lock()
 
-        
-
-        self._init_client()
+        self._max_size = max_size
 
     
 
-    def _init_client(self):
+    def _evict_expired(self):
 
-        """初始化Redis客户端"""
+        """清除过期键"""
 
-        try:
+        now = time.time()
 
-            import redis
+        expired = [k for k, v in self._expire.items() if now > v]
 
-            self._client = redis.Redis(
+        for k in expired:
 
-                host=self.config.redis_host,
+            self._cache.pop(k, None)
 
-                port=self.config.redis_port,
-
-                password=self.config.redis_password or None,
-
-                db=self.config.redis_db,
-
-                decode_responses=True
-
-            )
-
-            # 测试连接
-
-            self._client.ping()
-
-            self._use_local = False
-
-            logger.info(f"Redis连接成功: {self.config.redis_host}:{self.config.redis_port}")
-
-        except Exception as e:
-
-            logger.warning(f"Redis不可用，使用本地缓存: {e}")
-
-            self._use_local = True
-
-    
-
-    def _check_expire(self, key: str) -> bool:
-
-        """检查本地缓存是否过期"""
-
-        if key in self._local_expire:
-
-            if time.time() > self._local_expire[key]:
-
-                del self._local_cache[key]
-
-                del self._local_expire[key]
-
-                return True
-
-        return False
+            self._expire.pop(k, None)
 
     
 
@@ -1860,27 +1251,23 @@ class RedisClient:
 
             value = json.dumps(value, ensure_ascii=False)
 
-        
+        with self._lock:
 
-        if self._use_local:
+            self._evict_expired()
 
-            with self._lock:
+            if len(self._cache) >= self._max_size:
 
-                self._local_cache[key] = value
+                oldest = next(iter(self._cache))
 
-                if expire:
+                self._cache.pop(oldest, None)
 
-                    self._local_expire[key] = time.time() + expire
+                self._expire.pop(oldest, None)
 
-        else:
+            self._cache[key] = value
 
             if expire:
 
-                self._client.setex(key, expire, value)
-
-            else:
-
-                self._client.set(key, value)
+                self._expire[key] = time.time() + expire
 
     
 
@@ -1888,17 +1275,17 @@ class RedisClient:
 
         """获取缓存"""
 
-        if self._use_local:
+        with self._lock:
 
-            with self._lock:
+            if key in self._expire and time.time() > self._expire[key]:
 
-                self._check_expire(key)
+                self._cache.pop(key, None)
 
-                return self._local_cache.get(key)
+                self._expire.pop(key, None)
 
-        else:
+                return None
 
-            return self._client.get(key)
+            return self._cache.get(key)
 
     
 
@@ -1914,7 +1301,7 @@ class RedisClient:
 
                 return json.loads(value)
 
-            except:
+            except Exception:
 
                 return value
 
@@ -1926,337 +1313,11 @@ class RedisClient:
 
         """删除缓存"""
 
-        if self._use_local:
+        with self._lock:
 
-            with self._lock:
+            self._cache.pop(key, None)
 
-                self._local_cache.pop(key, None)
-
-                self._local_expire.pop(key, None)
-
-        else:
-
-            self._client.delete(key)
-
-    
-
-    def exists(self, key: str) -> bool:
-
-        """检查键是否存在"""
-
-        if self._use_local:
-
-            with self._lock:
-
-                self._check_expire(key)
-
-                return key in self._local_cache
-
-        else:
-
-            return self._client.exists(key)
-
-    
-
-    def expire(self, key: str, seconds: int):
-
-        """设置过期时间"""
-
-        if self._use_local:
-
-            with self._lock:
-
-                if key in self._local_cache:
-
-                    self._local_expire[key] = time.time() + seconds
-
-        else:
-
-            self._client.expire(key, seconds)
-
-    
-
-    def incr(self, key: str, amount: int = 1) -> int:
-
-        """递增"""
-
-        if self._use_local:
-
-            with self._lock:
-
-                current = int(self._local_cache.get(key, 0))
-
-                self._local_cache[key] = str(current + amount)
-
-                return current + amount
-
-        else:
-
-            return self._client.incr(key, amount)
-
-    
-
-    # ==================== 热点数据缓存 ====================
-
-    
-
-    def cache_hot_search(self, hot_list: List[Dict], expire: int = None):
-
-        """缓存热搜榜"""
-
-        key = self.KEY_PREFIX['hot_search']
-
-        expire = expire or self.DEFAULT_EXPIRE['hot_search']
-
-        self.set(key, hot_list, expire)
-
-        logger.debug(f"缓存热搜榜: {len(hot_list)} 条")
-
-    
-
-    def get_hot_search(self) -> Optional[List[Dict]]:
-
-        """获取热搜榜缓存"""
-
-        key = self.KEY_PREFIX['hot_search']
-
-        return self.get_json(key)
-
-    
-
-    def cache_topic_data(self, topic: str, data: Dict, expire: int = None):
-
-        """缓存话题数据"""
-
-        key = f"{self.KEY_PREFIX['hot_topic']}{topic}"
-
-        expire = expire or self.DEFAULT_EXPIRE['hot_topic']
-
-        self.set(key, data, expire)
-
-    
-
-    def get_topic_data(self, topic: str) -> Optional[Dict]:
-
-        """获取话题数据缓存"""
-
-        key = f"{self.KEY_PREFIX['hot_topic']}{topic}"
-
-        return self.get_json(key)
-
-    
-
-    # ==================== 会话管理 ====================
-
-    
-
-    def set_session(self, session_id: str, data: Dict, expire: int = None):
-
-        """设置会话"""
-
-        key = f"{self.KEY_PREFIX['user_session']}{session_id}"
-
-        expire = expire or self.DEFAULT_EXPIRE['user_session']
-
-        self.set(key, data, expire)
-
-    
-
-    def get_session(self, session_id: str) -> Optional[Dict]:
-
-        """获取会话"""
-
-        key = f"{self.KEY_PREFIX['user_session']}{session_id}"
-
-        return self.get_json(key)
-
-    
-
-    def delete_session(self, session_id: str):
-
-        """删除会话"""
-
-        key = f"{self.KEY_PREFIX['user_session']}{session_id}"
-
-        self.delete(key)
-
-    
-
-    # ==================== 任务进度 ====================
-
-    
-
-    def set_task_progress(self, task_id: str, progress: Dict):
-
-        """设置任务进度"""
-
-        key = f"{self.KEY_PREFIX['task_progress']}{task_id}"
-
-        self.set(key, progress, self.DEFAULT_EXPIRE['task_progress'])
-
-    
-
-    def get_task_progress(self, task_id: str) -> Optional[Dict]:
-
-        """获取任务进度"""
-
-        key = f"{self.KEY_PREFIX['task_progress']}{task_id}"
-
-        return self.get_json(key)
-
-    
-
-    # ==================== 分布式锁 ====================
-
-    
-
-    def acquire_lock(self, lock_name: str, 
-
-                     expire: int = 30,
-
-                     retry: int = 3,
-
-                     retry_delay: float = 0.1) -> bool:
-
-        """
-
-        获取分布式锁
-
-        
-
-        Args:
-
-            lock_name: 锁名称
-
-            expire: 锁过期时间（秒）
-
-            retry: 重试次数
-
-            retry_delay: 重试间隔（秒）
-
-            
-
-        Returns:
-
-            是否获取成功
-
-        """
-
-        key = f"{self.KEY_PREFIX['lock']}{lock_name}"
-
-        
-
-        for _ in range(retry):
-
-            if self._use_local:
-
-                with self._lock:
-
-                    self._check_expire(key)
-
-                    if key not in self._local_cache:
-
-                        self._local_cache[key] = '1'
-
-                        self._local_expire[key] = time.time() + expire
-
-                        return True
-
-            else:
-
-                if self._client.set(key, '1', ex=expire, nx=True):
-
-                    return True
-
-            
-
-            time.sleep(retry_delay)
-
-        
-
-        return False
-
-    
-
-    def release_lock(self, lock_name: str):
-
-        """释放分布式锁"""
-
-        key = f"{self.KEY_PREFIX['lock']}{lock_name}"
-
-        self.delete(key)
-
-    
-
-    @contextmanager
-
-    def lock(self, lock_name: str, expire: int = 30):
-
-        """分布式锁上下文管理器"""
-
-        acquired = self.acquire_lock(lock_name, expire)
-
-        if not acquired:
-
-            raise RuntimeError(f"无法获取锁: {lock_name}")
-
-        try:
-
-            yield
-
-        finally:
-
-            self.release_lock(lock_name)
-
-    
-
-    # ==================== 限流 ====================
-
-    
-
-    def check_rate_limit(self, key: str, 
-
-                         max_requests: int,
-
-                         window_seconds: int) -> bool:
-
-        """
-
-        检查限流
-
-        
-
-        Args:
-
-            key: 限流键（如用户ID、IP）
-
-            max_requests: 窗口内最大请求数
-
-            window_seconds: 时间窗口（秒）
-
-            
-
-        Returns:
-
-            True 如果允许请求，False 如果被限流
-
-        """
-
-        rate_key = f"{self.KEY_PREFIX['rate_limit']}{key}"
-
-        
-
-        current = self.incr(rate_key)
-
-        
-
-        if current == 1:
-
-            self.expire(rate_key, window_seconds)
-
-        
-
-        return current <= max_requests
+            self._expire.pop(key, None)
 
 
 
@@ -2274,7 +1335,7 @@ class StorageService:
 
     
 
-    整合HDFS、HBase、MySQL、Redis的统一接口
+    整合 MySQL + HDFS + 内存缓存的统一接口
 
     """
 
@@ -2302,15 +1363,13 @@ class StorageService:
 
         self.hdfs = HDFSClient(self.config)
 
-        self.hbase = HBaseClient(self.config)
-
         self.mysql = MySQLClient(self.config)
 
-        self.redis = RedisClient(self.config)
+        self.cache = MemoryCache()
 
         
 
-        logger.info("StorageService初始化完成")
+        logger.info("StorageService初始化完成 (MySQL + HDFS + MemoryCache)")
 
     
 
@@ -2320,7 +1379,7 @@ class StorageService:
 
     def store_weibo_raw(self, df, date: str = None):
 
-        """存储原始微博数据"""
+        """存储原始微博数据到HDFS"""
 
         date = date or datetime.now().strftime('%Y-%m-%d')
 
@@ -2332,7 +1391,7 @@ class StorageService:
 
     def store_weibo_cleaned(self, df, date: str = None):
 
-        """存储清洗后的微博数据"""
+        """存储清洗后的微博数据到HDFS"""
 
         date = date or datetime.now().strftime('%Y-%m-%d')
 
@@ -2344,7 +1403,7 @@ class StorageService:
 
     def store_features(self, df, feature_type: str, date: str = None):
 
-        """存储特征向量"""
+        """存储特征向量到HDFS"""
 
         date = date or datetime.now().strftime('%Y-%m-%d')
 
@@ -2354,107 +1413,9 @@ class StorageService:
 
     
 
-    def cache_and_store_hot_search(self, hot_list: List[Dict]):
-
-        """缓存并存储热搜榜"""
-
-        # 缓存到Redis
-
-        self.redis.cache_hot_search(hot_list)
-
-        
-
-        # 存储到HBase
-
-        timestamp = datetime.now()
-
-        rows = []
-
-        for item in hot_list:
-
-            rowkey = self.hbase.generate_rowkey(timestamp, str(item.get('rank', '')))
-
-            rows.append({
-
-                'rowkey': rowkey,
-
-                'data': {
-
-                    'cf_basic:title': item.get('title', ''),
-
-                    'cf_basic:hot_value': str(item.get('hot_value', 0)),
-
-                    'cf_basic:category': item.get('category', ''),
-
-                    'cf_stats:crawl_time': timestamp.isoformat(),
-
-                }
-
-            })
-
-        
-
-        self.hbase.batch_put('hot_topics', rows)
-
-        logger.info(f"热搜榜存储完成: {len(hot_list)} 条")
-
-    
-
-    def get_hot_search_cached(self) -> Optional[List[Dict]]:
-
-        """获取热搜榜（优先从缓存）"""
-
-        # 先查缓存
-
-        cached = self.redis.get_hot_search()
-
-        if cached:
-
-            return cached
-
-        
-
-        # 从HBase查询最新数据
-
-        results = self.hbase.scan('hot_topics', limit=50)
-
-        if results:
-
-            hot_list = []
-
-            for row in results:
-
-                data = row.get('data', {})
-
-                hot_list.append({
-
-                    'rank': len(hot_list) + 1,
-
-                    'title': data.get('cf_basic:title', ''),
-
-                    'hot_value': int(data.get('cf_basic:hot_value', 0)),
-
-                    'category': data.get('cf_basic:category', ''),
-
-                })
-
-            
-
-            # 更新缓存
-
-            self.redis.cache_hot_search(hot_list)
-
-            return hot_list
-
-        
-
-        return None
-
-    
-
     def create_task(self, task_data: Dict) -> str:
 
-        """创建采集任务"""
+        """创建采集任务（存储到MySQL）"""
 
         import uuid
 
@@ -2470,45 +1431,13 @@ class StorageService:
 
         
 
-        # 初始化进度缓存
-
-        self.redis.set_task_progress(task_id, {
-
-            'status': 'pending',
-
-            'progress': 0,
-
-            'created_at': datetime.now().isoformat()
-
-        })
-
-        
-
         return task_id
 
     
 
     def update_task_progress(self, task_id: str, progress: float, status: str = None):
 
-        """更新任务进度"""
-
-        # 更新Redis缓存
-
-        progress_data = self.redis.get_task_progress(task_id) or {}
-
-        progress_data['progress'] = progress
-
-        if status:
-
-            progress_data['status'] = status
-
-        progress_data['updated_at'] = datetime.now().isoformat()
-
-        self.redis.set_task_progress(task_id, progress_data)
-
-        
-
-        # 更新MySQL
+        """更新任务进度（MySQL）"""
 
         updates = {'progress': progress}
 
@@ -2534,14 +1463,6 @@ class StorageService:
 
             },
 
-            'hbase': {
-
-                'use_local': self.hbase._use_local,
-
-                'tables': list(self.hbase.TABLES.keys())
-
-            },
-
             'mysql': {
 
                 'use_sqlite': self.mysql._use_sqlite,
@@ -2550,11 +1471,11 @@ class StorageService:
 
             },
 
-            'redis': {
+            'cache': {
 
-                'use_local': self.redis._use_local,
+                'type': 'memory',
 
-                'host': self.config.redis_host if not self.redis._use_local else 'local'
+                'max_size': self.cache._max_size
 
             }
 
@@ -2565,8 +1486,6 @@ class StorageService:
     def close(self):
 
         """关闭所有连接"""
-
-        self.hbase.close()
 
         logger.info("存储服务连接已关闭")
 
@@ -2596,21 +1515,29 @@ def get_storage_service() -> StorageService:
 
 
 
+# 全局内存缓存实例（供 redis_cache 装饰器等使用）
+
+_memory_cache = MemoryCache()
+
+
+
+def get_memory_cache() -> MemoryCache:
+
+    """获取全局内存缓存单例"""
+
+    return _memory_cache
+
 
 
 def cache_decorator(key_prefix: str, expire: int = 3600):
 
-    """缓存装饰器"""
+    """缓存装饰器（使用内存缓存替代 Redis）"""
 
     def decorator(func):
 
         @wraps(func)
 
         def wrapper(*args, **kwargs):
-
-            storage = get_storage_service()
-
-            
 
             # 生成缓存键
 
@@ -2620,7 +1547,7 @@ def cache_decorator(key_prefix: str, expire: int = 3600):
 
             # 尝试从缓存获取
 
-            cached = storage.redis.get_json(cache_key)
+            cached = _memory_cache.get_json(cache_key)
 
             if cached is not None:
 
@@ -2638,7 +1565,7 @@ def cache_decorator(key_prefix: str, expire: int = 3600):
 
             if result is not None:
 
-                storage.redis.set(cache_key, result, expire)
+                _memory_cache.set(cache_key, result, expire)
 
             
 
@@ -2674,15 +1601,15 @@ if __name__ == '__main__':
 
     
 
-    # 测试Redis
+    # 测试内存缓存
 
-    print("\n测试Redis缓存:")
+    print("\n测试内存缓存:")
 
-    storage.redis.set('test_key', {'hello': 'world'}, 60)
+    storage.cache.set('test_key', {'hello': 'world'}, 60)
 
     print(f"  设置: test_key = {{'hello': 'world'}}")
 
-    print(f"  获取: {storage.redis.get_json('test_key')}")
+    print(f"  获取: {storage.cache.get_json('test_key')}")
 
     
 

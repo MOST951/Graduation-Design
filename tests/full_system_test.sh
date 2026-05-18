@@ -40,8 +40,8 @@ echo "============================================================"
 
 # === 0. 系统健康检查 ===
 echo -e "\n${C}=== 0. 系统健康检查 ===${NC}"
-for svc in db redis web frontend java namenode datanode hbase_master hbase_rs spark_master spark_worker zookeeper; do
-  status=$(docker ps --filter "name=weibo_sentiment_$svc" --format '{{.Status}}' 2>/dev/null || echo "NOT FOUND")
+for svc in db web frontend namenode datanode spark_master spark_worker; do
+  status=$(docker ps --filter "name=weibo_$svc" --format '{{.Status}}' 2>/dev/null || echo "NOT FOUND")
   if echo "$status" | grep -qi "Up"; then
     ok "容器 $svc: $status"
   else
@@ -49,7 +49,7 @@ for svc in db redis web frontend java namenode datanode hbase_master hbase_rs sp
   fi
 done
 
-for pd in "5000:Flask" "8081:SpringBoot" "3001:Frontend" "3306:MySQL" "6379:Redis"; do
+for pd in "5000:Flask" "3001:Frontend" "3306:MySQL" "8080:SparkUI" "9870:HDFS_WebUI"; do
   p=${pd%%:*}; d=${pd#*:}
   if nc -z localhost $p 2>/dev/null; then ok "端口 $p ($d)"; else fail "端口 $p ($d)" "不可达"; fi
 done
@@ -57,10 +57,7 @@ done
 api_check "Flask健康" "$API/api/v2/health"
 api_check "前端首页" "$FRONTEND/"
 
-redis_ping=$(docker exec weibo_sentiment_redis redis-cli ping 2>/dev/null || echo "FAIL")
-if [ "$redis_ping" = "PONG" ]; then ok "Redis PING=PONG"; else fail "Redis" "$redis_ping"; fi
-
-db_ok=$(docker exec weibo_sentiment_db mysql -u weibo_user -p123456 -N -e "SELECT 1" weibo_sentiment 2>/dev/null || echo "0")
+db_ok=$(docker exec weibo_db mysql -u weibo_user -p123456 -N -e "SELECT 1" weibo_sentiment 2>/dev/null || echo "0")
 if echo "$db_ok" | grep -q "1"; then ok "MySQL连接正常"; else fail "MySQL" "无法连接"; fi
 
 # === 1. 数据采集模块 ===

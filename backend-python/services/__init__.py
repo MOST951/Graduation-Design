@@ -45,10 +45,10 @@ from .storage_service import (
     StorageService,
     StorageConfig,
     HDFSClient,
-    HBaseClient,
     MySQLClient,
-    RedisClient,
+    MemoryCache,
     get_storage_service,
+    get_memory_cache,
     cache_decorator,
 )
 from .rule_based_analyzer import (
@@ -154,10 +154,10 @@ __all__ = [
     'StorageService',
     'StorageConfig',
     'HDFSClient',
-    'HBaseClient',
     'MySQLClient',
-    'RedisClient',
+    'MemoryCache',
     'get_storage_service',
+    'get_memory_cache',
     'cache_decorator',
     # 规则分析器
     'RuleBasedSentimentAnalyzer',

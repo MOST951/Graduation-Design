@@ -627,16 +627,17 @@ export async function analyzeData(
   data?: WeiboData[],
   useSpark: boolean = true
 ): Promise<AnalysisResult> {
+  // BERT 批量分析 500 条 ≈ 30-300s, 默认 30s axios 超时会失败. 单独放宽到 10 分钟.
   const response = await apiClient.post('/weibo/analyze', {
     task_id: taskId,
     data,
     use_spark: useSpark
-  });
+  }, { timeout: 600000 });
   return response.data.data;
 }
 
 export async function analyzeCollectionTask(taskId: string, limit: number = 500): Promise<AnalysisResult> {
-  const response = await apiClient.post(`/collection/tasks/${taskId}/analyze`, { limit });
+  const response = await apiClient.post(`/collection/tasks/${taskId}/analyze`, { limit }, { timeout: 600000 });
   return response.data.data;
 }
 

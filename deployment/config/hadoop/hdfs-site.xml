@@ -26,10 +26,10 @@
         <value>false</value>
     </property>
 
-    <!-- WebUI 绑定地址 -->
+    <!-- WebUI 绑定地址 (Hadoop 3.x 默认 9870) -->
     <property>
         <name>dfs.namenode.http-address</name>
-        <value>0.0.0.0:50070</value>
+        <value>0.0.0.0:9870</value>
     </property>
 
     <!-- 允许追加写入 -->
@@ -45,7 +45,7 @@
     </property>
     <property>
         <name>dfs.datanode.http.address</name>
-        <value>0.0.0.0:50075</value>
+        <value>0.0.0.0:9864</value>
     </property>
     <property>
         <name>dfs.datanode.ipc.address</name>

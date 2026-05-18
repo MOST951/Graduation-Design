@@ -1068,6 +1068,9 @@ const loadDefaultConfig = async () => {
   }
 };
 
+// 历史/统计/排序自动刷新定时器 (每 10s 拉一次, 让"历史运行记录" 实时跟随 DB)
+let autoRefreshTimer: number | null = null;
+
 onMounted(() => {
   // 先用 localStorage 缓存渲染初始 UI (在 setup 阶段已填入 dbStats/rankingData/historyRecords),
   // 再后台并发刷新 — 避免首屏阻塞 (论文 3.x 性能要求: 前端响应 <3s).
@@ -1076,11 +1079,22 @@ onMounted(() => {
   loadRanking();
   loadHistory();
   connectWebSocket();
+
+  // 每 10 秒自动刷新历史记录 + 数据库统计 + 排序结果
+  autoRefreshTimer = window.setInterval(() => {
+    loadHistory();
+    loadDatabaseStats();
+    loadRanking();
+  }, 10000);
 });
 
 onUnmounted(() => {
   stopPolling();
   disconnectWebSocket();
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
 });
 </script>
 

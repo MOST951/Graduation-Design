@@ -1032,7 +1032,7 @@ def get_spark_info():
             'code': 200,
             'message': 'success',
             'data': {
-                'master': 'local[*]',
+                'master': 'spark://spark-master:7077',
                 'appName': 'WeiboSentimentAnalysis',
                 'status': 'running',
                 'workers': 1,
@@ -1960,7 +1960,7 @@ _admin_roles = [
 
 _admin_config = {
     'spark': {
-        'master': 'local[*]', 'app_name': 'WeiboSentimentAnalysis',
+        'master': 'spark://spark-master:7077', 'app_name': 'WeiboSentimentAnalysis',
         'executor_memory': '2g', 'executor_cores': 2,
         'driver_memory': '1g', 'parallelism': 4,
         'shuffle_partitions': 4, 'mode': 'pseudo-distributed',
@@ -2142,7 +2142,7 @@ def get_spark_config():
     """获取Spark配置参数"""
     try:
         config = {
-            'master': 'local[*]',
+            'master': 'spark://spark-master:7077',
             'app_name': 'WeiboSentimentAnalysis',
             'executor_memory': '2g',
             'executor_cores': 2,

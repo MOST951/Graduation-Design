@@ -831,7 +831,7 @@ class SparkBertIntegration:
         elif SPARK_AVAILABLE:
             self.spark = SparkSession.builder \
                 .appName("BertSentimentAnalysis") \
-                .master("local[*]") \
+                .master(os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077')) \
                 .config("spark.driver.memory", "4g") \
                 .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
                 .getOrCreate()

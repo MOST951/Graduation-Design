@@ -382,6 +382,96 @@ def get_preprocess_data(task_id: str):
         }), 500
 
 
+@preprocess_bp.route('/tasks/<task_id>/features', methods=['GET'])
+def get_preprocess_features(task_id: str):
+    """对该预处理任务的 cleaned words 做真实特征提取 (TF-IDF / BoW),
+    返回维度 / 非零特征数 / max / min / 示例向量 / 顶部关键词. 前端"特征向量" tab 显示用.
+
+    Query:
+      method        tfidf | count  (default: tfidf)
+      max_features  默认 1000
+    """
+    try:
+        if task_id not in preprocess_tasks:
+            return jsonify({'code': 404, 'message': '任务不存在'}), 404
+
+        data = processed_data.get(task_id) or load_task_data(task_id) or []
+        if not data:
+            return jsonify({'code': 404, 'message': '该任务暂无可用预处理数据'}), 404
+
+        method = (request.args.get('method', 'tfidf') or 'tfidf').lower()
+        max_features = request.args.get('max_features', 1000, type=int)
+
+        # 每条文档为分词后空格拼接 (sklearn 分词器以空白切分)
+        docs = []
+        for it in data:
+            words = it.get('words') or []
+            if not words and it.get('cleaned_text'):
+                words = it['cleaned_text'].split()
+            if words:
+                docs.append(' '.join(words))
+        if not docs:
+            return jsonify({'code': 404, 'message': '该任务的清洗数据无可分词内容'}), 404
+
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+            Vec = TfidfVectorizer if method == 'tfidf' else CountVectorizer
+            # token_pattern 设为至少 1 个非空字符, 保证中文单字也能进特征
+            vec = Vec(max_features=max_features, token_pattern=r'(?u)\b\w+\b')
+            mat = vec.fit_transform(docs)
+            vocab = vec.get_feature_names_out().tolist()
+            dimension = len(vocab)
+            nnz = int(mat.nnz)
+            arr = mat.toarray() if mat.shape[0] * mat.shape[1] < 200000 else None
+            if arr is not None:
+                max_val = float(arr.max())
+                min_val = float(arr[arr > 0].min()) if (arr > 0).any() else 0.0
+                # 第 1 篇文档前 10 维非零特征示例
+                row0 = arr[0]
+                nz_idx = [i for i, v in enumerate(row0) if v > 0][:10]
+                sample = [(vocab[i], round(float(row0[i]), 4)) for i in nz_idx]
+            else:
+                max_val = float(mat.max())
+                min_val = float(mat.data.min()) if mat.nnz else 0.0
+                sample = []
+            # 全局 top10 关键词 (按列和)
+            col_sum = mat.sum(axis=0).A1 if hasattr(mat.sum(axis=0), 'A1') else mat.sum(axis=0)
+            top_idx = sorted(range(len(col_sum)), key=lambda i: -col_sum[i])[:10]
+            top_terms = [(vocab[i], round(float(col_sum[i]), 4)) for i in top_idx]
+        except Exception as ml_err:
+            logger.warning(f'TF-IDF 失败, 降级为 BoW 统计: {ml_err}')
+            # ---- 降级: 纯 Python BoW ----
+            from collections import Counter
+            cnt = Counter()
+            for d in docs:
+                cnt.update(d.split())
+            vocab = [w for w, _ in cnt.most_common(max_features)]
+            dimension = len(vocab)
+            nnz = sum(cnt.values())
+            max_val = float(cnt.most_common(1)[0][1]) if cnt else 0.0
+            min_val = 1.0 if cnt else 0.0
+            top_terms = [(w, c) for w, c in cnt.most_common(10)]
+            sample = top_terms[:10]
+
+        return jsonify({
+            'code': 200,
+            'message': 'success',
+            'data': {
+                'method': method.upper(),
+                'doc_count': len(docs),
+                'dimension': dimension,
+                'non_zero': nnz,
+                'max_value': round(max_val, 6),
+                'min_value': round(min_val, 6),
+                'sample_vector': sample,
+                'top_terms': top_terms,
+            },
+        })
+    except Exception as e:
+        logger.error(f'Get preprocess features failed: {e}', exc_info=True)
+        return jsonify({'code': 500, 'message': str(e)}), 500
+
+
 @preprocess_bp.route('/tasks/<task_id>', methods=['DELETE'])
 def delete_preprocess_task(task_id: str):
     """删除预处理任务"""

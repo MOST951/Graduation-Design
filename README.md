@@ -2,7 +2,7 @@
 
 > **项目类型**: 本科毕业设计  
 > **作者**: 罗森 | 学号: 2022407443  
-> **技术栈**: Flask + Spring Boot + Vue 3 + Spark + ChineseBERT + ECharts  
+> **技术栈**: Flask + Spring Boot + Vue 3 + Spark + chinese-bert-wwm-ext + ECharts  
 > **核心创新**: 情感-热度三维度排序模型  
 > **部署环境**: Ubuntu 20.04 + Docker Compose v2 + 1Panel
 
@@ -123,7 +123,7 @@ bash deployment/scripts/health-check.sh
 | 4-6 | `γ(t) = 2^(-Δt / H)` | 时间衰减因子，半衰期 H=12h |
 | 4-7 | `Score = ω₁·N(S) + ω₂·H_norm + ω₃·γ(t)` | 综合评分，ω₁=0.4, ω₂=0.4, ω₃=0.2 |
 
-- **级联情感分析准确率**: 86.2%
+- **级联情感分析准确率**: 85.73%（Macro F1=0.8582，纯BERT Acc=87.79%）
 
 ---
 
@@ -211,7 +211,7 @@ weibo-sentiment-analysis/
 
 ### AI/NLP 技术栈
 - **Jieba 0.42.1** - 中文分词
-- **ChineseBERT** - 中文预训练模型
+- **hfl/chinese-bert-wwm-ext** - Whole Word Masking 中文 BERT 预训练模型
 - **情感词典** - 知网 Hownet + 清华大学
 - **级联分析策略** - 词典 + BERT 融合
 

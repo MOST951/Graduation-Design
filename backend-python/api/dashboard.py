@@ -17,7 +17,7 @@ from config import config
 # 添加路径
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# 论文 4.3.1: Redis 缓存热点数据
+# 论文 4.3.1: 内存缓存热点数据
 try:
     from utils.redis_cache import redis_cache
 except Exception:  # pragma: no cover
@@ -1188,7 +1188,7 @@ def get_spark_status():
                 metrics = {
                     'status': 'unavailable',
                     'app_name': 'WeiboSentimentAnalysis',
-                    'master': 'local[*]',
+                    'master': 'spark://spark-master:7077',
                     'driver_memory': '2g',
                     'executor_memory': '2g',
                     'jobs_completed': 0,

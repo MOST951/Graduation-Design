@@ -73,7 +73,7 @@ except ImportError:
 class SparkConfig:
     """Spark配置"""
     app_name: str = "WeiboSentimentAnalysis"
-    master: str = "local[*]"
+    master: str = os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077')
     
     # 内存配置
     driver_memory: str = "4g"

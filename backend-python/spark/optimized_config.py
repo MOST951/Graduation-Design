@@ -38,7 +38,7 @@ class SparkOptimizedConfig:
     
     # 基础配置
     app_name: str = "WeiboSentimentAnalysis"
-    master: str = "local[*]"
+    master: str = os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077')
     
     # 内存配置
     driver_memory: str = "4g"
@@ -197,7 +197,7 @@ class ConfigPresets:
         """开发环境配置"""
         return SparkOptimizedConfig(
             app_name="WeiboSentiment-Dev",
-            master="local[*]",
+            master=os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077'),
             driver_memory="2g",
             executor_memory="2g",
             shuffle_partitions=4,

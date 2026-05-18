@@ -116,13 +116,14 @@ nano deployment/.env.docker
 
 通过 `.env.docker` 中的 `ENABLED_PROFILES` 控制启动哪些服务：
 
-| 模式 | ENABLED_PROFILES | 服务 | 内存需求 |
-|------|-----------------|------|----------|
-| 轻量部署 | `with-frontend,with-java-backend` | Flask+Java+Vue+MySQL+Redis | 2GB+ |
-| 标准部署 | `with-frontend,with-java-backend,with-spark` | +Spark | 4GB+ |
-| 完整部署 | `with-frontend,with-java-backend,with-spark,with-bigdata` | +HDFS+HBase+ZooKeeper | 8GB+ |
+精简版共 7 个容器：db / web / frontend / namenode / datanode / spark-master / spark-worker
 
-- **容器前缀:** `weibo_sentiment_*`
+启动命令：
+```bash
+docker compose --env-file .env.docker up -d
+```
+
+- **容器前缀:** `weibo_*`
 - **网络:** 独立的 `weibo-net` 桥接网络
 - **数据卷:** 命名卷 (named volumes)，停止/重启不会丢失数据
 - **端口:** 均可在 `.env.docker` 中自定义
@@ -133,16 +134,15 @@ nano deployment/.env.docker
 
 | 数据 | 存储方式 | 说明 |
 |------|----------|------|
-| MySQL | `weibo_sentiment_mysql_data` 卷 | 所有数据库数据 |
-| Redis | `weibo_sentiment_redis_data` 卷 | 缓存数据 (AOF 持久化) |
-| 应用日志 | `weibo_sentiment_app_logs` 卷 | Flask 后端日志 |
-| 模型缓存 | `weibo_sentiment_model_cache` 卷 | NLP 模型文件 |
-| 集群日志 | `./logs/cluster-*.log` | 启停脚本操作日志 |
+| MySQL | `weibo_mysql_data` 卷 | 所有业务数据 |
+| HDFS NameNode | `weibo_hdfs_namenode` 卷 | HDFS 元数据 |
+| HDFS DataNode | `weibo_hdfs_datanode` 卷 | HDFS 数据块 |
+| 应用日志 | `weibo_app_logs` 卷 | Flask 后端日志 |
+| 模型缓存 | `weibo_model_cache` 卷 | NLP 模型文件 |
 
 **数据安全：**
-- `./docker-cluster.sh stop` / `start` 不会丢失任何数据
-- `./docker-cluster.sh down` 只销毁容器，数据卷保留
-- 彻底清理数据: `docker volume rm weibo_sentiment_mysql_data weibo_sentiment_redis_data`
+- `docker compose down` 只销毁容器，数据卷保留
+- 彻底清理数据: `docker volume rm weibo_mysql_data weibo_hdfs_namenode weibo_hdfs_datanode`
 
 ---
 
@@ -214,39 +214,7 @@ docker volume rm weibo_sentiment_mysql_data
 ./docker-cluster.sh start
 ```
 
-### 问题 4.2: Redis 连接超时或 NOAUTH
-
-**解决:**
-```bash
-# 1) 确认 .env.docker 中 REDIS_PASSWORD 与应用配置一致
-grep '^REDIS_PASSWORD=' deployment/.env.docker
-
-# 2) 验证 Redis 密码
-docker exec weibo_sentiment_redis redis-cli -a "$(grep '^REDIS_PASSWORD=' deployment/.env.docker | cut -d= -f2)" ping
-
-# 3) 若仍异常，重建 Redis 卷（会清空缓存）
-docker compose -f deployment/docker-compose.yml down
-docker volume rm weibo_sentiment_redis_data
-./docker-cluster.sh start
-```
-
-### 问题 4.3: HBase 无法连接 ZooKeeper
-
-**解决:**
-```bash
-# 检查 ZooKeeper 是否健康
-docker inspect --format='{{.State.Health.Status}}' weibo_sentiment_zookeeper
-
-# 检查 HBase Master 日志
-docker logs weibo_sentiment_hbase_master --tail=100
-
-# 先起大数据 profile，再看健康状态
-docker compose -f deployment/docker-compose.yml \
-  --env-file deployment/.env.docker \
-  --profile with-bigdata up -d
-```
-
-### 问题 4.4: 前端页面资源 404
+### 问题 4.2: 前端页面资源 404
 
 **解决:**
 ```bash
@@ -351,24 +319,23 @@ docker ps -a --filter "name=weibo_sentiment"
 ## 六、项目架构 (Docker 容器)
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Ubuntu 24.04 VM                     │
-│                                                      │
-│  ┌───────────┐  ┌───────────┐  ┌───────────────┐   │
-│  │ Frontend  │  │ Flask API │  │ Java Backend  │   │
-│  │ (Nginx)   │→ │ (Gunicorn)│  │ (Spring Boot) │   │
-│  │ :3001     │  │ :5000     │  │ :8081         │   │
-│  └───────────┘  └─────┬─────┘  └───────┬───────┘   │
-│                       │                 │            │
-│         ┌─────────────┼─────────────────┤            │
-│         ▼             ▼                 ▼            │
-│  ┌───────────┐  ┌───────────┐  ┌───────────────┐   │
-│  │  Redis    │  │  MySQL    │  │ Spark Cluster │   │
-│  │  :6379    │  │  :3306    │  │ Master :8080  │   │
-│  └───────────┘  └───────────┘  │ Worker :7077  │   │
-│                                 └───────────────┘   │
-│  Network: weibo-net (bridge)                        │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                    Ubuntu 24.04 VM (7 容器)                │
+│                                                           │
+│  ┌───────────┐  ┌─────────────┐                          │
+│  │ Frontend  │→ │  Flask API  │ (Spark submit client)     │
+│  │ :3001     │  │  :5000      │                          │
+│  └───────────┘  └──────┬──────┘                          │
+│                         │                                 │
+│         ┌───────────────┼────────────────┐                │
+│         ▼               ▼                ▼                │
+│  ┌───────────┐   ┌───────────┐   ┌───────────────┐      │
+│  │  MySQL    │   │   HDFS    │   │ Spark Cluster │      │
+│  │  :3306    │   │ NN :9870  │   │ Master :8080  │      │
+│  └───────────┘   │ DN :9864  │   │ Worker x1     │      │
+│                   └───────────┘   └───────────────┘      │
+│  Network: weibo-net (bridge)                              │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---

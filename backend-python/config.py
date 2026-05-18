@@ -53,32 +53,13 @@ class DatabaseConfig:
         return f"mysql+pymysql://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}?charset={self.charset}"
 
 
-@dataclass
-class HBaseConfig:
-    """HBase configuration"""
-    quorum: str = 'localhost'
-    port: int = 9090
-    thrift_port: int = 9090
-    master_port: int = 16000
-    timeout: int = 30000
-    
-    @classmethod
-    def from_env(cls) -> 'HBaseConfig':
-        return cls(
-            quorum=os.getenv('HBASE_HOST', os.getenv('HBASE_QUORUM', 'localhost')),
-            port=int(os.getenv('HBASE_PORT', '9090')),
-            thrift_port=int(os.getenv('HBASE_THRIFT_PORT', '9090')),
-            master_port=int(os.getenv('HBASE_MASTER_PORT', '16000')),
-            timeout=int(os.getenv('HBASE_TIMEOUT', '30000')),
-        )
-
 
 @dataclass
 class HDFSConfig:
     """HDFS configuration"""
     namenode_host: str = ''
     namenode_port: int = 9000
-    webhdfs_port: int = 50070
+    webhdfs_port: int = 9870
     user: str = 'root'
     raw_dir: str = '/weibo/raw'
     output_dir: str = '/weibo/output'
@@ -89,7 +70,7 @@ class HDFSConfig:
         return cls(
             namenode_host=os.getenv('HDFS_NAMENODE_HOST', ''),
             namenode_port=int(os.getenv('HDFS_NAMENODE_PORT', '9000')),
-            webhdfs_port=int(os.getenv('HDFS_WEBHDFS_PORT', '50070')),
+            webhdfs_port=int(os.getenv('HDFS_WEBHDFS_PORT', '9870')),
             user=os.getenv('HDFS_USER', 'root'),
             raw_dir=os.getenv('HDFS_RAW_DIR', '/weibo/raw'),
             output_dir=os.getenv('HDFS_OUTPUT_DIR', '/weibo/output'),
@@ -109,32 +90,11 @@ class HDFSConfig:
         return ''
 
 
-@dataclass
-class RedisConfig:
-    """Redis configuration"""
-    host: str = 'localhost'
-    port: int = 6379
-    db: int = 0
-    password: Optional[str] = None
-    socket_timeout: int = 5
-    connection_pool_max_connections: int = 50
-    
-    @classmethod
-    def from_env(cls) -> 'RedisConfig':
-        return cls(
-            host=os.getenv('REDIS_HOST', 'localhost'),
-            port=int(os.getenv('REDIS_PORT', '6379')),
-            db=int(os.getenv('REDIS_DB', '0')),
-            password=os.getenv('REDIS_PASSWORD') or None,
-            socket_timeout=int(os.getenv('REDIS_SOCKET_TIMEOUT', '5')),
-            connection_pool_max_connections=int(os.getenv('REDIS_POOL_MAX_CONNECTIONS', '50')),
-        )
-
 
 @dataclass
 class SparkConfig:
     """Spark configuration"""
-    master_url: str = 'local[*]'
+    master_url: str = 'spark://spark-master:7077'
     app_name: str = 'WeiboSentimentAnalysis'
     executor_memory: str = '2g'
     driver_memory: str = '1g'
@@ -148,7 +108,7 @@ class SparkConfig:
     @classmethod
     def from_env(cls) -> 'SparkConfig':
         return cls(
-            master_url=os.getenv('SPARK_MASTER_URL', 'local[*]'),
+            master_url=os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077'),
             app_name=os.getenv('SPARK_APP_NAME', 'WeiboSentimentAnalysis'),
             executor_memory=os.getenv('SPARK_EXECUTOR_MEMORY', '2g'),
             driver_memory=os.getenv('SPARK_DRIVER_MEMORY', '1g'),
@@ -313,9 +273,7 @@ class Config:
     """Main configuration class containing all sub-configurations"""
     flask: FlaskConfig
     database: DatabaseConfig
-    hbase: HBaseConfig
     hdfs: HDFSConfig
-    redis: RedisConfig
     spark: SparkConfig
     logging: LoggingConfig
     security: SecurityConfig
@@ -329,9 +287,7 @@ class Config:
         return cls(
             flask=FlaskConfig.from_env(),
             database=DatabaseConfig.from_env(),
-            hbase=HBaseConfig.from_env(),
             hdfs=HDFSConfig.from_env(),
-            redis=RedisConfig.from_env(),
             spark=SparkConfig.from_env(),
             logging=LoggingConfig.from_env(),
             security=SecurityConfig.from_env(),
@@ -410,9 +366,7 @@ __all__ = [
     'Config',
     'config',
     'DatabaseConfig',
-    'HBaseConfig',
     'HDFSConfig',
-    'RedisConfig',
     'SparkConfig',
     'FlaskConfig',
     'LoggingConfig',

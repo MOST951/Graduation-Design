@@ -67,7 +67,7 @@ echo "  No token (should still work with optional_token): $(echo $resp4 | python
 
 echo ""
 echo "=== Container health ==="
-for c in weibo_sentiment_java weibo_sentiment_web weibo_sentiment_frontend weibo_sentiment_db weibo_sentiment_redis; do
+for c in weibo_web weibo_db weibo_frontend weibo_namenode weibo_datanode weibo_spark_master weibo_spark_worker; do
   h=$(docker inspect --format='{{.State.Health.Status}}' $c 2>/dev/null || echo "no-health")
   s=$(docker inspect --format='{{.State.Status}}' $c 2>/dev/null || echo "?")
   echo "  $c: status=$s health=$h"

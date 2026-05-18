@@ -33,7 +33,7 @@ NAMENODE_PID=$!
 # 等待 NameNode 就绪
 echo "[NameNode] 等待 NameNode 就绪..."
 for i in $(seq 1 60); do
-    if hdfs dfs -ls / >/dev/null 2>&1; then
+    if hdfs dfs -ls / >/dev/null 2>&1 || curl -sf http://localhost:9870/dfshealth.html >/dev/null 2>&1; then
         echo "[NameNode] NameNode 就绪 (${i}s)"
         break
     fi

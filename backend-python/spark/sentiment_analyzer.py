@@ -295,7 +295,7 @@ class SparkSentimentAnalyzer:
     支持本地模式和集群模式
     """
     
-    def __init__(self, master: str = "local[*]", app_name: str = "WeiboSentimentAnalysis"):
+    def __init__(self, master: str = None, app_name: str = "WeiboSentimentAnalysis"):
         """
         初始化Spark分析器
         
@@ -306,7 +306,7 @@ class SparkSentimentAnalyzer:
                 - "spark://host:7077": 集群模式
             app_name: Spark应用名称
         """
-        self.master = master
+        self.master = master or os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077')
         self.app_name = app_name
         self.spark = None
         
@@ -600,7 +600,7 @@ class SparkClusterManager:
             'spark_home': self.spark_home,
             'spark_available': SPARK_AVAILABLE,
             'mode': 'local' if not self.spark_home else 'pseudo-distributed',
-            'master_url': 'local[*]',
+            'master_url': os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077'),
             'status': 'ready' if SPARK_AVAILABLE else 'spark_not_installed'
         }
         
